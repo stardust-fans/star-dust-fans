@@ -41,25 +41,6 @@ body {
     overflow-x: hidden;
 }
 
-/* 星点纹理（平铺，非渐变光晕） */
-body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    z-index: 0;
-    pointer-events: none;
-    background-image:
-        radial-gradient(1px 1px at 8% 12%, rgba(231, 232, 243, 0.55), transparent 60%),
-        radial-gradient(1px 1px at 41% 68%, rgba(231, 232, 243, 0.35), transparent 60%),
-        radial-gradient(1.5px 1.5px at 27% 40%, rgba(153, 153, 255, 0.45), transparent 60%),
-        radial-gradient(1px 1px at 62% 22%, rgba(231, 232, 243, 0.3), transparent 60%),
-        radial-gradient(1px 1px at 78% 74%, rgba(231, 232, 243, 0.4), transparent 60%),
-        radial-gradient(1.5px 1.5px at 93% 15%, rgba(232, 199, 111, 0.35), transparent 60%),
-        radial-gradient(1px 1px at 15% 88%, rgba(231, 232, 243, 0.3), transparent 60%);
-    background-repeat: repeat;
-    background-size: 380px 380px;
-}
-
 /* 坐标网格（呼应星图刻度） */
 body::after {
     content: '';
@@ -73,6 +54,42 @@ body::after {
     background-size: 96px 96px;
     opacity: 0.35;
     mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 0%, transparent 75%);
+}
+
+/* 星图动态背景（渐变天空 + WebGL 星形四面体漂移 + 闪烁粒子场）。
+   宿主嵌在 #app（z-index:1 的层叠上下文）内，因此这里必须用负 z-index
+   才能沉到 #content 的常规流内容之下；点击掉落层直接挂在 body 下，
+   需要正 z-index 才能盖过内容，同时低于固定导航栏。 */
+.cosmic-sky {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    overflow: hidden;
+    pointer-events: none;
+    background:
+        radial-gradient(circle at 20% 15%, color-mix(in srgb, var(--cobalt) 30%, transparent), transparent 34rem),
+        radial-gradient(circle at 60% 92%, color-mix(in srgb, var(--gold) 20%, transparent), transparent 32rem),
+        linear-gradient(150deg, color-mix(in srgb, var(--paper-raised) 90%, var(--cobalt)), var(--paper));
+}
+
+.cosmic-spark {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+}
+
+.cosmic-fall {
+    position: fixed;
+    inset: 0;
+    z-index: 500;
+    pointer-events: none;
+}
+
+.cosmic-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
 }
 
 a {
