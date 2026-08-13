@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "stardust-api",
+  "name": "stardust",
   "main": "worker.js",
   "account_id": "20c1630f373f1d9663f96f153d4a3194",
   "compatibility_date": "2026-08-13",
