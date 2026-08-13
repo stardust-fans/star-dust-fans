@@ -9,3 +9,4 @@ data/*.db
 !tool/schema.sql
 .cfld.json
 .DS_Store
+dist/

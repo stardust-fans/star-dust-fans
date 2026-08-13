@@ -1,0 +1,548 @@
+/* ===== 全局重置 ===== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background: #0a0a12;
+            color: #e8e8f0;
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* ===== 侧边栏 ===== */
+        .sidebar {
+            width: 220px;
+            background: rgba(16, 16, 32, 0.9);
+            backdrop-filter: blur(12px);
+            border-right: 1px solid rgba(255, 255, 255, 0.04);
+            padding: 24px 0;
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100vh;
+            z-index: 100;
+            transition: transform 0.3s ease;
+        }
+
+        .sidebar-brand {
+            padding: 0 20px 24px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            margin-bottom: 16px;
+        }
+
+        .sidebar-brand h2 {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #9999FF;
+        }
+
+        .sidebar-brand small {
+            color: #666;
+            font-size: 0.75rem;
+        }
+
+        .sidebar-menu {
+            list-style: none;
+            padding: 0 12px;
+            flex: 1;
+        }
+
+        .sidebar-menu li {
+            margin-bottom: 2px;
+        }
+
+        .sidebar-menu li a {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 16px;
+            border-radius: 8px;
+            color: #8888aa;
+            text-decoration: none;
+            font-size: 0.9rem;
+            transition: 0.3s;
+            cursor: pointer;
+        }
+
+        .sidebar-menu li a:hover {
+            background: rgba(153, 153, 255, 0.06);
+            color: #fff;
+        }
+
+        .sidebar-menu li a.active {
+            background: rgba(153, 153, 255, 0.12);
+            color: #9999FF;
+        }
+
+        .sidebar-menu li a i {
+            width: 20px;
+            text-align: center;
+            font-size: 1rem;
+        }
+
+        .sidebar-footer {
+            padding: 16px 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.04);
+            font-size: 0.75rem;
+            color: #444;
+        }
+
+        /* ===== 主内容区 ===== */
+        .main-content {
+            margin-left: 220px;
+            flex: 1;
+            padding: 24px 32px 40px;
+            min-height: 100vh;
+        }
+
+        /* ===== 顶部栏 ===== */
+        .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 28px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        .topbar h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .topbar h1 span {
+            color: #9999FF;
+        }
+
+        .topbar .subtitle {
+            color: #666;
+            font-size: 0.85rem;
+        }
+
+        /* ===== 登录面板 ===== */
+        .login-panel {
+            max-width: 400px;
+            margin: 80px auto;
+            background: rgba(20, 20, 40, 0.7);
+            padding: 40px;
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        .login-panel h2 {
+            margin-bottom: 20px;
+            color: #fff;
+        }
+
+        .login-panel input {
+            width: 100%;
+            padding: 12px 16px;
+            background: #1a1a2a;
+            border: 1px solid #333;
+            color: #fff;
+            border-radius: 8px;
+            font-size: 1rem;
+            margin-bottom: 16px;
+        }
+
+        .login-panel input:focus {
+            outline: none;
+            border-color: #9999FF;
+        }
+
+        .login-panel button {
+            width: 100%;
+            padding: 12px;
+            background: #9999FF;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            color: #fff;
+            cursor: pointer;
+            font-weight: 600;
+            transition: 0.3s;
+        }
+
+        .login-panel button:hover {
+            background: #7777DD;
+        }
+
+        .login-error {
+            color: #ff6b6b;
+            margin-top: 12px;
+            display: none;
+        }
+
+        /* ===== 通用组件 ===== */
+        .hidden {
+            display: none !important;
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .panel-header h2 {
+            font-size: 1.2rem;
+            color: #fff;
+        }
+
+        .btn {
+            padding: 8px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            font-weight: 600;
+            transition: 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-primary {
+            background: #9999FF;
+            color: #fff;
+        }
+        .btn-primary:hover {
+            background: #7777DD;
+        }
+
+        .btn-success {
+            background: #44aa44;
+            color: #fff;
+        }
+        .btn-success:hover {
+            background: #338833;
+        }
+
+        .btn-danger {
+            background: #cc4444;
+            color: #fff;
+        }
+        .btn-danger:hover {
+            background: #aa3333;
+        }
+
+        .btn-outline {
+            background: transparent;
+            color: #888;
+            border: 1px solid #333;
+        }
+        .btn-outline:hover {
+            border-color: #9999FF;
+            color: #fff;
+        }
+
+        .btn-sm {
+            padding: 4px 12px;
+            font-size: 0.75rem;
+        }
+
+        /* ===== 表单面板 ===== */
+        .form-panel {
+            background: rgba(20, 20, 40, 0.7);
+            padding: 20px 24px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            margin-bottom: 24px;
+        }
+
+        .form-panel h3 {
+            margin-bottom: 16px;
+            color: #fff;
+            font-size: 1rem;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+            align-items: center;
+        }
+
+        .form-row label {
+            color: #aaa;
+            font-size: 0.85rem;
+            min-width: 70px;
+        }
+
+        .form-row input,
+        .form-row select,
+        .form-row textarea {
+            flex: 1;
+            min-width: 200px;
+            padding: 8px 14px;
+            background: #1a1a2a;
+            border: 1px solid #333;
+            color: #fff;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-family: inherit;
+        }
+
+        .form-row input:focus,
+        .form-row select:focus,
+        .form-row textarea:focus {
+            outline: none;
+            border-color: #9999FF;
+        }
+
+        .form-row textarea {
+            resize: vertical;
+            min-height: 60px;
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 8px;
+        }
+
+        /* ===== 表格 ===== */
+        .table-wrapper {
+            overflow-x: auto;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+
+        th {
+            text-align: left;
+            padding: 12px 14px;
+            color: #8888aa;
+            font-weight: 600;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            background: rgba(10, 10, 18, 0.5);
+        }
+
+        td {
+            padding: 10px 14px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+            vertical-align: middle;
+        }
+
+        tr:hover td {
+            background: rgba(153, 153, 255, 0.03);
+        }
+
+        .table-cover {
+            width: 56px;
+            height: 32px;
+            object-fit: cover;
+            border-radius: 4px;
+            background: #1a1a2a;
+        }
+
+        .status-badge {
+            padding: 2px 12px;
+            border-radius: 100px;
+            font-size: 0.7rem;
+            white-space: nowrap;
+        }
+
+        .status-published {
+            background: rgba(68, 170, 68, 0.2);
+            color: #66dd66;
+        }
+        .status-flagged {
+            background: rgba(255, 200, 0, 0.15);
+            color: #ffcc44;
+        }
+        .status-hidden {
+            background: rgba(255, 100, 100, 0.15);
+            color: #ff6666;
+        }
+        .status-deleted {
+            background: rgba(100, 100, 100, 0.15);
+            color: #666;
+        }
+        .status-waiting {
+            background: rgba(255, 200, 0, 0.15);
+            color: #ffcc44;
+        }
+        .status-shipped {
+            background: rgba(68, 170, 68, 0.2);
+            color: #66dd66;
+        }
+
+        .tag-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+
+        .tag-item {
+            font-size: 0.65rem;
+            padding: 1px 10px;
+            border-radius: 100px;
+            background: rgba(153, 153, 255, 0.08);
+            color: #9999FF;
+            border: 1px solid rgba(153, 153, 255, 0.08);
+        }
+
+        .actions {
+            display: flex;
+            gap: 4px;
+        }
+
+        .actions button {
+            padding: 3px 10px;
+            border: none;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            cursor: pointer;
+        }
+
+        .actions .edit-btn {
+            background: rgba(153, 153, 255, 0.15);
+            color: #9999FF;
+        }
+        .actions .edit-btn:hover {
+            background: rgba(153, 153, 255, 0.25);
+        }
+
+        .actions .delete-btn {
+            background: rgba(255, 50, 50, 0.12);
+            color: #ff6666;
+        }
+        .actions .delete-btn:hover {
+            background: rgba(255, 50, 50, 0.25);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .loading-state {
+            text-align: center;
+            padding: 40px;
+            color: #888;
+        }
+
+        /* ===== Toast ===== */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            padding: 14px 24px;
+            border-radius: 12px;
+            background: rgba(20, 20, 40, 0.95);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            color: #fff;
+            font-size: 0.9rem;
+            z-index: 999;
+            animation: slideUp 0.3s ease;
+            max-width: 400px;
+        }
+
+        .toast.success {
+            border-left: 4px solid #44aa44;
+        }
+        .toast.error {
+            border-left: 4px solid #cc4444;
+        }
+        .toast.info {
+            border-left: 4px solid #9999FF;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* ===== 响应式 ===== */
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+                width: 200px;
+            }
+            .sidebar.open {
+                transform: translateX(0);
+            }
+            .main-content {
+                margin-left: 0;
+                padding: 16px;
+            }
+            .hamburger {
+                display: block !important;
+            }
+            .form-row {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .form-row label {
+                min-width: auto;
+            }
+            th,
+            td {
+                padding: 6px 8px;
+                font-size: 0.75rem;
+            }
+            .table-cover {
+                width: 40px;
+                height: 24px;
+            }
+            .panel-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+        }
+
+        .hamburger {
+            display: none;
+            background: none;
+            border: none;
+            color: #fff;
+            font-size: 1.5rem;
+            cursor: pointer;
+        }
+
+        /* 侧边栏遮罩 */
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 99;
+        }
+
+        .sidebar-overlay.active {
+            display: block;
+        }
+
+        @media (max-width: 768px) {
+            .sidebar-overlay.active {
+                display: block;
+            }
+        }

@@ -4,13 +4,21 @@
   "description": "星尘 VOCALOID 粉丝站 —— Cloudflare Worker + D1",
   "main": "worker.js",
   "scripts": {
-    "dev": "wrangler dev",
+    "dev": "vite dev",
+    "dev:worker": "wrangler dev",
+    "build": "vite build",
+    "preview": "vite preview",
     "deploy": "wrangler deploy"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "wrangler": "^4.0.0"
+    "@cloudflare/vite-plugin": "^1.52.1",
+    "@vitejs/plugin-vue": "^6.0.8",
+    "vite": "^8.2.1",
+    "vue": "^3.5.41",
+    "vue-router": "^4.6.4",
+    "wrangler": "^4.123.0"
   }
 }
