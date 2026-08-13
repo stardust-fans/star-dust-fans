@@ -57,9 +57,9 @@ body::after {
 }
 
 /* 星图动态背景（渐变天空 + WebGL 星形四面体漂移 + 闪烁粒子场）。
-   宿主嵌在 #app（z-index:1 的层叠上下文）内，因此这里必须用负 z-index
-   才能沉到 #content 的常规流内容之下；点击掉落层直接挂在 body 下，
-   需要正 z-index 才能盖过内容，同时低于固定导航栏。 */
+   三层都挂在 #app 内部（而非 body），同处 #app 的层叠上下文，z-index
+   才能和 .navbar 的 1000 直接比较：天空/粒子用负值沉到内容之下，
+   掉落层用 500 盖过内容、又低于导航栏。 */
 .cosmic-sky {
     position: fixed;
     inset: 0;

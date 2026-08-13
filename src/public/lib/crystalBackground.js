@@ -303,7 +303,12 @@ export function mountCrystalBackground(host, options) {
   const fxCanvas = document.createElement('canvas');
   fxCanvas.className = 'cosmic-canvas';
   fxLayer.appendChild(fxCanvas);
-  document.body.appendChild(fxLayer);
+  // Mounted into the same host as the sky layer (inside #app), not
+  // document.body: #app is its own stacking context (position:relative +
+  // z-index:1), so a body-level sibling here would compare its z-index
+  // against #app as a whole and paint over the fixed navbar inside it
+  // regardless of the navbar's own (higher) z-index.
+  host.appendChild(fxLayer);
 
   const cleanupDom = () => { bg.remove(); fxLayer.remove(); };
   if (reduce) return cleanupDom; // CSS also hides the sky layer; nothing animates
