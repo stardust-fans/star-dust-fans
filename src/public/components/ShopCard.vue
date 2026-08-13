@@ -14,7 +14,7 @@
       <div class="shop-meta">
         <span class="shop-price">{{ item.price || '价格待定' }}</span>
         <span class="shop-status" :class="item.status === 'shipped' ? 'status-shipped' : 'status-waiting'">
-          {{ item.status === 'shipped' ? '🚀 已发车' : '⏳ 等待发车' }}
+          {{ item.status === 'shipped' ? '已发车' : '等待发车' }}
         </span>
       </div>
       <div class="shop-links">

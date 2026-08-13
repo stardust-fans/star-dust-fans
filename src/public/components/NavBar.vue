@@ -1,16 +1,19 @@
 <template>
   <nav class="navbar">
     <div class="nav-container">
-      <RouterLink to="/" class="nav-brand">吸尘器聚集地·星尘粉丝站</RouterLink>
+      <RouterLink to="/" class="nav-brand">
+        星尘
+        <span class="nav-brand-mark">吸尘器聚集地</span>
+      </RouterLink>
       <ul class="nav-menu" :class="{ open: menuOpen }">
         <li><RouterLink to="/" @click="closeMenu">主页</RouterLink></li>
         <li><RouterLink to="/videos" @click="closeMenu">视频</RouterLink></li>
         <li><RouterLink to="/fanart" @click="closeMenu">同人</RouterLink></li>
         <li><RouterLink to="/shop" @click="closeMenu">量贩</RouterLink></li>
-        <li><RouterLink to="/daily" @click="closeMenu">吸尘器日报</RouterLink></li>
+        <li><RouterLink to="/daily" @click="closeMenu">日报</RouterLink></li>
       </ul>
-      <button class="nav-toggle" @click="menuOpen = !menuOpen">
-        <i class="fas fa-bars"></i>
+      <button class="nav-toggle" aria-label="菜单" @click="menuOpen = !menuOpen">
+        <span></span><span></span><span></span>
       </button>
     </div>
   </nav>

@@ -11,7 +11,7 @@
     <div class="fanart-info">
       <div class="fanart-type">{{ typeLabel }}</div>
       <h3>{{ item.title }}</h3>
-      <p class="fanart-author">✎ {{ item.author || '匿名' }}</p>
+      <p class="fanart-author">作者：{{ item.author || '匿名' }}</p>
       <p v-if="item.description" class="fanart-desc">{{ item.description }}</p>
       <div class="fanart-links">
         <a v-if="item.bilibili_url" :href="item.bilibili_url" target="_blank" rel="noopener" class="link">B站观看</a>

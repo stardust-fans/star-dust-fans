@@ -1,13 +1,12 @@
 <template>
   <div class="empty-state">
-    <i :class="['fas', icon]"></i>
+    <div class="empty-mark">✦</div>
     <p>{{ message }}</p>
   </div>
 </template>
 
 <script setup>
 defineProps({
-  icon: { type: String, required: true },
   message: { type: String, required: true },
 });
 </script>

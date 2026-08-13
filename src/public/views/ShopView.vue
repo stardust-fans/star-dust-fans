@@ -1,12 +1,13 @@
 <template>
   <div class="page-header">
-    <h1 class="page-title">🛒 量贩</h1>
+    <span class="eyebrow page-eyebrow">03 · Archive</span>
+    <h1 class="page-title">量贩</h1>
     <p class="page-subtitle">星尘周边 · <template v-if="items.length">共 {{ items.length }} 件</template><template v-else>专辑</template></p>
   </div>
   <div v-if="items.length > 0" class="card-grid">
     <ShopCard v-for="item in items" :key="item.id" :item="item" />
   </div>
-  <EmptyState v-else icon="fa-store" message="暂无商品，敬请期待~" />
+  <EmptyState v-else message="暂无商品，敬请期待~" />
 </template>
 
 <script setup>
