@@ -37,6 +37,16 @@
         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     }
 
+    function escapeHtml(str) {
+        if (str === null || str === undefined) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
     function getTagClass(tag) {
         const map = {
             '殿堂曲': 'masterpiece',
@@ -71,18 +81,18 @@
         if (song.is_gods_descend) tagHtml += `<span class="tag gods">⭐ 众神下凡</span>`;
         tags.forEach(t => {
             if (typeof t === 'string') {
-                tagHtml += `<span class="tag ${getTagClass(t)}">${t}</span>`;
+                tagHtml += `<span class="tag ${getTagClass(t)}">${escapeHtml(t)}</span>`;
             }
         });
 
         return `
             <div class="song-card">
                 <div class="cover-wrapper">
-                    ${coverUrl ? `<img class="cover" src="${coverUrl}" alt="${song.title}" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display='none'" />` : ''}
+                    ${coverUrl ? `<img class="cover" src="${escapeHtml(coverUrl)}" alt="${escapeHtml(song.title)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display='none'" />` : ''}
                     ${!coverUrl ? `<div class="cover-placeholder">🎵</div>` : ''}
                 </div>
                 <div class="info">
-                    <h3><a href="https://www.bilibili.com/video/${song.bvid}" target="_blank" rel="noopener">${song.title}</a></h3>
+                    <h3><a href="https://www.bilibili.com/video/${song.bvid}" target="_blank" rel="noopener">${escapeHtml(song.title)}</a></h3>
                     <div class="meta">
                         <span class="stat"><i class="fas fa-play"></i> ${formatNumber(song.stats?.view)}</span>
                         <span class="stat"><i class="fas fa-thumbs-up"></i> ${formatNumber(song.stats?.like)}</span>
@@ -221,14 +231,14 @@
             <div class="daily-list">
                 ${items.map(item => `
                     <div class="daily-card">
-                        ${item.cover_url ? `<img class="daily-cover" src="${item.cover_url}" alt="${item.title}" referrerpolicy="no-referrer" onerror="this.style.display='none'" />` : ''}
+                        ${item.cover_url ? `<img class="daily-cover" src="${escapeHtml(item.cover_url)}" alt="${escapeHtml(item.title)}" referrerpolicy="no-referrer" onerror="this.style.display='none'" />` : ''}
                         <div class="daily-body">
                             <div class="daily-meta">
-                                <span class="daily-date">${item.publish_date || ''}</span>
+                                <span class="daily-date">${escapeHtml(item.publish_date || '')}</span>
                             </div>
-                            <h3>${item.title}</h3>
-                            <p>${item.content || ''}</p>
-                            ${item.source_url ? `<a href="${item.source_url}" target="_blank" class="link">查看原文 →</a>` : ''}
+                            <h3>${escapeHtml(item.title)}</h3>
+                            <p>${escapeHtml(item.content || '')}</p>
+                            ${item.source_url ? `<a href="${escapeHtml(item.source_url)}" target="_blank" class="link">查看原文 →</a>` : ''}
                         </div>
                     </div>
                 `).join('')}
@@ -261,15 +271,15 @@
             <div class="card-grid">
                 ${items.map(item => `
                     <div class="fanart-card">
-                        ${item.image_url ? `<img class="fanart-image" src="${item.image_url}" alt="${item.title}" referrerpolicy="no-referrer" onerror="this.style.display='none'" />` : ''}
+                        ${item.image_url ? `<img class="fanart-image" src="${escapeHtml(item.image_url)}" alt="${escapeHtml(item.title)}" referrerpolicy="no-referrer" onerror="this.style.display='none'" />` : ''}
                         <div class="fanart-info">
                             <div class="fanart-type">${typeMap[item.type] || item.type || '插画'}</div>
-                            <h3>${item.title}</h3>
-                            <p class="fanart-author">✎ ${item.author || '匿名'}</p>
-                            ${item.description ? `<p class="fanart-desc">${item.description}</p>` : ''}
+                            <h3>${escapeHtml(item.title)}</h3>
+                            <p class="fanart-author">✎ ${escapeHtml(item.author || '匿名')}</p>
+                            ${item.description ? `<p class="fanart-desc">${escapeHtml(item.description)}</p>` : ''}
                             <div class="fanart-links">
-                                ${item.bilibili_url ? `<a href="${item.bilibili_url}" target="_blank" class="link">B站观看</a>` : ''}
-                                ${item.source_url ? `<a href="${item.source_url}" target="_blank" class="link">查看原帖</a>` : ''}
+                                ${item.bilibili_url ? `<a href="${escapeHtml(item.bilibili_url)}" target="_blank" class="link">B站观看</a>` : ''}
+                                ${item.source_url ? `<a href="${escapeHtml(item.source_url)}" target="_blank" class="link">查看原帖</a>` : ''}
                             </div>
                         </div>
                     </div>
@@ -301,17 +311,17 @@
             <div class="card-grid">
                 ${items.map(item => `
                     <div class="shop-card">
-                        ${item.image_url ? `<img class="shop-image" src="${item.image_url}" alt="${item.title}" referrerpolicy="no-referrer" onerror="this.style.display='none'" />` : ''}
+                        ${item.image_url ? `<img class="shop-image" src="${escapeHtml(item.image_url)}" alt="${escapeHtml(item.title)}" referrerpolicy="no-referrer" onerror="this.style.display='none'" />` : ''}
                         <div class="shop-info">
-                            <h3>${item.title}</h3>
-                            ${item.description ? `<p class="shop-desc">${item.description}</p>` : ''}
+                            <h3>${escapeHtml(item.title)}</h3>
+                            ${item.description ? `<p class="shop-desc">${escapeHtml(item.description)}</p>` : ''}
                             <div class="shop-meta">
-                                <span class="shop-price">${item.price || '价格待定'}</span>
+                                <span class="shop-price">${escapeHtml(item.price || '价格待定')}</span>
                                 <span class="shop-status ${item.status === 'shipped' ? 'status-shipped' : 'status-waiting'}">${item.status === 'shipped' ? '🚀 已发车' : '⏳ 等待发车'}</span>
                             </div>
                             <div class="shop-links">
-                                ${item.bilibili_url ? `<a href="${item.bilibili_url}" target="_blank" class="link">B站</a>` : ''}
-                                ${item.xianyu_url ? `<a href="${item.xianyu_url}" target="_blank" class="link">闲鱼</a>` : ''}
+                                ${item.bilibili_url ? `<a href="${escapeHtml(item.bilibili_url)}" target="_blank" class="link">B站</a>` : ''}
+                                ${item.xianyu_url ? `<a href="${escapeHtml(item.xianyu_url)}" target="_blank" class="link">闲鱼</a>` : ''}
                             </div>
                         </div>
                     </div>
