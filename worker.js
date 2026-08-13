@@ -28,21 +28,11 @@ export default {
             });
         }
 
-        // ===== 验证 Token =====
-        function verifyToken(token) {
-            try {
-                const payload = JSON.parse(atob(token));
-                return payload.exp > Date.now();
-            } catch {
-                return false;
-            }
-        }
-
         const authHeader = request.headers.get('Authorization');
         let isAdmin = false;
         if (authHeader && authHeader.startsWith('Bearer ')) {
             const token = authHeader.slice(7);
-            isAdmin = verifyToken(token);
+            isAdmin = await verifyToken(token, env);
         }
 
         // ===== 1. GET /api/songs - 获取歌曲列表（公开） =====
@@ -134,10 +124,13 @@ export default {
                 }
 
                 if (password === ADMIN_PASSWORD) {
-                    const token = btoa(JSON.stringify({
+                    if (!env.TOKEN_SECRET) {
+                        return jsonResponse({ error: '服务未配置' }, 503);
+                    }
+                    const token = await signToken({
                         exp: Date.now() + 24 * 60 * 60 * 1000,
                         role: 'admin'
-                    }));
+                    }, env);
                     return jsonResponse({ success: true, token });
                 }
                 return jsonResponse({ error: '密码错误' }, 401);
@@ -479,6 +472,73 @@ export default {
 // ============================================================
 // 工具函数
 // ============================================================
+
+function base64UrlEncodeBytes(bytes) {
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function base64UrlEncodeString(str) {
+    return base64UrlEncodeBytes(new TextEncoder().encode(str));
+}
+
+function base64UrlDecodeToBytes(str) {
+    str = str.replace(/-/g, '+').replace(/_/g, '/');
+    while (str.length % 4) str += '=';
+    const binary = atob(str);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+}
+
+function base64UrlDecodeToString(str) {
+    return new TextDecoder().decode(base64UrlDecodeToBytes(str));
+}
+
+async function importHmacKey(env) {
+    return crypto.subtle.importKey(
+        'raw',
+        new TextEncoder().encode(env.TOKEN_SECRET),
+        { name: 'HMAC', hash: 'SHA-256' },
+        false,
+        ['sign', 'verify']
+    );
+}
+
+async function signToken(payload, env) {
+    const payloadPart = base64UrlEncodeString(JSON.stringify(payload));
+    const key = await importHmacKey(env);
+    const signatureBuf = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payloadPart));
+    const signaturePart = base64UrlEncodeBytes(new Uint8Array(signatureBuf));
+    return `${payloadPart}.${signaturePart}`;
+}
+
+async function verifyToken(token, env) {
+    try {
+        if (!env.TOKEN_SECRET) return false;
+
+        const parts = token.split('.');
+        if (parts.length !== 2) return false;
+        const [payloadPart, signaturePart] = parts;
+
+        const key = await importHmacKey(env);
+        const signatureBytes = base64UrlDecodeToBytes(signaturePart);
+        const payloadBytes = new TextEncoder().encode(payloadPart);
+
+        const valid = await crypto.subtle.verify('HMAC', key, signatureBytes, payloadBytes);
+        if (!valid) return false;
+
+        const payload = JSON.parse(base64UrlDecodeToString(payloadPart));
+        return payload.exp > Date.now();
+    } catch {
+        return false;
+    }
+}
 
 async function fetchBiliInfo(bvid) {
     const url = `https://api.bilibili.com/x/web-interface/view?bvid=${bvid}`;
