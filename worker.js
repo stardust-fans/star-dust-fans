@@ -35,11 +35,50 @@ export default {
             isAdmin = await verifyToken(token, env);
         }
 
-        // ===== 1. GET /api/songs - 获取歌曲列表（公开） =====
+        // ===== 1. GET /api/songs - 获取歌曲列表（公开，直接读取快照，不再实时拉取B站） =====
         if (path === '/api/songs' && method === 'GET') {
             try {
-                const data = await getCachedSongs(env, ctx);
-                return data;
+                const stmt = env.DB.prepare(`
+                    SELECT id, bvid, title, cover_base64, description, duration, pubdate,
+                           owner_name, owner_mid, owner_face,
+                           stat_view, stat_danmaku, stat_reply, stat_favorite, stat_coin, stat_share, stat_like,
+                           is_masterpiece, is_national_team, is_gods_descend,
+                           special_tags, collaboration_details, status
+                    FROM songs
+                    WHERE status = 'published'
+                    ORDER BY id DESC
+                `);
+                const result = await stmt.all();
+                const songs = (result.results || []).map(row => ({
+                    id: row.id,
+                    bvid: row.bvid,
+                    title: row.title || '未知标题',
+                    cover: row.cover_base64 ? `data:image/webp;base64,${row.cover_base64}` : '',
+                    description: row.description || '',
+                    pubdate: row.pubdate || 0,
+                    duration: row.duration || 0,
+                    stats: {
+                        view: row.stat_view || 0,
+                        danmaku: row.stat_danmaku || 0,
+                        reply: row.stat_reply || 0,
+                        favorite: row.stat_favorite || 0,
+                        coin: row.stat_coin || 0,
+                        share: row.stat_share || 0,
+                        like: row.stat_like || 0,
+                    },
+                    owner: {
+                        name: row.owner_name || '',
+                        mid: row.owner_mid || 0,
+                        face: row.owner_face || '',
+                    },
+                    is_masterpiece: row.is_masterpiece === 1,
+                    is_national_team: row.is_national_team === 1,
+                    is_gods_descend: row.is_gods_descend === 1,
+                    special_tags: row.special_tags ? JSON.parse(row.special_tags) : [],
+                    collaboration_details: row.collaboration_details,
+                    status: row.status,
+                }));
+                return jsonResponse(songs);
             } catch (error) {
                 console.error('❌ /api/songs 错误:', error.message);
                 return jsonResponse({ error: error.message }, 500);
@@ -97,16 +136,36 @@ export default {
             }
         }
 
-        // ===== 2. GET /api/songs/bili/:bvid - 获取B站视频信息 =====
+        // ===== 2. GET /api/songs/bili/:bvid - 获取B站视频信息（预览用，含封面原始字节） =====
         const biliMatch = path.match(/^\/api\/songs\/bili\/(BV[a-zA-Z0-9]{10})$/);
         if (biliMatch && method === 'GET') {
             const bvid = biliMatch[1];
             try {
                 const biliData = await fetchBiliInfo(bvid);
-                if (biliData) {
-                    return jsonResponse(biliData);
+                if (!biliData) {
+                    return jsonResponse({ error: 'B站视频不存在或已删除' }, 404);
                 }
-                return jsonResponse({ error: 'B站视频不存在或已删除' }, 404);
+
+                let pic_base64 = null;
+                if (biliData.pic) {
+                    try {
+                        const imgRes = await fetch(biliData.pic, {
+                            headers: {
+                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                                'Referer': 'https://www.bilibili.com/',
+                            }
+                        });
+                        if (imgRes.ok) {
+                            const bytes = new Uint8Array(await imgRes.arrayBuffer());
+                            const mime = imgRes.headers.get('content-type') || 'image/jpeg';
+                            pic_base64 = `data:${mime};base64,${encodeBase64(bytes)}`;
+                        }
+                    } catch (e) {
+                        console.error(`封面拉取失败 (${bvid}):`, e.message);
+                    }
+                }
+
+                return jsonResponse({ ...biliData, pic_base64 });
             } catch (error) {
                 console.error('❌ /api/songs/bili 错误:', error.message);
                 return jsonResponse({ error: error.message }, 500);
@@ -140,13 +199,29 @@ export default {
             }
         }
 
-        // ===== 4. POST /api/admin/songs - 添加歌曲 =====
+        // ===== 4. POST /api/admin/songs - 添加歌曲（含标题/封面/统计数字快照） =====
         if (path === '/api/admin/songs' && method === 'POST') {
             if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
             try {
                 const body = await request.json();
                 const { bvid, special_tags, collaboration_details, status, flag_reason,
-                        is_masterpiece, is_national_team, is_gods_descend } = body;
+                        is_masterpiece, is_national_team, is_gods_descend,
+                        cover, title, description, duration, pubdate, owner, stats } = body;
+
+                if (!bvid || !/^BV[a-zA-Z0-9]{10}$/.test(bvid)) {
+                    return jsonResponse({ error: 'bvid 格式不正确' }, 400);
+                }
+                if (!title || !String(title).trim()) {
+                    return jsonResponse({ error: '标题不能为空' }, 400);
+                }
+
+                let coverBase64 = null;
+                if (cover) {
+                    const normalized = normalizeCoverBase64(cover);
+                    const check = validateCoverBase64(normalized);
+                    if (!check.ok) return jsonResponse({ error: check.error }, 400);
+                    coverBase64 = normalized;
+                }
 
                 const existStmt = env.DB.prepare('SELECT id FROM songs WHERE bvid = ?');
                 const existing = await existStmt.bind(bvid).first();
@@ -156,12 +231,31 @@ export default {
 
                 const stmt = env.DB.prepare(`
                     INSERT INTO songs (
-                        bvid, is_masterpiece, is_national_team, is_gods_descend,
+                        bvid, title, cover_base64, description, duration, pubdate,
+                        owner_name, owner_mid, owner_face,
+                        stat_view, stat_danmaku, stat_reply, stat_favorite, stat_coin, stat_share, stat_like,
+                        snapshot_synced_at,
+                        is_masterpiece, is_national_team, is_gods_descend,
                         special_tags, collaboration_details, status, flag_reason
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?)
                 `);
                 const result = await stmt.bind(
                     bvid,
+                    title,
+                    coverBase64,
+                    description || null,
+                    duration || 0,
+                    pubdate || 0,
+                    owner?.name || null,
+                    owner?.mid || null,
+                    owner?.face || null,
+                    stats?.view || 0,
+                    stats?.danmaku || 0,
+                    stats?.reply || 0,
+                    stats?.favorite || 0,
+                    stats?.coin || 0,
+                    stats?.share || 0,
+                    stats?.like || 0,
                     is_masterpiece || 0,
                     is_national_team || 0,
                     is_gods_descend || 0,
@@ -171,7 +265,6 @@ export default {
                     flag_reason || null
                 ).run();
 
-                await clearCache(env);
                 return jsonResponse({
                     success: true,
                     id: result.meta?.last_row_id || null,
@@ -183,7 +276,7 @@ export default {
             }
         }
 
-        // ===== 5. PUT /api/admin/songs/:id - 更新歌曲 =====
+        // ===== 5. PUT /api/admin/songs/:id - 更新歌曲（快照字段可选，未提供的保留原值） =====
         const putMatch = path.match(/^\/api\/admin\/songs\/(\d+)$/);
         if (putMatch && method === 'PUT') {
             if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
@@ -191,10 +284,36 @@ export default {
                 const id = putMatch[1];
                 const body = await request.json();
                 const { special_tags, collaboration_details, status, flag_reason,
-                        is_masterpiece, is_national_team, is_gods_descend } = body;
+                        is_masterpiece, is_national_team, is_gods_descend,
+                        cover, title, description, duration, pubdate, owner, stats } = body;
+
+                let coverBase64 = null;
+                if (cover) {
+                    const normalized = normalizeCoverBase64(cover);
+                    const check = validateCoverBase64(normalized);
+                    if (!check.ok) return jsonResponse({ error: check.error }, 400);
+                    coverBase64 = normalized;
+                }
+                const isSnapshotRefresh = title !== undefined;
 
                 const stmt = env.DB.prepare(`
                     UPDATE songs SET
+                        title = COALESCE(?, title),
+                        cover_base64 = COALESCE(?, cover_base64),
+                        description = COALESCE(?, description),
+                        duration = COALESCE(?, duration),
+                        pubdate = COALESCE(?, pubdate),
+                        owner_name = COALESCE(?, owner_name),
+                        owner_mid = COALESCE(?, owner_mid),
+                        owner_face = COALESCE(?, owner_face),
+                        stat_view = COALESCE(?, stat_view),
+                        stat_danmaku = COALESCE(?, stat_danmaku),
+                        stat_reply = COALESCE(?, stat_reply),
+                        stat_favorite = COALESCE(?, stat_favorite),
+                        stat_coin = COALESCE(?, stat_coin),
+                        stat_share = COALESCE(?, stat_share),
+                        stat_like = COALESCE(?, stat_like),
+                        snapshot_synced_at = COALESCE(?, snapshot_synced_at),
                         is_masterpiece = ?,
                         is_national_team = ?,
                         is_gods_descend = ?,
@@ -206,6 +325,22 @@ export default {
                     WHERE id = ?
                 `);
                 const result = await stmt.bind(
+                    title ?? null,
+                    coverBase64,
+                    description ?? null,
+                    duration ?? null,
+                    pubdate ?? null,
+                    owner?.name ?? null,
+                    owner?.mid ?? null,
+                    owner?.face ?? null,
+                    stats?.view ?? null,
+                    stats?.danmaku ?? null,
+                    stats?.reply ?? null,
+                    stats?.favorite ?? null,
+                    stats?.coin ?? null,
+                    stats?.share ?? null,
+                    stats?.like ?? null,
+                    isSnapshotRefresh ? new Date().toISOString() : null,
                     is_masterpiece || 0,
                     is_national_team || 0,
                     is_gods_descend || 0,
@@ -220,7 +355,6 @@ export default {
                     return jsonResponse({ error: '歌曲不存在' }, 404);
                 }
 
-                await clearCache(env);
                 return jsonResponse({ success: true, message: '更新成功' });
             } catch (error) {
                 console.error('❌ PUT /api/admin/songs 错误:', error.message);
@@ -244,7 +378,6 @@ export default {
                     return jsonResponse({ error: '歌曲不存在' }, 404);
                 }
 
-                await clearCache(env);
                 return jsonResponse({ success: true, message: '已删除' });
             } catch (error) {
                 console.error('❌ DELETE /api/admin/songs 错误:', error.message);
@@ -500,6 +633,52 @@ function base64UrlDecodeToString(str) {
     return new TextDecoder().decode(base64UrlDecodeToBytes(str));
 }
 
+// 标准 base64（非 url-safe），用于图片数据。优先用运行时原生方法（无 JS 逐字节循环），
+// 老运行时回退到手写实现——图片字节量比 token 大得多，逐字节循环会真实吃掉 CPU 预算。
+function encodeBase64(bytes) {
+    if (typeof bytes.toBase64 === 'function') {
+        return bytes.toBase64();
+    }
+    return base64UrlEncodeBytes(bytes).replace(/-/g, '+').replace(/_/g, '/');
+}
+
+function decodeBase64ToBytes(str) {
+    if (typeof Uint8Array.fromBase64 === 'function') {
+        return Uint8Array.fromBase64(str);
+    }
+    const binary = atob(str);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+}
+
+function normalizeCoverBase64(input) {
+    if (!input || typeof input !== 'string') return null;
+    const m = input.match(/^data:image\/[a-zA-Z0-9.+-]+;base64,(.*)$/s);
+    return m ? m[1] : input;
+}
+
+// 上限约 1.5MB base64（对应 ~1.1MB 二进制），远高于预期的 20-60KB 压缩目标，
+// 只是兜底防御，真正的尺寸控制在前端 Canvas 转码阶段。
+function validateCoverBase64(raw) {
+    if (raw.length > 1_500_000) {
+        return { ok: false, error: '封面数据过大，请检查前端压缩逻辑' };
+    }
+    try {
+        const bytes = decodeBase64ToBytes(raw);
+        const magic = String.fromCharCode(...bytes.slice(0, 4));
+        const format = String.fromCharCode(...bytes.slice(8, 12));
+        if (bytes.length < 12 || magic !== 'RIFF' || format !== 'WEBP') {
+            return { ok: false, error: '封面必须是有效的 WebP 数据' };
+        }
+    } catch {
+        return { ok: false, error: '封面 base64 解码失败' };
+    }
+    return { ok: true };
+}
+
 async function importHmacKey(env) {
     return crypto.subtle.importKey(
         'raw',
@@ -561,71 +740,3 @@ async function fetchBiliInfo(bvid) {
     }
 }
 
-async function fetchSongsAndEnrich(env) {
-    const stmt = env.DB.prepare(`
-        SELECT id, bvid, is_masterpiece, is_national_team,
-               is_gods_descend, special_tags, collaboration_details
-        FROM songs
-        WHERE status = 'published'
-        ORDER BY id DESC
-    `);
-    const songs = await stmt.all();
-
-    const enriched = await Promise.all(
-        songs.results.map(async (song) => {
-            const biliData = await fetchBiliInfo(song.bvid);
-            return {
-                id: song.id,
-                bvid: song.bvid,
-                title: biliData?.title || '未知标题',
-                cover: biliData?.pic || '',
-                description: biliData?.desc || '',
-                pubdate: biliData?.pubdate || 0,
-                duration: biliData?.duration || 0,
-                stats: biliData?.stat || {},
-                owner: biliData?.owner || {},
-                is_masterpiece: song.is_masterpiece === 1,
-                is_national_team: song.is_national_team === 1,
-                is_gods_descend: song.is_gods_descend === 1,
-                special_tags: song.special_tags ? JSON.parse(song.special_tags) : [],
-                collaboration_details: song.collaboration_details,
-                status: 'published',
-            };
-        })
-    );
-
-    return enriched;
-}
-
-async function getCachedSongs(env, ctx) {
-    const cache = caches.default;
-    const cacheKey = 'https://stardustinfinity.top/songs-cache';
-
-    const cached = await cache.match(cacheKey);
-    if (cached) {
-        const data = await cached.json();
-        return Response.json(data, {
-            headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Cache-Control': 'max-age=300',
-            }
-        });
-    }
-
-    const songs = await fetchSongsAndEnrich(env);
-    const response = Response.json(songs, {
-        headers: {
-            'Access-Control-Allow-Origin': '*',
-            'Cache-Control': 'max-age=300',
-        }
-    });
-
-    ctx.waitUntil(cache.put(cacheKey, response.clone()));
-    return response;
-}
-
-async function clearCache(env) {
-    const cache = caches.default;
-    const cacheKey = 'https://stardustinfinity.top/songs-cache';
-    await cache.delete(cacheKey);
-}

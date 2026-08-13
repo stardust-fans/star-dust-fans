@@ -4,5 +4,8 @@ node_modules/
 .dev.vars
 .wrangler/
 data/*.db
+*.sql
+!migrations/*.sql
+!tool/schema.sql
 .cfld.json
 .DS_Store
