@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "stardust-api",
+  "main": "worker.js",
+  "compatibility_date": "2026-08-13",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "stardust-db",
+      "database_id": "d44e7a61-0493-4b0e-be5f-08806e86ec9d",
+    }
+  ],
+  "assets": {
+    "directory": "./public"
+  }
+}

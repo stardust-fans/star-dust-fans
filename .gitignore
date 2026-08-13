@@ -1,0 +1,8 @@
+agents/
+node_modules/
+.env
+.dev.vars
+.wrangler/
+data/*.db
+.cfld.json
+.DS_Store

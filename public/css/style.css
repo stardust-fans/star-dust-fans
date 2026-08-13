@@ -1,0 +1,626 @@
+/* ============================================================
+   星尘粉丝站 - 完整样式
+   ============================================================ */
+
+:root {
+    --primary: #9999FF;
+    --primary-dark: #7777DD;
+    --primary-glow: rgba(153, 153, 255, 0.15);
+    --secondary: #FFFF88;
+    --bg: #0a0a12;
+    --bg-card: rgba(20, 20, 40, 0.65);
+    --bg-card-hover: rgba(30, 30, 60, 0.8);
+    --text: #e8e8f0;
+    --text-muted: #8888aa;
+    --text-dim: rgba(255, 255, 255, 0.2);
+    --border: rgba(255, 255, 255, 0.04);
+    --border-hover: rgba(153, 153, 255, 0.15);
+    --radius: 16px;
+    --radius-sm: 10px;
+    --shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    line-height: 1.6;
+}
+
+/* ===== 导航栏 ===== */
+.navbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    z-index: 1000;
+    background: rgba(10, 10, 18, 0.82);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border);
+}
+
+.nav-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 24px;
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.nav-brand {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: #fff;
+    text-decoration: none;
+    letter-spacing: 0.5px;
+    transition: var(--transition);
+}
+
+.nav-brand:hover {
+    color: var(--primary);
+}
+
+.nav-menu {
+    display: flex;
+    list-style: none;
+    gap: 4px;
+}
+
+.nav-menu li a {
+    color: var(--text-muted);
+    text-decoration: none;
+    padding: 8px 18px;
+    border-radius: 100px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: var(--transition);
+    cursor: pointer;
+}
+
+.nav-menu li a:hover {
+    color: #fff;
+    background: rgba(153, 153, 255, 0.08);
+}
+
+.nav-menu li a.active {
+    color: #fff;
+    background: rgba(153, 153, 255, 0.15);
+}
+
+.nav-toggle {
+    display: none;
+    background: none;
+    border: none;
+    color: #fff;
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 4px 8px;
+}
+
+/* ===== 主内容 ===== */
+#app {
+    flex: 1;
+    padding-top: 80px;
+    max-width: 1200px;
+    width: 100%;
+    margin: 0 auto;
+    padding-left: 24px;
+    padding-right: 24px;
+}
+
+#content {
+    animation: fadeUp 0.4s ease;
+}
+
+@keyframes fadeUp {
+    from {
+        opacity: 0;
+        transform: translateY(16px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.loading {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 60px 0;
+    font-size: 1.1rem;
+}
+
+/* ===== 页面标题 ===== */
+.page-header {
+    margin-bottom: 28px;
+}
+
+.page-title {
+    font-size: 2.2rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+.page-subtitle {
+    color: var(--text-muted);
+    font-size: 1rem;
+    margin-top: 2px;
+}
+
+/* ===== 歌曲卡片网格 ===== */
+.card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 24px;
+}
+
+.song-card {
+    background: var(--bg-card);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    transition: var(--transition);
+    cursor: pointer;
+}
+
+.song-card:hover {
+    border-color: var(--border-hover);
+    transform: translateY(-4px);
+    box-shadow: var(--shadow);
+    background: var(--bg-card-hover);
+}
+
+.song-card .cover {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    display: block;
+    background: #1a1a2a;
+}
+
+.song-card .info {
+    padding: 16px 20px 20px;
+}
+
+.song-card .info h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    margin-bottom: 6px;
+}
+
+.song-card .info h3 a {
+    color: #fff;
+    text-decoration: none;
+}
+
+.song-card .info h3 a:hover {
+    color: var(--primary);
+}
+
+.song-card .meta {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+}
+
+.song-card .meta .stat {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.song-card .meta .stat i {
+    font-size: 0.7rem;
+}
+
+/* ===== 标签 ===== */
+.tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+.tag {
+    font-size: 0.7rem;
+    padding: 2px 12px;
+    border-radius: 100px;
+    background: rgba(153, 153, 255, 0.08);
+    color: var(--primary);
+    border: 1px solid rgba(153, 153, 255, 0.08);
+}
+
+.tag.masterpiece {
+    background: rgba(255, 215, 0, 0.12);
+    color: #ffd700;
+    border-color: rgba(255, 215, 0, 0.15);
+}
+
+.tag.national {
+    background: rgba(255, 50, 50, 0.12);
+    color: #ff6b6b;
+    border-color: rgba(255, 50, 50, 0.15);
+}
+
+.tag.gods {
+    background: rgba(200, 100, 255, 0.12);
+    color: #c084fc;
+    border-color: rgba(200, 100, 255, 0.15);
+}
+
+.tag.custom {
+    background: rgba(100, 200, 255, 0.08);
+    color: #6bcfff;
+    border-color: rgba(100, 200, 255, 0.08);
+}
+
+/* ===== 空状态 ===== */
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-muted);
+}
+
+.empty-state i {
+    font-size: 3rem;
+    color: var(--text-dim);
+    margin-bottom: 16px;
+}
+
+/* ===== 底部 ===== */
+.footer {
+    margin-top: 48px;
+    padding: 32px 24px;
+    border-top: 1px solid var(--border);
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+.footer-small {
+    margin-top: 4px;
+    font-size: 0.75rem;
+    color: var(--text-dim);
+}
+
+/* ===== 响应式 ===== */
+@media (max-width: 768px) {
+    .nav-toggle {
+        display: block;
+    }
+
+    .nav-menu {
+        display: none;
+        flex-direction: column;
+        position: absolute;
+        top: 64px;
+        left: 0;
+        width: 100%;
+        background: rgba(10, 10, 18, 0.96);
+        backdrop-filter: blur(16px);
+        padding: 16px 24px;
+        gap: 2px;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .nav-menu.open {
+        display: flex;
+    }
+
+    .nav-menu li a {
+        padding: 12px 16px;
+        width: 100%;
+        border-radius: var(--radius-sm);
+    }
+
+    .page-title {
+        font-size: 1.6rem;
+    }
+
+    .card-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .song-card .cover {
+        aspect-ratio: 16 / 9;
+    }
+}
+
+@media (max-width: 480px) {
+    .nav-container {
+        padding: 0 16px;
+    }
+
+    #app {
+        padding-left: 16px;
+        padding-right: 16px;
+    }
+
+    .song-card .info {
+        padding: 12px 16px 16px;
+    }
+}
+/* ===== Hero 区域 ===== */
+.hero-section {
+    position: relative;
+    padding: 40px 0 60px;
+    margin-bottom: 40px;
+    border-radius: var(--radius);
+    overflow: hidden;
+    background: linear-gradient(135deg, #0a0a1a 0%, #1a0a2a 50%, #0a0a1a 100%);
+}
+
+.hero-section::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-image: url('/images/hero-bg.png');  /* 你的背景图路径 */
+    background-size: cover;
+    background-position: center;
+    opacity: 0.25;  /* 透明度调低，不影响文字阅读 */
+    z-index: 0;
+    pointer-events: none;
+}
+
+.hero-bg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: 
+        radial-gradient(ellipse at 20% 50%, rgba(153, 153, 255, 0.08) 0%, transparent 60%),
+        radial-gradient(ellipse at 80% 50%, rgba(255, 255, 136, 0.05) 0%, transparent 60%),
+        radial-gradient(ellipse at 50% 100%, rgba(153, 153, 255, 0.04) 0%, transparent 50%);
+    z-index: 0;
+    pointer-events: none;
+}
+
+.hero-content {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 40px;
+    align-items: center;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 20px;
+}
+
+.hero-text {
+    padding: 20px 0;
+}
+
+.hero-badge {
+    display: inline-block;
+    font-size: 0.75rem;
+    color: var(--primary);
+    background: rgba(153, 153, 255, 0.08);
+    padding: 4px 16px;
+    border-radius: 100px;
+    border: 1px solid rgba(153, 153, 255, 0.08);
+    letter-spacing: 2px;
+    margin-bottom: 16px;
+}
+
+.hero-title {
+    font-size: 4.5rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, #fff 30%, var(--primary) 70%, var(--secondary) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    line-height: 1.1;
+    margin-bottom: 8px;
+}
+
+.hero-subtitle {
+    font-size: 1.4rem;
+    color: var(--text-muted);
+    margin-bottom: 16px;
+    font-weight: 300;
+    letter-spacing: 4px;
+}
+
+.hero-desc {
+    color: var(--text-muted);
+    font-size: 1rem;
+    line-height: 1.8;
+    margin-bottom: 20px;
+}
+
+.hero-info {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px 24px;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    margin-bottom: 24px;
+}
+
+.hero-info span {
+    background: rgba(255, 255, 255, 0.03);
+    padding: 4px 14px;
+    border-radius: 100px;
+    border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.hero-actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.btn-hero-primary {
+    display: inline-block;
+    padding: 12px 32px;
+    background: var(--primary);
+    color: #fff;
+    border-radius: 100px;
+    text-decoration: none;
+    font-weight: 600;
+    transition: var(--transition);
+}
+
+.btn-hero-primary:hover {
+    background: var(--primary-dark);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(153, 153, 255, 0.2);
+}
+
+.btn-hero-secondary {
+    display: inline-block;
+    padding: 12px 32px;
+    background: transparent;
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 100px;
+    text-decoration: none;
+    font-weight: 500;
+    transition: var(--transition);
+}
+
+.btn-hero-secondary:hover {
+    border-color: var(--primary);
+    background: rgba(153, 153, 255, 0.05);
+    transform: translateY(-2px);
+}
+
+/* ===== Hero 右侧视觉 ===== */
+.hero-visual {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.hero-stardust {
+    font-size: 12rem;
+    opacity: 0.30;
+    background: linear-gradient(135deg, var(--primary), var(--secondary));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: float 6s ease-in-out infinite;
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0px) rotate(0deg); }
+    50% { transform: translateY(-20px) rotate(5deg); }
+}
+
+/* ===== 通用 Section ===== */
+.section {
+    padding: 20px 0 40px;
+}
+
+.section-header {
+    margin-bottom: 28px;
+}
+
+.section-title {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #fff;
+}
+
+.section-subtitle {
+    color: var(--text-muted);
+    font-size: 0.95rem;
+}
+
+/* ===== 关于网格 ===== */
+.about-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 20px;
+}
+
+.about-card {
+    background: var(--bg-card);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    transition: var(--transition);
+}
+
+.about-card:hover {
+    border-color: var(--border-hover);
+    transform: translateY(-4px);
+}
+
+.about-card h3 {
+    font-size: 1.1rem;
+    margin-bottom: 8px;
+    color: var(--primary);
+}
+
+.about-card p {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    line-height: 1.6;
+}
+
+/* ===== 响应式 ===== */
+@media (max-width: 900px) {
+    .hero-content {
+        grid-template-columns: 1fr;
+        text-align: center;
+    }
+    .hero-title {
+        font-size: 3.2rem;
+    }
+    .hero-info {
+        justify-content: center;
+    }
+    .hero-actions {
+        justify-content: center;
+    }
+    .hero-stardust {
+        font-size: 6rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .hero-title {
+        font-size: 2.4rem;
+    }
+    .hero-subtitle {
+        font-size: 1.1rem;
+    }
+    .hero-info {
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+    }
+    .about-grid {
+        grid-template-columns: 1fr;
+    }
+}

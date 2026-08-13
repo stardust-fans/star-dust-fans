@@ -1,0 +1,1479 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>后台管理 · 星尘粉丝站</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+    <style>
+        /* ===== 全局重置 ===== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background: #0a0a12;
+            color: #e8e8f0;
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* ===== 侧边栏 ===== */
+        .sidebar {
+            width: 220px;
+            background: rgba(16, 16, 32, 0.9);
+            backdrop-filter: blur(12px);
+            border-right: 1px solid rgba(255, 255, 255, 0.04);
+            padding: 24px 0;
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100vh;
+            z-index: 100;
+            transition: transform 0.3s ease;
+        }
+
+        .sidebar-brand {
+            padding: 0 20px 24px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            margin-bottom: 16px;
+        }
+
+        .sidebar-brand h2 {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #9999FF;
+        }
+
+        .sidebar-brand small {
+            color: #666;
+            font-size: 0.75rem;
+        }
+
+        .sidebar-menu {
+            list-style: none;
+            padding: 0 12px;
+            flex: 1;
+        }
+
+        .sidebar-menu li {
+            margin-bottom: 2px;
+        }
+
+        .sidebar-menu li a {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 16px;
+            border-radius: 8px;
+            color: #8888aa;
+            text-decoration: none;
+            font-size: 0.9rem;
+            transition: 0.3s;
+            cursor: pointer;
+        }
+
+        .sidebar-menu li a:hover {
+            background: rgba(153, 153, 255, 0.06);
+            color: #fff;
+        }
+
+        .sidebar-menu li a.active {
+            background: rgba(153, 153, 255, 0.12);
+            color: #9999FF;
+        }
+
+        .sidebar-menu li a i {
+            width: 20px;
+            text-align: center;
+            font-size: 1rem;
+        }
+
+        .sidebar-footer {
+            padding: 16px 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.04);
+            font-size: 0.75rem;
+            color: #444;
+        }
+
+        /* ===== 主内容区 ===== */
+        .main-content {
+            margin-left: 220px;
+            flex: 1;
+            padding: 24px 32px 40px;
+            min-height: 100vh;
+        }
+
+        /* ===== 顶部栏 ===== */
+        .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 28px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        .topbar h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .topbar h1 span {
+            color: #9999FF;
+        }
+
+        .topbar .subtitle {
+            color: #666;
+            font-size: 0.85rem;
+        }
+
+        /* ===== 登录面板 ===== */
+        .login-panel {
+            max-width: 400px;
+            margin: 80px auto;
+            background: rgba(20, 20, 40, 0.7);
+            padding: 40px;
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        .login-panel h2 {
+            margin-bottom: 20px;
+            color: #fff;
+        }
+
+        .login-panel input {
+            width: 100%;
+            padding: 12px 16px;
+            background: #1a1a2a;
+            border: 1px solid #333;
+            color: #fff;
+            border-radius: 8px;
+            font-size: 1rem;
+            margin-bottom: 16px;
+        }
+
+        .login-panel input:focus {
+            outline: none;
+            border-color: #9999FF;
+        }
+
+        .login-panel button {
+            width: 100%;
+            padding: 12px;
+            background: #9999FF;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            color: #fff;
+            cursor: pointer;
+            font-weight: 600;
+            transition: 0.3s;
+        }
+
+        .login-panel button:hover {
+            background: #7777DD;
+        }
+
+        .login-error {
+            color: #ff6b6b;
+            margin-top: 12px;
+            display: none;
+        }
+
+        /* ===== 通用组件 ===== */
+        .hidden {
+            display: none !important;
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .panel-header h2 {
+            font-size: 1.2rem;
+            color: #fff;
+        }
+
+        .btn {
+            padding: 8px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            font-weight: 600;
+            transition: 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-primary {
+            background: #9999FF;
+            color: #fff;
+        }
+        .btn-primary:hover {
+            background: #7777DD;
+        }
+
+        .btn-success {
+            background: #44aa44;
+            color: #fff;
+        }
+        .btn-success:hover {
+            background: #338833;
+        }
+
+        .btn-danger {
+            background: #cc4444;
+            color: #fff;
+        }
+        .btn-danger:hover {
+            background: #aa3333;
+        }
+
+        .btn-outline {
+            background: transparent;
+            color: #888;
+            border: 1px solid #333;
+        }
+        .btn-outline:hover {
+            border-color: #9999FF;
+            color: #fff;
+        }
+
+        .btn-sm {
+            padding: 4px 12px;
+            font-size: 0.75rem;
+        }
+
+        /* ===== 表单面板 ===== */
+        .form-panel {
+            background: rgba(20, 20, 40, 0.7);
+            padding: 20px 24px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            margin-bottom: 24px;
+        }
+
+        .form-panel h3 {
+            margin-bottom: 16px;
+            color: #fff;
+            font-size: 1rem;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+            align-items: center;
+        }
+
+        .form-row label {
+            color: #aaa;
+            font-size: 0.85rem;
+            min-width: 70px;
+        }
+
+        .form-row input,
+        .form-row select,
+        .form-row textarea {
+            flex: 1;
+            min-width: 200px;
+            padding: 8px 14px;
+            background: #1a1a2a;
+            border: 1px solid #333;
+            color: #fff;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-family: inherit;
+        }
+
+        .form-row input:focus,
+        .form-row select:focus,
+        .form-row textarea:focus {
+            outline: none;
+            border-color: #9999FF;
+        }
+
+        .form-row textarea {
+            resize: vertical;
+            min-height: 60px;
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 8px;
+        }
+
+        /* ===== 表格 ===== */
+        .table-wrapper {
+            overflow-x: auto;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+
+        th {
+            text-align: left;
+            padding: 12px 14px;
+            color: #8888aa;
+            font-weight: 600;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            background: rgba(10, 10, 18, 0.5);
+        }
+
+        td {
+            padding: 10px 14px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+            vertical-align: middle;
+        }
+
+        tr:hover td {
+            background: rgba(153, 153, 255, 0.03);
+        }
+
+        .table-cover {
+            width: 56px;
+            height: 32px;
+            object-fit: cover;
+            border-radius: 4px;
+            background: #1a1a2a;
+        }
+
+        .status-badge {
+            padding: 2px 12px;
+            border-radius: 100px;
+            font-size: 0.7rem;
+            white-space: nowrap;
+        }
+
+        .status-published {
+            background: rgba(68, 170, 68, 0.2);
+            color: #66dd66;
+        }
+        .status-flagged {
+            background: rgba(255, 200, 0, 0.15);
+            color: #ffcc44;
+        }
+        .status-hidden {
+            background: rgba(255, 100, 100, 0.15);
+            color: #ff6666;
+        }
+        .status-deleted {
+            background: rgba(100, 100, 100, 0.15);
+            color: #666;
+        }
+        .status-waiting {
+            background: rgba(255, 200, 0, 0.15);
+            color: #ffcc44;
+        }
+        .status-shipped {
+            background: rgba(68, 170, 68, 0.2);
+            color: #66dd66;
+        }
+
+        .tag-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+
+        .tag-item {
+            font-size: 0.65rem;
+            padding: 1px 10px;
+            border-radius: 100px;
+            background: rgba(153, 153, 255, 0.08);
+            color: #9999FF;
+            border: 1px solid rgba(153, 153, 255, 0.08);
+        }
+
+        .actions {
+            display: flex;
+            gap: 4px;
+        }
+
+        .actions button {
+            padding: 3px 10px;
+            border: none;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            cursor: pointer;
+        }
+
+        .actions .edit-btn {
+            background: rgba(153, 153, 255, 0.15);
+            color: #9999FF;
+        }
+        .actions .edit-btn:hover {
+            background: rgba(153, 153, 255, 0.25);
+        }
+
+        .actions .delete-btn {
+            background: rgba(255, 50, 50, 0.12);
+            color: #ff6666;
+        }
+        .actions .delete-btn:hover {
+            background: rgba(255, 50, 50, 0.25);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .loading-state {
+            text-align: center;
+            padding: 40px;
+            color: #888;
+        }
+
+        /* ===== Toast ===== */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            padding: 14px 24px;
+            border-radius: 12px;
+            background: rgba(20, 20, 40, 0.95);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            color: #fff;
+            font-size: 0.9rem;
+            z-index: 999;
+            animation: slideUp 0.3s ease;
+            max-width: 400px;
+        }
+
+        .toast.success {
+            border-left: 4px solid #44aa44;
+        }
+        .toast.error {
+            border-left: 4px solid #cc4444;
+        }
+        .toast.info {
+            border-left: 4px solid #9999FF;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* ===== 响应式 ===== */
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+                width: 200px;
+            }
+            .sidebar.open {
+                transform: translateX(0);
+            }
+            .main-content {
+                margin-left: 0;
+                padding: 16px;
+            }
+            .hamburger {
+                display: block !important;
+            }
+            .form-row {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .form-row label {
+                min-width: auto;
+            }
+            th,
+            td {
+                padding: 6px 8px;
+                font-size: 0.75rem;
+            }
+            .table-cover {
+                width: 40px;
+                height: 24px;
+            }
+            .panel-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+        }
+
+        .hamburger {
+            display: none;
+            background: none;
+            border: none;
+            color: #fff;
+            font-size: 1.5rem;
+            cursor: pointer;
+        }
+
+        /* 侧边栏遮罩 */
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 99;
+        }
+
+        .sidebar-overlay.active {
+            display: block;
+        }
+
+        @media (max-width: 768px) {
+            .sidebar-overlay.active {
+                display: block;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ===== 侧边栏遮罩 ===== -->
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+
+    <!-- ===== 侧边栏 ===== -->
+    <nav class="sidebar" id="sidebar">
+        <div class="sidebar-brand">
+            <h2>✦ 星尘</h2>
+            <small>后台管理</small>
+        </div>
+        <ul class="sidebar-menu">
+            <li><a class="active" data-module="songs" onclick="switchModule('songs')"><i class="fas fa-music"></i> 歌曲管理</a></li>
+            <li><a data-module="daily" onclick="switchModule('daily')"><i class="fas fa-newspaper"></i> 吸尘器日报</a></li>
+            <li><a data-module="fanart" onclick="switchModule('fanart')"><i class="fas fa-palette"></i> 同人作品</a></li>
+            <li><a data-module="shop" onclick="switchModule('shop')"><i class="fas fa-store"></i> 量贩管理</a></li>
+        </ul>
+        <div class="sidebar-footer">
+            <button class="btn btn-outline btn-sm" onclick="logout()" style="width:100%;">
+                <i class="fas fa-sign-out-alt"></i> 退出登录
+            </button>
+        </div>
+    </nav>
+
+    <!-- ===== 主内容 ===== -->
+    <div class="main-content">
+
+        <!-- ===== 登录面板 ===== -->
+        <div id="loginPanel" class="login-panel" style="margin:80px auto;">
+            <h2>🔐 管理员登录</h2>
+            <input type="password" id="passwordInput" placeholder="请输入管理密码" onkeydown="if(event.key==='Enter') login()" />
+            <button onclick="login()">登录</button>
+            <div id="loginError" class="login-error">❌ 密码错误，请重试</div>
+        </div>
+
+        <!-- ===== 管理面板 ===== -->
+        <div id="adminPanel" class="hidden">
+
+            <!-- 顶部栏 -->
+            <div class="topbar">
+                <div>
+                    <button class="hamburger" onclick="toggleSidebar()"><i class="fas fa-bars"></i></button>
+                    <h1>✦ 星尘粉丝站 <span>· 后台管理</span></h1>
+                    <div class="subtitle" id="moduleTitle">管理歌曲数据</div>
+                </div>
+            </div>
+
+            <!-- ===== 歌曲管理 ===== -->
+            <div id="module-songs" class="module-content">
+                <div class="panel-header">
+                    <h2><i class="fas fa-music"></i> 歌曲管理</h2>
+                    <button class="btn btn-primary" onclick="showSongForm()"><i class="fas fa-plus"></i> 添加歌曲</button>
+                </div>
+
+                <!-- 歌曲表单 -->
+                <div id="songForm" class="form-panel hidden">
+                    <h3 id="songFormTitle">添加歌曲</h3>
+                    <div class="form-row">
+                        <label>BV号</label>
+                        <input type="text" id="songBvid" placeholder="例如 BV1K64y1z71C" />
+                        <button class="btn btn-primary" onclick="fetchSongBiliInfo()" style="padding:8px 16px;min-width:auto;">
+                            <i class="fas fa-search"></i> 获取信息
+                        </button>
+                    </div>
+                    <div id="songPreview" class="hidden">
+                        <div class="form-row" style="background:#0a0a12;padding:12px;border-radius:6px;">
+                            <img id="songPreviewCover" src="" alt="封面" style="width:80px;height:45px;object-fit:cover;border-radius:4px;" referrerpolicy="no-referrer" />
+                            <div>
+                                <div><strong id="songPreviewTitle">标题</strong></div>
+                                <div style="font-size:0.8rem;color:#666;" id="songPreviewMeta">UP主 · 发布时间</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <label>标签</label>
+                        <div class="checkbox-group" style="display:flex;gap:12px;flex-wrap:wrap;">
+                            <label><input type="checkbox" id="songMasterpiece" /> 🏆 殿堂曲</label>
+                            <label><input type="checkbox" id="songNational" /> 🏛️ 国家队</label>
+                            <label><input type="checkbox" id="songGods" /> ⭐ 众神下凡</label>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <label>自定义标签</label>
+                        <input type="text" id="songTags" placeholder="国风, 神调教, 出道曲" />
+                    </div>
+                    <div class="form-row">
+                        <label>合作详情</label>
+                        <input type="text" id="songCollaboration" placeholder="合作背景描述（可选）" />
+                    </div>
+                    <div class="form-row">
+                        <label>状态</label>
+                        <select id="songStatus">
+                            <option value="published">已发布</option>
+                            <option value="flagged">标记</option>
+                            <option value="hidden">隐藏</option>
+                        </select>
+                    </div>
+                    <div id="songFlagReasonGroup" class="form-row hidden">
+                        <label>标记原因</label>
+                        <input type="text" id="songFlagReason" placeholder="NSFW / 争议 / 敏感内容" />
+                    </div>
+                    <div class="form-actions">
+                        <button class="btn btn-success" onclick="saveSong()"><i class="fas fa-save"></i> 保存</button>
+                        <button class="btn btn-outline" onclick="cancelSongForm()">取消</button>
+                    </div>
+                </div>
+
+                <!-- 歌曲列表 -->
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr><th>封面</th><th>标题 / BV号</th><th>标签</th><th>状态</th><th>操作</th></tr></thead>
+                        <tbody id="songTableBody"><tr><td colspan="5" class="loading-state">加载中...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ===== 吸尘器日报 ===== -->
+            <div id="module-daily" class="module-content hidden">
+                <div class="panel-header">
+                    <h2><i class="fas fa-newspaper"></i> 吸尘器日报</h2>
+                    <button class="btn btn-primary" onclick="showDailyForm()"><i class="fas fa-plus"></i> 添加日报</button>
+                </div>
+
+                <div id="dailyForm" class="form-panel hidden">
+                    <h3 id="dailyFormTitle">添加日报</h3>
+                    <div class="form-row">
+                        <label>标题 *</label>
+                        <input type="text" id="dailyTitle" placeholder="日报标题" />
+                    </div>
+                    <div class="form-row">
+                        <label>内容</label>
+                        <textarea id="dailyContent" rows="4" placeholder="日报正文"></textarea>
+                    </div>
+                    <div class="form-row">
+                        <label>来源链接</label>
+                        <input type="text" id="dailySource" placeholder="https://..." />
+                    </div>
+                    <div class="form-row">
+                        <label>配图链接</label>
+                        <input type="text" id="dailyCover" placeholder="https://xxx.jpg" />
+                    </div>
+                    <div class="form-row">
+                        <label>发布日期</label>
+                        <input type="date" id="dailyDate" />
+                    </div>
+                    <div class="form-row">
+                        <label>状态</label>
+                        <select id="dailyStatus">
+                            <option value="published">已发布</option>
+                            <option value="hidden">隐藏</option>
+                        </select>
+                    </div>
+                    <div class="form-actions">
+                        <button class="btn btn-success" onclick="saveDaily()"><i class="fas fa-save"></i> 保存</button>
+                        <button class="btn btn-outline" onclick="cancelDailyForm()">取消</button>
+                    </div>
+                </div>
+
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr><th>日期</th><th>标题</th><th>状态</th><th>操作</th></tr></thead>
+                        <tbody id="dailyTableBody"><tr><td colspan="4" class="loading-state">加载中...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ===== 同人作品 ===== -->
+            <div id="module-fanart" class="module-content hidden">
+                <div class="panel-header">
+                    <h2><i class="fas fa-palette"></i> 同人作品</h2>
+                    <button class="btn btn-primary" onclick="showFanartForm()"><i class="fas fa-plus"></i> 添加作品</button>
+                </div>
+
+                <div id="fanartForm" class="form-panel hidden">
+                    <h3 id="fanartFormTitle">添加同人作品</h3>
+                    <div class="form-row">
+                        <label>标题 *</label>
+                        <input type="text" id="fanartTitle" placeholder="作品标题" />
+                    </div>
+                    <div class="form-row">
+                        <label>作者</label>
+                        <input type="text" id="fanartAuthor" placeholder="作者名称" />
+                    </div>
+                    <div class="form-row">
+                        <label>简介</label>
+                        <textarea id="fanartDesc" rows="3" placeholder="作品简介"></textarea>
+                    </div>
+                    <div class="form-row">
+                        <label>图片链接</label>
+                        <input type="text" id="fanartImage" placeholder="https://xxx.jpg" />
+                    </div>
+                    <div class="form-row">
+                        <label>B站链接</label>
+                        <input type="text" id="fanartBili" placeholder="https://www.bilibili.com/..." />
+                    </div>
+                    <div class="form-row">
+                        <label>来源链接</label>
+                        <input type="text" id="fanartSource" placeholder="https://..." />
+                    </div>
+                    <div class="form-row">
+                        <label>类型</label>
+                        <select id="fanartType">
+                            <option value="illust">插画</option>
+                            <option value="video">视频</option>
+                            <option value="fiction">小说</option>
+                            <option value="music">音乐</option>
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label>状态</label>
+                        <select id="fanartStatus">
+                            <option value="published">已发布</option>
+                            <option value="hidden">隐藏</option>
+                        </select>
+                    </div>
+                    <div class="form-actions">
+                        <button class="btn btn-success" onclick="saveFanart()"><i class="fas fa-save"></i> 保存</button>
+                        <button class="btn btn-outline" onclick="cancelFanartForm()">取消</button>
+                    </div>
+                </div>
+
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr><th>图片</th><th>标题 / 作者</th><th>类型</th><th>状态</th><th>操作</th></tr></thead>
+                        <tbody id="fanartTableBody"><tr><td colspan="5" class="loading-state">加载中...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ===== 量贩管理 ===== -->
+            <div id="module-shop" class="module-content hidden">
+                <div class="panel-header">
+                    <h2><i class="fas fa-store"></i> 量贩管理</h2>
+                    <button class="btn btn-primary" onclick="showShopForm()"><i class="fas fa-plus"></i> 添加商品</button>
+                </div>
+
+                <div id="shopForm" class="form-panel hidden">
+                    <h3 id="shopFormTitle">添加商品</h3>
+                    <div class="form-row">
+                        <label>标题 *</label>
+                        <input type="text" id="shopTitle" placeholder="商品名称" />
+                    </div>
+                    <div class="form-row">
+                        <label>简介</label>
+                        <textarea id="shopDesc" rows="3" placeholder="商品描述"></textarea>
+                    </div>
+                    <div class="form-row">
+                        <label>价格</label>
+                        <input type="text" id="shopPrice" placeholder="¥45 或 待定" />
+                    </div>
+                    <div class="form-row">
+                        <label>图片链接</label>
+                        <input type="text" id="shopImage" placeholder="https://xxx.jpg" />
+                    </div>
+                    <div class="form-row">
+                        <label>B站链接</label>
+                        <input type="text" id="shopBili" placeholder="https://www.bilibili.com/..." />
+                    </div>
+                    <div class="form-row">
+                        <label>闲鱼链接</label>
+                        <input type="text" id="shopXianyu" placeholder="https://m.tb.cn/..." />
+                    </div>
+                    <div class="form-row">
+                        <label>状态</label>
+                        <select id="shopStatus">
+                            <option value="waiting">⏳ 等待发车</option>
+                            <option value="shipped">🚀 已经发车</option>
+                        </select>
+                    </div>
+                    <div class="form-actions">
+                        <button class="btn btn-success" onclick="saveShop()"><i class="fas fa-save"></i> 保存</button>
+                        <button class="btn btn-outline" onclick="cancelShopForm()">取消</button>
+                    </div>
+                </div>
+
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr><th>图片</th><th>标题</th><th>价格</th><th>状态</th><th>操作</th></tr></thead>
+                        <tbody id="shopTableBody"><tr><td colspan="5" class="loading-state">加载中...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div><!-- /adminPanel -->
+    </div><!-- /main-content -->
+
+    <div id="toastContainer"></div>
+
+    <script>
+        // ============================================================
+        // 后台管理 - 完整逻辑
+        // ============================================================
+
+        const API_BASE = '/api';
+
+        // ---------- 状态 ----------
+        // 歌曲
+        let allSongs = [];
+        let editingSongId = null;
+        let fetchedSongData = null;
+
+        // 日报
+        let allDaily = [];
+        let editingDailyId = null;
+
+        // 同人
+        let allFanart = [];
+        let editingFanartId = null;
+
+        // 量贩
+        let allShop = [];
+        let editingShopId = null;
+
+        // ---------- 工具 ----------
+        const $ = id => document.getElementById(id);
+        const token = () => localStorage.getItem('adminToken') || '';
+
+        function formatDate(timestamp) {
+            if (!timestamp) return '未知';
+            const d = new Date(timestamp * 1000);
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        }
+
+        function todayStr() {
+            const d = new Date();
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        }
+
+        // ---------- Toast ----------
+        function showToast(message, type = 'info') {
+            const container = $('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transition = 'opacity 0.3s';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // ---------- 侧边栏 ----------
+        function switchModule(module) {
+            // 更新菜单高亮
+            document.querySelectorAll('.sidebar-menu a').forEach(el => el.classList.remove('active'));
+            document.querySelector(`.sidebar-menu a[data-module="${module}"]`).classList.add('active');
+
+            // 隐藏所有模块
+            document.querySelectorAll('.module-content').forEach(el => el.classList.add('hidden'));
+
+            // 显示目标模块
+            const target = document.getElementById(`module-${module}`);
+            if (target) target.classList.remove('hidden');
+
+            // 更新标题
+            const titles = {
+                songs: '管理歌曲数据',
+                daily: '管理吸尘器日报',
+                fanart: '管理同人作品',
+                shop: '管理量贩商品'
+            };
+            $('moduleTitle').textContent = titles[module] || '';
+
+            // 加载数据
+            if (module === 'songs') loadSongs();
+            else if (module === 'daily') loadDaily();
+            else if (module === 'fanart') loadFanart();
+            else if (module === 'shop') loadShop();
+
+            // 关闭移动端侧边栏
+            closeSidebar();
+        }
+
+        function toggleSidebar() {
+            document.getElementById('sidebar').classList.toggle('open');
+            document.getElementById('sidebarOverlay').classList.toggle('active');
+        }
+
+        function closeSidebar() {
+            document.getElementById('sidebar').classList.remove('open');
+            document.getElementById('sidebarOverlay').classList.remove('active');
+        }
+
+        // ---------- 登录 ----------
+        async function login() {
+            const password = $('passwordInput').value;
+            if (!password) { showToast('请输入密码', 'error'); return; }
+            try {
+                const res = await fetch(`${API_BASE}/admin/verify`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    localStorage.setItem('adminToken', data.token);
+                    $('loginPanel').classList.add('hidden');
+                    $('adminPanel').classList.remove('hidden');
+                    $('loginError').style.display = 'none';
+                    switchModule('songs');
+                    showToast('✅ 登录成功', 'success');
+                } else {
+                    $('loginError').style.display = 'block';
+                }
+            } catch (error) {
+                showToast('❌ 登录失败: ' + error.message, 'error');
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('adminToken');
+            $('loginPanel').classList.remove('hidden');
+            $('adminPanel').classList.add('hidden');
+            $('passwordInput').value = '';
+            showToast('已退出', 'info');
+        }
+
+        // ============================================================
+        // 歌曲管理
+        // ============================================================
+
+        async function loadSongs() {
+            const tbody = $('songTableBody');
+            tbody.innerHTML = '<tr><td colspan="5" class="loading-state">加载中...</td></tr>';
+            try {
+                const res = await fetch(`${API_BASE}/songs`);
+                const data = await res.json();
+                allSongs = data || [];
+                renderSongs();
+            } catch (error) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#666;">加载失败</td></tr>';
+            }
+        }
+
+        function renderSongs() {
+            const tbody = $('songTableBody');
+            if (allSongs.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="empty-state">暂无歌曲</td></tr>';
+                return;
+            }
+            tbody.innerHTML = allSongs.map(song => {
+                const tags = song.special_tags || [];
+                const tagHtml = tags.map(t => `<span class="tag-item">${t}</span>`).join('');
+                const statusMap = { 'published': '已发布', 'flagged': '⚠️ 已标记', 'hidden': '🔒 隐藏', 'deleted': '🗑️ 已删除' };
+                const statusText = song.status || 'published';
+                return `
+                    <tr>
+                        <td><img class="table-cover" src="${song.cover || ''}" referrerpolicy="no-referrer" onerror="this.style.display='none'" /></td>
+                        <td><strong>${song.title || '未知标题'}</strong><br><small style="color:#666;">${song.bvid || ''}</small></td>
+                        <td><div class="tag-list">${tagHtml}${song.is_masterpiece ? '<span class="tag-item" style="background:rgba(255,215,0,0.15);color:#ffd700;">🏆殿堂曲</span>' : ''}${song.is_national_team ? '<span class="tag-item" style="background:rgba(255,50,50,0.12);color:#ff6b6b;">🏛️国家队</span>' : ''}${song.is_gods_descend ? '<span class="tag-item" style="background:rgba(200,100,255,0.12);color:#c084fc;">⭐众神下凡</span>' : ''}</div></td>
+                        <td><span class="status-badge status-${statusText}">${statusMap[statusText]}</span></td>
+                        <td><div class="actions"><button class="edit-btn" onclick="editSong(${song.id})">编辑</button><button class="delete-btn" onclick="deleteSong(${song.id})">删除</button></div></td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function showSongForm() {
+            editingSongId = null;
+            fetchedSongData = null;
+            $('songFormTitle').textContent = '添加歌曲';
+            $('songForm').classList.remove('hidden');
+            $('songPreview').classList.add('hidden');
+            ['songBvid', 'songTags', 'songCollaboration', 'songFlagReason'].forEach(id => $(id).value = '');
+            $('songStatus').value = 'published';
+            ['songMasterpiece', 'songNational', 'songGods'].forEach(id => $(id).checked = false);
+            $('songFlagReasonGroup').classList.add('hidden');
+        }
+
+        function cancelSongForm() {
+            $('songForm').classList.add('hidden');
+            editingSongId = null;
+            fetchedSongData = null;
+        }
+
+        async function fetchSongBiliInfo() {
+            const bvid = $('songBvid').value.trim();
+            if (!bvid) { showToast('请输入 BV 号', 'error'); return; }
+            const match = bvid.match(/BV[a-zA-Z0-9]{10}/);
+            const clean = match ? match[0] : bvid;
+            try {
+                const res = await fetch(`${API_BASE}/songs/bili/${clean}`);
+                if (!res.ok) throw new Error('获取失败');
+                const data = await res.json();
+                if (data.code !== undefined && data.code !== 0) throw new Error(data.message || 'B站 API 错误');
+                fetchedSongData = data;
+                $('songPreviewTitle').textContent = data.title || '未知标题';
+                $('songPreviewMeta').textContent = `${data.owner?.name || '未知UP主'} · ${formatDate(data.pubdate)}`;
+                $('songPreviewCover').src = data.cover || '';
+                $('songPreview').classList.remove('hidden');
+                showToast(`✅ 已获取: ${data.title}`, 'success');
+            } catch (error) {
+                showToast('❌ ' + error.message, 'error');
+            }
+        }
+
+        function editSong(id) {
+            const song = allSongs.find(s => s.id === id);
+            if (!song) return;
+            editingSongId = id;
+            fetchedSongData = { title: song.title, cover: song.cover, owner: song.owner, pubdate: song.pubdate, bvid: song
+                    .bvid };
+            $('songFormTitle').textContent = '编辑歌曲';
+            $('songForm').classList.remove('hidden');
+            $('songBvid').value = song.bvid || '';
+            $('songTags').value = (song.special_tags || []).join('、');
+            $('songCollaboration').value = song.collaboration_details || '';
+            $('songStatus').value = song.status || 'published';
+            $('songMasterpiece').checked = !!song.is_masterpiece;
+            $('songNational').checked = !!song.is_national_team;
+            $('songGods').checked = !!song.is_gods_descend;
+            if (song.status === 'flagged') {
+                $('songFlagReasonGroup').classList.remove('hidden');
+                $('songFlagReason').value = song.flag_reason || '';
+            } else {
+                $('songFlagReasonGroup').classList.add('hidden');
+                $('songFlagReason').value = '';
+            }
+            if (song.cover) {
+                $('songPreviewTitle').textContent = song.title || '未知标题';
+                $('songPreviewMeta').textContent = song.owner?.name || '未知UP主';
+                $('songPreviewCover').src = song.cover;
+                $('songPreview').classList.remove('hidden');
+            }
+        }
+
+        async function saveSong() {
+            const bvid = $('songBvid').value.trim();
+            if (!bvid) { showToast('请输入 BV 号', 'error'); return; }
+            const match = bvid.match(/BV[a-zA-Z0-9]{10}/);
+            const clean = match ? match[0] : bvid;
+            if (!fetchedSongData) { showToast('请先获取B站信息', 'error'); return; }
+            const tags = $('songTags').value.trim().split(/[,，、\s]+/).filter(t => t);
+            const data = {
+                bvid: clean,
+                special_tags: tags,
+                collaboration_details: $('songCollaboration').value.trim() || null,
+                status: $('songStatus').value,
+                flag_reason: $('songStatus').value === 'flagged' ? $('songFlagReason').value.trim() : null,
+                is_masterpiece: $('songMasterpiece').checked ? 1 : 0,
+                is_national_team: $('songNational').checked ? 1 : 0,
+                is_gods_descend: $('songGods').checked ? 1 : 0,
+            };
+            try {
+                const url = editingSongId ? `${API_BASE}/admin/songs/${editingSongId}` : `${API_BASE}/admin/songs`;
+                const method = editingSongId ? 'PUT' : 'POST';
+                const res = await fetch(url, {
+                    method,
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token()}` },
+                    body: JSON.stringify(data)
+                });
+                if (!res.ok) throw new Error('保存失败');
+                showToast(editingSongId ? '✅ 更新成功' : '✅ 添加成功', 'success');
+                cancelSongForm();
+                loadSongs();
+            } catch (error) {
+                showToast('❌ ' + error.message, 'error');
+            }
+        }
+
+        async function deleteSong(id) {
+            if (!confirm('确认删除？')) return;
+            try {
+                const res = await fetch(`${API_BASE}/admin/songs/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token()}` }
+                });
+                if (!res.ok) throw new Error('删除失败');
+                showToast('已删除', 'info');
+                loadSongs();
+            } catch (error) {
+                showToast('❌ ' + error.message, 'error');
+            }
+        }
+
+        // ---------- 状态切换 ----------
+        $('songStatus').addEventListener('change', function() {
+            this.value === 'flagged' ? $('songFlagReasonGroup').classList.remove('hidden') : $('songFlagReasonGroup')
+                .classList.add('hidden');
+        });
+
+        // ============================================================
+        // 吸尘器日报
+        // ============================================================
+
+        async function loadDaily() {
+            const tbody = $('dailyTableBody');
+            tbody.innerHTML = '<tr><td colspan="4" class="loading-state">加载中...</td></tr>';
+            try {
+                const res = await fetch(`${API_BASE}/admin/daily`, {
+                    headers: { 'Authorization': `Bearer ${token()}` }
+                });
+                const data = await res.json();
+                allDaily = data || [];
+                renderDaily();
+            } catch (error) {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#666;">加载失败</td></tr>';
+            }
+        }
+
+        function renderDaily() {
+            const tbody = $('dailyTableBody');
+            if (allDaily.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="empty-state">暂无日报</td></tr>';
+                return;
+            }
+            tbody.innerHTML = allDaily.map(item => `
+                <tr>
+                    <td>${item.publish_date || '-'}</td>
+                    <td><strong>${item.title}</strong>${item.content ? `<br><small style="color:#666;">${item.content.substring(0, 60)}${item.content.length > 60 ? '...' : ''}</small>` : ''}</td>
+                    <td><span class="status-badge ${item.status === 'published' ? 'status-published' : 'status-hidden'}">${item.status === 'published' ? '已发布' : '隐藏'}</span></td>
+                    <td><div class="actions"><button class="edit-btn" onclick="editDaily(${item.id})">编辑</button><button class="delete-btn" onclick="deleteDaily(${item.id})">删除</button></div></td>
+                </tr>
+            `).join('');
+        }
+
+        function showDailyForm() {
+            editingDailyId = null;
+            $('dailyFormTitle').textContent = '添加日报';
+            $('dailyForm').classList.remove('hidden');
+            ['dailyTitle', 'dailyContent', 'dailySource', 'dailyCover'].forEach(id => $(id).value = '');
+            $('dailyDate').value = todayStr();
+            $('dailyStatus').value = 'published';
+        }
+
+        function cancelDailyForm() {
+            $('dailyForm').classList.add('hidden');
+            editingDailyId = null;
+        }
+
+        function editDaily(id) {
+            const item = allDaily.find(d => d.id === id);
+            if (!item) return;
+            editingDailyId = id;
+            $('dailyFormTitle').textContent = '编辑日报';
+            $('dailyForm').classList.remove('hidden');
+            $('dailyTitle').value = item.title || '';
+            $('dailyContent').value = item.content || '';
+            $('dailySource').value = item.source_url || '';
+            $('dailyCover').value = item.cover_url || '';
+            $('dailyDate').value = item.publish_date || todayStr();
+            $('dailyStatus').value = item.status || 'published';
+        }
+
+        async function saveDaily() {
+            const title = $('dailyTitle').value.trim();
+            if (!title) { showToast('请输入标题', 'error'); return; }
+            const data = {
+                title,
+                content: $('dailyContent').value.trim(),
+                source_url: $('dailySource').value.trim(),
+                cover_url: $('dailyCover').value.trim(),
+                publish_date: $('dailyDate').value || null,
+                status: $('dailyStatus').value,
+            };
+            try {
+                const url = editingDailyId ? `${API_BASE}/admin/daily/${editingDailyId}` : `${API_BASE}/admin/daily`;
+                const method = editingDailyId ? 'PUT' : 'POST';
+                const res = await fetch(url, {
+                    method,
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token()}` },
+                    body: JSON.stringify(data)
+                });
+                if (!res.ok) throw new Error('保存失败');
+                showToast(editingDailyId ? '✅ 更新成功' : '✅ 添加成功', 'success');
+                cancelDailyForm();
+                loadDaily();
+            } catch (error) {
+                showToast('❌ ' + error.message, 'error');
+            }
+        }
+
+        async function deleteDaily(id) {
+            if (!confirm('确认删除？')) return;
+            try {
+                const res = await fetch(`${API_BASE}/admin/daily/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token()}` }
+                });
+                if (!res.ok) throw new Error('删除失败');
+                showToast('已删除', 'info');
+                loadDaily();
+            } catch (error) {
+                showToast('❌ ' + error.message, 'error');
+            }
+        }
+
+        // ============================================================
+        // 同人作品
+        // ============================================================
+
+        async function loadFanart() {
+            const tbody = $('fanartTableBody');
+            tbody.innerHTML = '<tr><td colspan="5" class="loading-state">加载中...</td></tr>';
+            try {
+                const res = await fetch(`${API_BASE}/admin/fanart`, {
+                    headers: { 'Authorization': `Bearer ${token()}` }
+                });
+                const data = await res.json();
+                allFanart = data || [];
+                renderFanart();
+            } catch (error) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#666;">加载失败</td></tr>';
+            }
+        }
+
+        function renderFanart() {
+            const tbody = $('fanartTableBody');
+            if (allFanart.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="empty-state">暂无作品</td></tr>';
+                return;
+            }
+            const typeMap = { illust: '插画', video: '视频', fiction: '小说', music: '音乐' };
+            tbody.innerHTML = allFanart.map(item => `
+                <tr>
+                    <td>${item.image_url ? `<img class="table-cover" src="${item.image_url}" referrerpolicy="no-referrer" onerror="this.style.display='none'" />` : '-'}</td>
+                    <td><strong>${item.title}</strong><br><small style="color:#666;">✎ ${item.author || '匿名'}</small></td>
+                    <td>${typeMap[item.type] || item.type || '插画'}</td>
+                    <td><span class="status-badge ${item.status === 'published' ? 'status-published' : 'status-hidden'}">${item.status === 'published' ? '已发布' : '隐藏'}</span></td>
+                    <td><div class="actions"><button class="edit-btn" onclick="editFanart(${item.id})">编辑</button><button class="delete-btn" onclick="deleteFanart(${item.id})">删除</button></div></td>
+                </tr>
+            `).join('');
+        }
+
+        function showFanartForm() {
+            editingFanartId = null;
+            $('fanartFormTitle').textContent = '添加同人作品';
+            $('fanartForm').classList.remove('hidden');
+            ['fanartTitle', 'fanartAuthor', 'fanartDesc', 'fanartImage', 'fanartBili', 'fanartSource'].forEach(id => $(id)
+                .value = '');
+            $('fanartType').value = 'illust';
+            $('fanartStatus').value = 'published';
+        }
+
+        function cancelFanartForm() {
+            $('fanartForm').classList.add('hidden');
+            editingFanartId = null;
+        }
+
+        function editFanart(id) {
+            const item = allFanart.find(f => f.id === id);
+            if (!item) return;
+            editingFanartId = id;
+            $('fanartFormTitle').textContent = '编辑同人作品';
+            $('fanartForm').classList.remove('hidden');
+            $('fanartTitle').value = item.title || '';
+            $('fanartAuthor').value = item.author || '';
+            $('fanartDesc').value = item.description || '';
+            $('fanartImage').value = item.image_url || '';
+            $('fanartBili').value = item.bilibili_url || '';
+            $('fanartSource').value = item.source_url || '';
+            $('fanartType').value = item.type || 'illust';
+            $('fanartStatus').value = item.status || 'published';
+        }
+
+        async function saveFanart() {
+            const title = $('fanartTitle').value.trim();
+            if (!title) { showToast('请输入标题', 'error'); return; }
+            const data = {
+                title,
+                author: $('fanartAuthor').value.trim(),
+                description: $('fanartDesc').value.trim(),
+                image_url: $('fanartImage').value.trim(),
+                bilibili_url: $('fanartBili').value.trim(),
+                source_url: $('fanartSource').value.trim(),
+                type: $('fanartType').value,
+                status: $('fanartStatus').value,
+            };
+            try {
+                const url = editingFanartId ? `${API_BASE}/admin/fanart/${editingFanartId}` : `${API_BASE}/admin/fanart`;
+                const method = editingFanartId ? 'PUT' : 'POST';
+                const res = await fetch(url, {
+                    method,
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token()}` },
+                    body: JSON.stringify(data)
+                });
+                if (!res.ok) throw new Error('保存失败');
+                showToast(editingFanartId ? '✅ 更新成功' : '✅ 添加成功', 'success');
+                cancelFanartForm();
+                loadFanart();
+            } catch (error) {
+                showToast('❌ ' + error.message, 'error');
+            }
+        }
+
+        async function deleteFanart(id) {
+            if (!confirm('确认删除？')) return;
+            try {
+                const res = await fetch(`${API_BASE}/admin/fanart/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token()}` }
+                });
+                if (!res.ok) throw new Error('删除失败');
+                showToast('已删除', 'info');
+                loadFanart();
+            } catch (error) {
+                showToast('❌ ' + error.message, 'error');
+            }
+        }
+
+        // ============================================================
+        // 量贩管理
+        // ============================================================
+
+        async function loadShop() {
+            const tbody = $('shopTableBody');
+            tbody.innerHTML = '<tr><td colspan="5" class="loading-state">加载中...</td></tr>';
+            try {
+                const res = await fetch(`${API_BASE}/admin/shop`, {
+                    headers: { 'Authorization': `Bearer ${token()}` }
+                });
+                const data = await res.json();
+                allShop = data || [];
+                renderShop();
+            } catch (error) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#666;">加载失败</td></tr>';
+            }
+        }
+
+        function renderShop() {
+            const tbody = $('shopTableBody');
+            if (allShop.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="empty-state">暂无商品</td></tr>';
+                return;
+            }
+            tbody.innerHTML = allShop.map(item => `
+                <tr>
+                    <td>${item.image_url ? `<img class="table-cover" src="${item.image_url}" referrerpolicy="no-referrer" onerror="this.style.display='none'" />` : '-'}</td>
+                    <td><strong>${item.title}</strong>${item.description ? `<br><small style="color:#666;">${item.description.substring(0, 40)}${item.description.length > 40 ? '...' : ''}</small>` : ''}</td>
+                    <td>${item.price || '-'}</td>
+                    <td><span class="status-badge ${item.status === 'shipped' ? 'status-shipped' : 'status-waiting'}">${item.status === 'shipped' ? '🚀 已发车' : '⏳ 等待发车'}</span></td>
+                    <td><div class="actions"><button class="edit-btn" onclick="editShop(${item.id})">编辑</button><button class="delete-btn" onclick="deleteShop(${item.id})">删除</button></div></td>
+                </tr>
+            `).join('');
+        }
+
+        function showShopForm() {
+            editingShopId = null;
+            $('shopFormTitle').textContent = '添加商品';
+            $('shopForm').classList.remove('hidden');
+            ['shopTitle', 'shopDesc', 'shopPrice', 'shopImage', 'shopBili', 'shopXianyu'].forEach(id => $(id).value = '');
+            $('shopStatus').value = 'waiting';
+        }
+
+        function cancelShopForm() {
+            $('shopForm').classList.add('hidden');
+            editingShopId = null;
+        }
+
+        function editShop(id) {
+            const item = allShop.find(s => s.id === id);
+            if (!item) return;
+            editingShopId = id;
+            $('shopFormTitle').textContent = '编辑商品';
+            $('shopForm').classList.remove('hidden');
+            $('shopTitle').value = item.title || '';
+            $('shopDesc').value = item.description || '';
+            $('shopPrice').value = item.price || '';
+            $('shopImage').value = item.image_url || '';
+            $('shopBili').value = item.bilibili_url || '';
+            $('shopXianyu').value = item.xianyu_url || '';
+            $('shopStatus').value = item.status || 'waiting';
+        }
+
+        async function saveShop() {
+            const title = $('shopTitle').value.trim();
+            if (!title) { showToast('请输入标题', 'error'); return; }
+            const data = {
+                title,
+                description: $('shopDesc').value.trim(),
+                price: $('shopPrice').value.trim(),
+                image_url: $('shopImage').value.trim(),
+                bilibili_url: $('shopBili').value.trim(),
+                xianyu_url: $('shopXianyu').value.trim(),
+                status: $('shopStatus').value,
+            };
+            try {
+                const url = editingShopId ? `${API_BASE}/admin/shop/${editingShopId}` : `${API_BASE}/admin/shop`;
+                const method = editingShopId ? 'PUT' : 'POST';
+                const res = await fetch(url, {
+                    method,
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token()}` },
+                    body: JSON.stringify(data)
+                });
+                if (!res.ok) throw new Error('保存失败');
+                showToast(editingShopId ? '✅ 更新成功' : '✅ 添加成功', 'success');
+                cancelShopForm();
+                loadShop();
+            } catch (error) {
+                showToast('❌ ' + error.message, 'error');
+            }
+        }
+
+        async function deleteShop(id) {
+            if (!confirm('确认删除？')) return;
+            try {
+                const res = await fetch(`${API_BASE}/admin/shop/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token()}` }
+                });
+                if (!res.ok) throw new Error('删除失败');
+                showToast('已删除', 'info');
+                loadShop();
+            } catch (error) {
+                showToast('❌ ' + error.message, 'error');
+            }
+        }
+
+        // ============================================================
+        // 启动
+        // ============================================================
+
+        // 回车触发登录
+        $('passwordInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') login(); });
+
+        console.log('✦ 星尘粉丝站 · 后台管理 v2.0');
+    </script>
+
+</body>
+</html>
