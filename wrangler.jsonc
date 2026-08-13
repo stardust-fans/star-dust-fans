@@ -14,5 +14,9 @@
   ],
   "assets": {
     "directory": "./public"
-  }
+  },
+  "routes": [
+    { "pattern": "stardustinfinity.top", "custom_domain": true }
+  ],
+  "workers_dev": true
 }

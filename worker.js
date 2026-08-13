@@ -599,7 +599,7 @@ async function fetchSongsAndEnrich(env) {
 
 async function getCachedSongs(env, ctx) {
     const cache = caches.default;
-    const cacheKey = 'https://api.stardustinfinity.top/songs-cache';
+    const cacheKey = 'https://stardustinfinity.top/songs-cache';
 
     const cached = await cache.match(cacheKey);
     if (cached) {
@@ -626,6 +626,6 @@ async function getCachedSongs(env, ctx) {
 
 async function clearCache(env) {
     const cache = caches.default;
-    const cacheKey = 'https://api.stardustinfinity.top/songs-cache';
+    const cacheKey = 'https://stardustinfinity.top/songs-cache';
     await cache.delete(cacheKey);
 }
