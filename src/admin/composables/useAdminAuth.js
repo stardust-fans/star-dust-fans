@@ -5,11 +5,11 @@ import { API_BASE } from '../../shared/api.js';
 const token = ref(localStorage.getItem('adminToken') || '');
 const isAuthenticated = computed(() => !!token.value);
 
-async function login(password) {
+async function login(username, password) {
     const res = await fetch(`${API_BASE}/admin/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ username, password }),
     });
     const data = await res.json();
     if (data.success) {
@@ -17,7 +17,7 @@ async function login(password) {
         localStorage.setItem('adminToken', data.token);
         return { ok: true };
     }
-    return { ok: false, error: data.error || '密码错误' };
+    return { ok: false, error: data.error || '用户名或密码错误' };
 }
 
 function logout() {

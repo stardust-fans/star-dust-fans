@@ -7,9 +7,9 @@
     </div>
     <ul class="sidebar-menu">
       <li v-for="item in items" :key="item.key">
-        <a :class="{ active: activeModule === item.key }" @click="$emit('select', item.key)">
+        <RouterLink :to="{ name: item.key }" @click="$emit('close-sidebar')">
           <i class="fas" :class="item.icon"></i> {{ item.label }}
-        </a>
+        </RouterLink>
       </li>
     </ul>
     <div class="sidebar-footer">
@@ -25,10 +25,9 @@ import { useAdminAuth } from '../composables/useAdminAuth.js';
 import { useToast } from '../composables/useToast.js';
 
 defineProps({
-  activeModule: { type: String, required: true },
   sidebarOpen: { type: Boolean, default: false },
 });
-defineEmits(['select', 'close-sidebar']);
+defineEmits(['close-sidebar']);
 
 const { logout } = useAdminAuth();
 const { showToast } = useToast();
@@ -38,6 +37,8 @@ const items = [
   { key: 'daily', label: '吸尘器日报', icon: 'fa-newspaper' },
   { key: 'fanart', label: '同人作品', icon: 'fa-palette' },
   { key: 'shop', label: '量贩管理', icon: 'fa-store' },
+  { key: 'audit-log', label: '安全记录', icon: 'fa-shield-halved' },
+  { key: 'admins', label: '管理员账户', icon: 'fa-user-gear' },
 ];
 
 function handleLogout() {

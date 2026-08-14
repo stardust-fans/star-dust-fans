@@ -10,18 +10,20 @@
 
 <script setup>
 import { computed } from 'vue';
+import { useRoute } from 'vue-router';
 
-const props = defineProps({
-  activeModule: { type: String, required: true },
-});
 defineEmits(['toggle-sidebar']);
+
+const route = useRoute();
 
 const titles = {
   songs: '管理歌曲数据',
   daily: '管理吸尘器日报',
   fanart: '管理同人作品',
   shop: '管理量贩商品',
+  'audit-log': '安全记录',
+  admins: '管理员账户',
 };
 
-const title = computed(() => titles[props.activeModule] || '');
+const title = computed(() => titles[route.name] || '');
 </script>

@@ -12,6 +12,26 @@ export const SONG_STATUS_LABELS = {
     deleted: '🗑️ 已删除',
 };
 
+export const AUDIT_EVENT_LABELS = {
+    login_success: '登录成功',
+    login_failure: '登录失败',
+    create: '新建',
+    update: '更新',
+    delete: '删除',
+};
+
+export const AUDIT_TARGET_TABLE_LABELS = {
+    songs: '歌曲',
+    daily: '日报',
+    fanart: '同人作品',
+    shop: '量贩商品',
+    admins: '管理员账户',
+};
+
+// 播放量等级门槛：借鉴日本 VOCALOID 社区"殿堂入り/伝説入り"惯例
+export const MASTERPIECE_VIEW_THRESHOLD = 100000; // 殿堂曲：播放量 ≥ 10万
+export const LEGEND_VIEW_THRESHOLD = 1000000; // 传说曲：播放量 ≥ 100万
+
 export const PAGE_TITLE_MAP = {
     home: '星尘 · 永远闪耀',
     videos: '视频 · 星尘粉丝站',

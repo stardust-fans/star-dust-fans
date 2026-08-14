@@ -136,66 +136,148 @@ export default {
             }
         }
 
-        // ===== 2. GET /api/songs/bili/:bvid - 获取B站视频信息（预览用，含封面原始字节） =====
-        const biliMatch = path.match(/^\/api\/songs\/bili\/(BV[a-zA-Z0-9]{10})$/);
-        if (biliMatch && method === 'GET') {
-            const bvid = biliMatch[1];
+        // ===== 3. POST /api/admin/verify - 验证管理员账号密码 =====
+        if (path === '/api/admin/verify' && method === 'POST') {
             try {
-                const biliData = await fetchBiliInfo(bvid);
-                if (!biliData) {
-                    return jsonResponse({ error: 'B站视频不存在或已删除' }, 404);
+                const body = await request.json();
+                const username = body.username;
+                const password = body.password;
+                if (!env.TOKEN_SECRET) {
+                    return jsonResponse({ error: '服务未配置' }, 503);
                 }
 
-                let pic_base64 = null;
-                if (biliData.pic) {
-                    try {
-                        const imgRes = await fetch(biliData.pic, {
-                            headers: {
-                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                                'Referer': 'https://www.bilibili.com/',
-                            }
-                        });
-                        if (imgRes.ok) {
-                            const bytes = new Uint8Array(await imgRes.arrayBuffer());
-                            const mime = imgRes.headers.get('content-type') || 'image/jpeg';
-                            pic_base64 = `data:${mime};base64,${encodeBase64(bytes)}`;
-                        }
-                    } catch (e) {
-                        console.error(`封面拉取失败 (${bvid}):`, e.message);
-                    }
+                const row = username
+                    ? await env.DB.prepare('SELECT id, username, password_hash FROM admins WHERE username = ?').bind(username).first()
+                    : null;
+
+                const passwordOk = row
+                    ? await verifyPassword(password, row.password_hash)
+                    : await verifyPassword(password, DUMMY_PASSWORD_HASH); // 用户名不存在时仍跑一次哈希，避免时序侧信道
+
+                if (row && passwordOk) {
+                    const token = await signToken({
+                        sub: row.id,
+                        username: row.username,
+                        exp: Date.now() + 24 * 60 * 60 * 1000,
+                    }, env);
+                    ctx.waitUntil(logAuditEvent(env, {
+                        eventType: 'login_success', actorAdminId: row.id, actorUsername: row.username, request,
+                    }));
+                    return jsonResponse({ success: true, token });
                 }
 
-                return jsonResponse({ ...biliData, pic_base64 });
+                ctx.waitUntil(logAuditEvent(env, {
+                    eventType: 'login_failure', actorUsername: username || null, request,
+                }));
+                return jsonResponse({ error: '用户名或密码错误' }, 401);
             } catch (error) {
-                console.error('❌ /api/songs/bili 错误:', error.message);
+                console.error('❌ /api/admin/verify 错误:', error.message);
+                return jsonResponse({ error: error.message }, 400);
+            }
+        }
+
+        // ===== 3.5 管理员账号管理：POST/GET/DELETE /api/admin/admins =====
+        if (path === '/api/admin/admins' && method === 'POST') {
+            if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+            try {
+                const { username, password } = await request.json();
+                if (!username || !String(username).trim()) {
+                    return jsonResponse({ error: '用户名不能为空' }, 400);
+                }
+                if (!password || String(password).length < 8) {
+                    return jsonResponse({ error: '密码至少 8 位' }, 400);
+                }
+
+                const existing = await env.DB.prepare('SELECT id FROM admins WHERE username = ?').bind(username).first();
+                if (existing) {
+                    return jsonResponse({ error: '该用户名已存在' }, 409);
+                }
+
+                const passwordHash = await hashPassword(password);
+                const result = await env.DB.prepare(
+                    'INSERT INTO admins (username, password_hash) VALUES (?, ?)'
+                ).bind(username, passwordHash).run();
+
+                ctx.waitUntil(logAuditEvent(env, {
+                    eventType: 'create', actorAdminId: isAdmin.sub, actorUsername: isAdmin.username,
+                    targetTable: 'admins', targetId: result.meta?.last_row_id,
+                    summary: { username }, request,
+                }));
+
+                return jsonResponse({ success: true, id: result.meta?.last_row_id });
+            } catch (error) {
+                console.error('❌ POST /api/admin/admins 错误:', error.message);
                 return jsonResponse({ error: error.message }, 500);
             }
         }
 
-        // ===== 3. POST /api/admin/verify - 验证管理员密码 =====
-        if (path === '/api/admin/verify' && method === 'POST') {
+        if (path === '/api/admin/admins' && method === 'GET') {
+            if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
             try {
-                const body = await request.json();
-                const password = body.password;
-                const ADMIN_PASSWORD = env.ADMIN_PASSWORD;
-                if (!ADMIN_PASSWORD) {
-                    return jsonResponse({ error: '服务未配置' }, 503);
+                const result = await env.DB.prepare('SELECT id, username, created_at FROM admins ORDER BY id ASC').all();
+                return jsonResponse(result.results || []);
+            } catch (error) {
+                console.error('❌ GET /api/admin/admins 错误:', error.message);
+                return jsonResponse({ error: error.message }, 500);
+            }
+        }
+
+        const adminDeleteMatch = path.match(/^\/api\/admin\/admins\/(\d+)$/);
+        if (adminDeleteMatch && method === 'DELETE') {
+            if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+            try {
+                const id = parseInt(adminDeleteMatch[1], 10);
+                if (isAdmin.sub === id) {
+                    return jsonResponse({ error: '不能删除自己' }, 400);
                 }
 
-                if (password === ADMIN_PASSWORD) {
-                    if (!env.TOKEN_SECRET) {
-                        return jsonResponse({ error: '服务未配置' }, 503);
-                    }
-                    const token = await signToken({
-                        exp: Date.now() + 24 * 60 * 60 * 1000,
-                        role: 'admin'
-                    }, env);
-                    return jsonResponse({ success: true, token });
+                const countRow = await env.DB.prepare('SELECT COUNT(*) AS n FROM admins').first();
+                if ((countRow?.n || 0) <= 1) {
+                    return jsonResponse({ error: '不能删除最后一个管理员账号' }, 400);
                 }
-                return jsonResponse({ error: '密码错误' }, 401);
+
+                const target = await env.DB.prepare('SELECT username FROM admins WHERE id = ?').bind(id).first();
+                const result = await env.DB.prepare('DELETE FROM admins WHERE id = ?').bind(id).run();
+                if (result.meta?.changes === 0) {
+                    return jsonResponse({ error: '账号不存在' }, 404);
+                }
+
+                ctx.waitUntil(logAuditEvent(env, {
+                    eventType: 'delete', actorAdminId: isAdmin.sub, actorUsername: isAdmin.username,
+                    targetTable: 'admins', targetId: id,
+                    summary: { username: target?.username }, request,
+                }));
+
+                return jsonResponse({ success: true });
             } catch (error) {
-                console.error('❌ /api/admin/verify 错误:', error.message);
-                return jsonResponse({ error: error.message }, 400);
+                console.error('❌ DELETE /api/admin/admins 错误:', error.message);
+                return jsonResponse({ error: error.message }, 500);
+            }
+        }
+
+        // ===== 3.6 GET /api/admin/audit-logs - 审计日志查询 =====
+        if (path === '/api/admin/audit-logs' && method === 'GET') {
+            if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+            try {
+                const eventType = url.searchParams.get('event_type');
+                const actor = url.searchParams.get('actor');
+                const from = url.searchParams.get('from');
+                const to = url.searchParams.get('to');
+                const conditions = [], params = [];
+                if (eventType) { conditions.push('event_type = ?'); params.push(eventType); }
+                if (actor) { conditions.push('actor_username LIKE ?'); params.push(`%${actor}%`); }
+                if (from) { conditions.push('created_at >= ?'); params.push(from); }
+                if (to) { conditions.push('created_at <= ?'); params.push(`${to} 23:59:59`); }
+                const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+                const stmt = env.DB.prepare(`
+                    SELECT id, event_type, actor_admin_id, actor_username, target_table, target_id, summary, ip_address, user_agent, created_at
+                    FROM audit_logs ${where} ORDER BY created_at DESC LIMIT 200
+                `);
+                const result = await stmt.bind(...params).all();
+                return jsonResponse(result.results || []);
+            } catch (error) {
+                console.error('❌ GET /api/admin/audit-logs 错误:', error.message);
+                return jsonResponse({ error: error.message }, 500);
             }
         }
 
@@ -264,6 +346,13 @@ export default {
                     status || 'published',
                     flag_reason || null
                 ).run();
+
+                ctx.waitUntil(logAuditEvent(env, {
+                    eventType: 'create', actorAdminId: isAdmin.sub, actorUsername: isAdmin.username,
+                    targetTable: 'songs', targetId: result.meta?.last_row_id,
+                    summary: { bvid, title, status: status || 'published' },
+                    request,
+                }));
 
                 return jsonResponse({
                     success: true,
@@ -355,6 +444,13 @@ export default {
                     return jsonResponse({ error: '歌曲不存在' }, 404);
                 }
 
+                ctx.waitUntil(logAuditEvent(env, {
+                    eventType: 'update', actorAdminId: isAdmin.sub, actorUsername: isAdmin.username,
+                    targetTable: 'songs', targetId: Number(id),
+                    summary: { title: title ?? null, status: status || 'published' },
+                    request,
+                }));
+
                 return jsonResponse({ success: true, message: '更新成功' });
             } catch (error) {
                 console.error('❌ PUT /api/admin/songs 错误:', error.message);
@@ -368,6 +464,7 @@ export default {
             if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
             try {
                 const id = deleteMatch[1];
+                const target = await env.DB.prepare('SELECT title FROM songs WHERE id = ?').bind(id).first();
                 const stmt = env.DB.prepare(`
                     UPDATE songs SET status = 'deleted', updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
@@ -377,6 +474,12 @@ export default {
                 if (result.meta?.changes === 0) {
                     return jsonResponse({ error: '歌曲不存在' }, 404);
                 }
+
+                ctx.waitUntil(logAuditEvent(env, {
+                    eventType: 'delete', actorAdminId: isAdmin.sub, actorUsername: isAdmin.username,
+                    targetTable: 'songs', targetId: Number(id),
+                    summary: { title: target?.title }, request,
+                }));
 
                 return jsonResponse({ success: true, message: '已删除' });
             } catch (error) {
@@ -415,6 +518,14 @@ export default {
                     VALUES (?, ?, ?, ?, ?, ?)
                 `);
                 const result = await stmt.bind(title, content, source_url || null, cover_url || null, publish_date || null, status || 'published').run();
+
+                ctx.waitUntil(logAuditEvent(env, {
+                    eventType: 'create', actorAdminId: isAdmin.sub, actorUsername: isAdmin.username,
+                    targetTable: 'daily', targetId: result.meta?.last_row_id,
+                    summary: { title, publish_date: publish_date || null, status: status || 'published' },
+                    request,
+                }));
+
                 return jsonResponse({ success: true, id: result.meta?.last_row_id });
             } catch (error) {
                 console.error('❌ daily POST 错误:', error.message);
@@ -434,6 +545,14 @@ export default {
                     WHERE id = ?
                 `);
                 await stmt.bind(title, content, source_url || null, cover_url || null, publish_date || null, status || 'published', id).run();
+
+                ctx.waitUntil(logAuditEvent(env, {
+                    eventType: 'update', actorAdminId: isAdmin.sub, actorUsername: isAdmin.username,
+                    targetTable: 'daily', targetId: Number(id),
+                    summary: { title, publish_date: publish_date || null, status: status || 'published' },
+                    request,
+                }));
+
                 return jsonResponse({ success: true });
             } catch (error) {
                 console.error('❌ daily PUT 错误:', error.message);
@@ -447,8 +566,16 @@ export default {
             if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
             try {
                 const id = dailyDeleteMatch[1];
+                const target = await env.DB.prepare('SELECT title FROM daily WHERE id = ?').bind(id).first();
                 const stmt = env.DB.prepare('DELETE FROM daily WHERE id = ?');
                 await stmt.bind(id).run();
+
+                ctx.waitUntil(logAuditEvent(env, {
+                    eventType: 'delete', actorAdminId: isAdmin.sub, actorUsername: isAdmin.username,
+                    targetTable: 'daily', targetId: Number(id),
+                    summary: { title: target?.title }, request,
+                }));
+
                 return jsonResponse({ success: true });
             } catch (error) {
                 console.error('❌ daily DELETE 错误:', error.message);
@@ -486,6 +613,14 @@ export default {
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 `);
                 const result = await stmt.bind(title, author || null, description || null, image_url || null, bilibili_url || null, source_url || null, type || 'illust', status || 'published').run();
+
+                ctx.waitUntil(logAuditEvent(env, {
+                    eventType: 'create', actorAdminId: isAdmin.sub, actorUsername: isAdmin.username,
+                    targetTable: 'fanart', targetId: result.meta?.last_row_id,
+                    summary: { title, author: author || null, type: type || 'illust', status: status || 'published' },
+                    request,
+                }));
+
                 return jsonResponse({ success: true, id: result.meta?.last_row_id });
             } catch (error) {
                 console.error('❌ fanart POST 错误:', error.message);
@@ -505,6 +640,14 @@ export default {
                     WHERE id = ?
                 `);
                 await stmt.bind(title, author || null, description || null, image_url || null, bilibili_url || null, source_url || null, type || 'illust', status || 'published', id).run();
+
+                ctx.waitUntil(logAuditEvent(env, {
+                    eventType: 'update', actorAdminId: isAdmin.sub, actorUsername: isAdmin.username,
+                    targetTable: 'fanart', targetId: Number(id),
+                    summary: { title, author: author || null, type: type || 'illust', status: status || 'published' },
+                    request,
+                }));
+
                 return jsonResponse({ success: true });
             } catch (error) {
                 console.error('❌ fanart PUT 错误:', error.message);
@@ -518,8 +661,16 @@ export default {
             if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
             try {
                 const id = fanartDeleteMatch[1];
+                const target = await env.DB.prepare('SELECT title FROM fanart WHERE id = ?').bind(id).first();
                 const stmt = env.DB.prepare('DELETE FROM fanart WHERE id = ?');
                 await stmt.bind(id).run();
+
+                ctx.waitUntil(logAuditEvent(env, {
+                    eventType: 'delete', actorAdminId: isAdmin.sub, actorUsername: isAdmin.username,
+                    targetTable: 'fanart', targetId: Number(id),
+                    summary: { title: target?.title }, request,
+                }));
+
                 return jsonResponse({ success: true });
             } catch (error) {
                 console.error('❌ fanart DELETE 错误:', error.message);
@@ -557,6 +708,14 @@ export default {
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                 `);
                 const result = await stmt.bind(title, description || null, price || null, image_url || null, bilibili_url || null, xianyu_url || null, status || 'waiting').run();
+
+                ctx.waitUntil(logAuditEvent(env, {
+                    eventType: 'create', actorAdminId: isAdmin.sub, actorUsername: isAdmin.username,
+                    targetTable: 'shop', targetId: result.meta?.last_row_id,
+                    summary: { title, price: price || null, status: status || 'waiting' },
+                    request,
+                }));
+
                 return jsonResponse({ success: true, id: result.meta?.last_row_id });
             } catch (error) {
                 console.error('❌ shop POST 错误:', error.message);
@@ -576,6 +735,14 @@ export default {
                     WHERE id = ?
                 `);
                 await stmt.bind(title, description || null, price || null, image_url || null, bilibili_url || null, xianyu_url || null, status || 'waiting', id).run();
+
+                ctx.waitUntil(logAuditEvent(env, {
+                    eventType: 'update', actorAdminId: isAdmin.sub, actorUsername: isAdmin.username,
+                    targetTable: 'shop', targetId: Number(id),
+                    summary: { title, price: price || null, status: status || 'waiting' },
+                    request,
+                }));
+
                 return jsonResponse({ success: true });
             } catch (error) {
                 console.error('❌ shop PUT 错误:', error.message);
@@ -589,8 +756,16 @@ export default {
             if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
             try {
                 const id = shopDeleteMatch[1];
+                const target = await env.DB.prepare('SELECT title FROM shop WHERE id = ?').bind(id).first();
                 const stmt = env.DB.prepare('DELETE FROM shop WHERE id = ?');
                 await stmt.bind(id).run();
+
+                ctx.waitUntil(logAuditEvent(env, {
+                    eventType: 'delete', actorAdminId: isAdmin.sub, actorUsername: isAdmin.username,
+                    targetTable: 'shop', targetId: Number(id),
+                    summary: { title: target?.title }, request,
+                }));
+
                 return jsonResponse({ success: true });
             } catch (error) {
                 console.error('❌ shop DELETE 错误:', error.message);
@@ -713,30 +888,66 @@ async function verifyToken(token, env) {
         if (!valid) return false;
 
         const payload = JSON.parse(base64UrlDecodeToString(payloadPart));
-        return payload.exp > Date.now();
+        if (!(payload.exp > Date.now())) return false;
+        return payload;
     } catch {
         return false;
     }
 }
 
-async function fetchBiliInfo(bvid) {
-    const url = `https://api.bilibili.com/x/web-interface/view?bvid=${bvid}`;
+// PBKDF2_ITERATIONS 实测方法见 agents/decisions.md（vite dev/workerd 内 performance.now() 测量，
+// 确认相对 Workers 免费版 10ms CPU 预算有余量后才定下这个数字）。
+const PBKDF2_ITERATIONS = 50_000;
+
+async function hashPassword(password, iterations = PBKDF2_ITERATIONS) {
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const keyMaterial = await crypto.subtle.importKey(
+        'raw', new TextEncoder().encode(password), { name: 'PBKDF2' }, false, ['deriveBits']
+    );
+    const derivedBits = await crypto.subtle.deriveBits(
+        { name: 'PBKDF2', salt, iterations, hash: 'SHA-256' }, keyMaterial, 256
+    );
+    return `pbkdf2-sha256$${iterations}$${encodeBase64(salt)}$${encodeBase64(new Uint8Array(derivedBits))}`;
+}
+
+async function verifyPassword(password, encoded) {
     try {
-        const response = await fetch(url, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Referer': 'https://www.bilibili.com/',
-            }
-        });
-        const data = await response.json();
-        if (data.code === 0) {
-            return data.data;
-        }
-        console.error(`B站API错误 (${bvid}):`, data.message);
-        return null;
-    } catch (error) {
-        console.error(`请求失败 (${bvid}):`, error.message);
-        return null;
+        const [algo, iterStr, saltB64, hashB64] = encoded.split('$');
+        if (algo !== 'pbkdf2-sha256') return false;
+        const iterations = parseInt(iterStr, 10);
+        const salt = decodeBase64ToBytes(saltB64);
+        const expected = decodeBase64ToBytes(hashB64);
+        const keyMaterial = await crypto.subtle.importKey(
+            'raw', new TextEncoder().encode(password), { name: 'PBKDF2' }, false, ['deriveBits']
+        );
+        const derivedBits = await crypto.subtle.deriveBits(
+            { name: 'PBKDF2', salt, iterations, hash: 'SHA-256' }, keyMaterial, expected.length * 8
+        );
+        const actual = new Uint8Array(derivedBits);
+        if (actual.length !== expected.length) return false;
+        return crypto.subtle.timingSafeEqual(actual, expected);
+    } catch {
+        return false;
+    }
+}
+
+// 用户名枚举防护：查无此用户名时仍跑一次哈希验证（结果丢弃），避免时序侧信道。
+// 这个哈希串由 hashPassword() 离线生成一次、硬编码，从不是真实密码。
+const DUMMY_PASSWORD_HASH = 'pbkdf2-sha256$50000$5odBT/N538xlVrDF/a45bQ==$UjyWXvGUTYv1q1mx6ejZ+fX0hYR8v1eQFt8nq5eRopU=';
+
+async function logAuditEvent(env, { eventType, actorAdminId = null, actorUsername = null, targetTable = null, targetId = null, summary = null, request }) {
+    try {
+        await env.DB.prepare(`
+            INSERT INTO audit_logs (event_type, actor_admin_id, actor_username, target_table, target_id, summary, ip_address, user_agent)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(
+            eventType, actorAdminId, actorUsername, targetTable, targetId,
+            summary ? JSON.stringify(summary) : null,
+            request.headers.get('CF-Connecting-IP') || null,
+            request.headers.get('User-Agent') || null,
+        ).run();
+    } catch (e) {
+        console.error('❌ 审计日志写入失败:', e.message);
     }
 }
 

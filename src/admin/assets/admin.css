@@ -1,4 +1,19 @@
-/* ===== 全局重置 ===== */
+/* ===== 星图美学变量（与公开站 src/public/assets/style.css 同源，仅用于登录页/审计日志/管理员账户三个新设计的界面，
+   不改动其余既有模块的既定视觉） ===== */
+        :root {
+            --ink: #e7e8f2;
+            --ink-soft: #b9bce0;
+            --ink-muted: #85889f;
+            --paper-raised: #0d0e1a;
+            --line: rgba(190, 193, 224, 0.14);
+            --line-strong: rgba(190, 193, 224, 0.30);
+            --cobalt: #9999ff;
+            --gold: #e8c76f;
+            --radius: 3px;
+            --font-display: 'Fraunces', 'Noto Serif SC', serif;
+        }
+
+        /* ===== 全局重置 ===== */
         * {
             margin: 0;
             padding: 0;
@@ -126,57 +141,74 @@
             font-size: 0.85rem;
         }
 
-        /* ===== 登录面板 ===== */
+        /* ===== 登录面板（星图美学：实底 + 细边框 + 锐角，呼应公开站 009 阶段"移除玻璃拟态/emoji"方向） ===== */
+        .login-page {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+
         .login-panel {
-            max-width: 400px;
-            margin: 80px auto;
-            background: rgba(20, 20, 40, 0.7);
+            width: 100%;
+            max-width: 380px;
+            background: var(--paper-raised);
             padding: 40px;
-            border-radius: 16px;
-            border: 1px solid rgba(255, 255, 255, 0.04);
+            border-radius: var(--radius);
+            border: 1px solid var(--line);
         }
 
         .login-panel h2 {
-            margin-bottom: 20px;
-            color: #fff;
+            margin-bottom: 24px;
+            color: var(--ink);
+            font-family: var(--font-display);
+            font-weight: 500;
+            font-size: 1.3rem;
         }
 
         .login-panel input {
             width: 100%;
             padding: 12px 16px;
-            background: #1a1a2a;
-            border: 1px solid #333;
-            color: #fff;
-            border-radius: 8px;
+            background: transparent;
+            border: 1px solid var(--line-strong);
+            color: var(--ink);
+            border-radius: var(--radius);
             font-size: 1rem;
-            margin-bottom: 16px;
+            margin-bottom: 14px;
+        }
+
+        .login-panel input::placeholder {
+            color: var(--ink-muted);
         }
 
         .login-panel input:focus {
             outline: none;
-            border-color: #9999FF;
+            border-color: var(--cobalt);
         }
 
         .login-panel button {
             width: 100%;
             padding: 12px;
-            background: #9999FF;
+            background: var(--cobalt);
             border: none;
-            border-radius: 8px;
+            border-radius: var(--radius);
             font-size: 1rem;
-            color: #fff;
+            color: #0a0a12;
             cursor: pointer;
             font-weight: 600;
             transition: 0.3s;
         }
 
         .login-panel button:hover {
-            background: #7777DD;
+            opacity: 0.85;
         }
 
         .login-error {
             color: #ff6b6b;
-            margin-top: 12px;
+            margin-top: 14px;
+            font-size: 0.85rem;
             display: none;
         }
 
@@ -383,6 +415,18 @@
             background: rgba(68, 170, 68, 0.2);
             color: #66dd66;
         }
+        .status-login_success, .status-create {
+            background: rgba(68, 170, 68, 0.2);
+            color: #66dd66;
+        }
+        .status-login_failure, .status-delete {
+            background: rgba(255, 100, 100, 0.15);
+            color: #ff6666;
+        }
+        .status-update {
+            background: rgba(153, 153, 255, 0.15);
+            color: #9999ff;
+        }
 
         .tag-list {
             display: flex;
@@ -426,6 +470,14 @@
         }
         .actions .delete-btn:hover {
             background: rgba(255, 50, 50, 0.25);
+        }
+
+        .actions .delete-btn:disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
+        }
+        .actions .delete-btn:disabled:hover {
+            background: rgba(255, 50, 50, 0.12);
         }
 
         .empty-state {
