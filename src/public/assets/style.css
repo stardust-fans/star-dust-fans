@@ -476,6 +476,42 @@ a {
     margin-bottom: 4px;
 }
 
+/* ===== Toast ===== */
+.toast-container {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 999;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.toast {
+    padding: 14px 22px;
+    border-radius: var(--radius);
+    background: var(--paper-raised);
+    border: 1px solid var(--line-strong);
+    border-left: 2px solid var(--cobalt);
+    color: var(--ink);
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    letter-spacing: 0.02em;
+    max-width: 360px;
+    animation: toastSlideUp 0.3s var(--ease);
+}
+
+@keyframes toastSlideUp {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
 /* ===== 响应式 ===== */
 @media (max-width: 768px) {
     .nav-toggle {
