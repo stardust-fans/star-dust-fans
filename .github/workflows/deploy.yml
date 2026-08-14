@@ -29,12 +29,14 @@ jobs:
         run: npm ci
 
       - name: Build
+        id: build
         run: npm run build
 
       - name: Create test secrets
         run: echo "TOKEN_SECRET=test-secret-ci" > .dev.vars
 
       - name: Test
+        id: test
         run: npm test
 
       - name: Check D1 schema
@@ -59,7 +61,7 @@ jobs:
 
       - name: Get commit metadata
         id: commit-info
-        if: github.event_name == 'pull_request'
+        if: always() && github.event_name == 'pull_request'
         env:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
@@ -70,12 +72,31 @@ jobs:
           echo "COMMIT_MESSAGE=$(git log -1 --format='%s' "${HEAD_SHA}")" >> $GITHUB_ENV
 
       - name: Comment on PR
-        if: github.event_name == 'pull_request'
+        if: always() && github.event_name == 'pull_request'
         uses: actions/github-script@v7
+        env:
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          TEST_OUTCOME: ${{ steps.test.outcome }}
         with:
           script: |
+            const build = process.env.BUILD_OUTCOME;
+            const test  = process.env.TEST_OUTCOME;
+            const ok    = build === 'success' && test === 'success';
+            const icon  = ok ? '✅' : '❌';
+
+            const stepRow = (name, outcome) => {
+              const icon = outcome === 'success' ? '✅' : outcome === 'failure' ? '❌' : '⏭️';
+              return `| ${icon} ${name} | \`${outcome}\` |`;
+            };
+
             const body = [
-              `✅ Build & tests passed`,
+              `<!-- stardust-ci -->`,
+              `${icon} **CI ${ok ? 'passed' : 'failed'}**`,
+              ``,
+              `| 步骤 | 结果 |`,
+              `| :--- | :--- |`,
+              stepRow('Build', build),
+              stepRow('Test',  test),
               ``,
               `| 项目 | 详情 |`,
               `| :--- | :--- |`,
@@ -84,15 +105,16 @@ jobs:
               `| 提交者 | ${process.env.COMMIT_AUTHOR} |`,
               `| 提交信息 | ${process.env.COMMIT_MESSAGE} |`,
               ``,
-              `> D1 migrations & Worker 部署将在合并到 main 后自动执行`,
+              ok ? `> D1 migrations & Worker 部署将在合并到 main 后自动执行` : `> 请修复上述失败步骤后重新推送`,
             ].join('\n');
+
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
             });
             const existing = comments.find(c =>
-              c.user.login === 'github-actions[bot]' && c.body.includes('Build & tests passed')
+              c.user.login === 'github-actions[bot]' && c.body.includes('<!-- stardust-ci -->')
             );
             if (existing) {
               await github.rest.issues.updateComment({
