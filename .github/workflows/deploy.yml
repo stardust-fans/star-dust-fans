@@ -224,14 +224,3 @@ jobs:
               });
             }
 
-            // Submit bot review: APPROVE on pass, REQUEST_CHANGES on fail
-            try {
-              await github.rest.pulls.createReview({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: context.issue.number,
-                commit_id: headSha,
-                event: ok ? 'APPROVE' : 'REQUEST_CHANGES',
-                body: ok ? '✅ CI 全部通过' : '❌ 请修复失败步骤后重新推送',
-              });
-            } catch (e) {}
