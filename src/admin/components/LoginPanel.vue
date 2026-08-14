@@ -18,6 +18,7 @@
       />
       <button @click="handleLogin">登录</button>
       <div class="login-error" :style="{ display: showError ? 'block' : 'none' }">用户名或密码错误，请重试</div>
+      <button class="btn-back-to-site" @click="backToSite">返回星尘粉丝站</button>
     </div>
   </div>
 </template>
@@ -50,5 +51,9 @@ async function handleLogin() {
   } catch (error) {
     showToast('登录失败：' + error.message, 'error');
   }
+}
+
+function backToSite() {
+  window.location.href = '/';
 }
 </script>
