@@ -21,6 +21,10 @@
     --font-display: 'Fraunces', 'Noto Serif SC', serif;
     --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Consolas, monospace;
     --font-body: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    /* 移动端越界回弹露出的是 html 的背景，不是 body 的——不设的话在深色
+       系统主题下会闪出黑边。overscroll-behavior-y 再把回弹本身压住。 */
+    background: var(--paper);
+    overscroll-behavior-y: none;
 }
 
 * {
@@ -39,6 +43,7 @@ body {
     flex-direction: column;
     line-height: 1.65;
     overflow-x: hidden;
+    overscroll-behavior-y: none;
 }
 
 /* 坐标网格（呼应星图刻度） */
