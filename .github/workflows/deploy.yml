@@ -39,6 +39,15 @@ jobs:
         id: test
         run: npx vitest run --reporter=verbose --reporter=json --outputFile=test-results.json
 
+      - name: Upload preview version
+        id: preview
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          command: versions upload
+
       - name: D1 restore point
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: bash tool/d1_migrate.sh
@@ -65,6 +74,7 @@ jobs:
         env:
           BUILD_OUTCOME: ${{ steps.build.outcome }}
           TEST_OUTCOME: ${{ steps.test.outcome }}
+          PREVIEW_OUTPUT: ${{ steps.preview.outputs.command-output }}
         with:
           script: |
             const fs = require('fs');
@@ -103,16 +113,21 @@ jobs:
               testDetailsRows = rows.length ? rows.join('\n') : '_无测试数据_';
             } catch (e) {}
 
-
-            // Auto-assign reviewers when sensitive paths change
-            let reviewerNote = '';
+            // Fetch changed files once, shared by reviewer-assignment and the DB-change row below
+            let files = [];
             try {
-              const { data: files } = await github.rest.pulls.listFiles({
+              const { data } = await github.rest.pulls.listFiles({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 pull_number: context.issue.number,
                 per_page: 100,
               });
+              files = data;
+            } catch (e) {}
+
+            // Auto-assign reviewers when sensitive paths change
+            let reviewerNote = '';
+            try {
               const sensitive = files.some(f =>
                 f.filename.startsWith('.github/') ||
                 (f.filename.startsWith('test/') && ['modified','removed','renamed','changed'].includes(f.status))
@@ -139,6 +154,25 @@ jobs:
               }
             } catch (e) {}
 
+            // Preview deployment URL (from `wrangler versions upload`, pull_request only)
+            let previewLine = '_未生成（步骤被跳过或失败）_';
+            const previewOutput = process.env.PREVIEW_OUTPUT || '';
+            const previewMatch = previewOutput.match(/https:\/\/[a-zA-Z0-9.\-]+\.workers\.dev\S*/);
+            if (previewMatch) {
+              previewLine = previewMatch[0];
+            } else if (previewOutput) {
+              previewLine = '_未能从输出中提取预览链接，请查看 workflow 日志_';
+            }
+
+            // Database migration changes — dev 预览与生产共用同一个 D1，迁移未 apply 时预览可能异常
+            const migrationFiles = files.filter(f =>
+              f.filename.startsWith('migrations/') &&
+              ['added', 'modified', 'renamed', 'changed'].includes(f.status)
+            );
+            const dbChangeLine = migrationFiles.length
+              ? `是（${migrationFiles.map(f => `\`${f.filename}\``).join(', ')}）—— ⚠️ dev 预览的 D1 数据库 schema 可能未同步，相关功能展示可能异常`
+              : '无';
+
             const stepRow = (name, outcome) => {
               const i = outcome === 'success' ? '✅' : outcome === 'failure' ? '❌' : '⏭️';
               return `| ${i} ${name} | \`${outcome}\` |`;
@@ -158,6 +192,8 @@ jobs:
               `| Commit | [\`${shaShort}\`](https://github.com/${context.repo.owner}/${context.repo.repo}/commit/${headSha}) |`,
               `| 提交时间 | ${commitTime} |`,
               `| 提交者 | ${commitAuthor} |`,
+              `| 预览部署 | ${previewLine} |`,
+              `| 数据库变更 | ${dbChangeLine} |`,
               ``,
               `<details><summary>测试详情</summary>`,
               ``,
