@@ -31,6 +31,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Create test secrets
+        run: echo "TOKEN_SECRET=test-secret-ci" > .dev.vars
+
       - name: Test
         run: npm test
 

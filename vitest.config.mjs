@@ -5,9 +5,6 @@ export default defineConfig({
     plugins: [
         cloudflareTest({
             wrangler: { configPath: './wrangler.jsonc' },
-            miniflare: {
-                vars: { TOKEN_SECRET: 'test-secret-ci' },
-            },
         }),
     ],
     test: {
