@@ -82,7 +82,6 @@ jobs:
             const shaShort     = headSha.slice(0, 7);
             const commitAuthor = `${commitData.commit.author.name} <${commitData.commit.author.email}>`;
             const commitTime   = commitData.commit.author.date;
-            const commitMsg    = commitData.commit.message.split('\n')[0];
 
             // Parse test results JSON
             let testSummaryLine = '';
@@ -104,67 +103,6 @@ jobs:
               testDetailsRows = rows.length ? rows.join('\n') : '_无测试数据_';
             } catch (e) {}
 
-            // Detect sensitive file changes and build warnings
-            const warnings = [];
-            try {
-              const { data: files } = await github.rest.pulls.listFiles({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: context.issue.number,
-                per_page: 100,
-              });
-
-              // .github/ any change → @all org members
-              const ghChanged = files.filter(f => f.filename.startsWith('.github/')).length;
-              if (ghChanged > 0) {
-                let mentions = '';
-                try {
-                  const { data: contribs } = await github.rest.repos.listContributors({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    per_page: 100,
-                  });
-                  mentions = (contribs || [])
-                    .filter(c => c.type !== 'Bot')
-                    .map(c => `@${c.login}`)
-                    .join(' ');
-                } catch (e) {}
-                warnings.push(
-                  `> ⚠️ **此 PR 修改了 \`.github/\` (${ghChanged} 个文件)，请人工审查 CI/CD 变更**` +
-                  (mentions ? `\n> ${mentions}` : '')
-                );
-              }
-
-              // test/ modified or deleted → @historical contributors of those files
-              const testModified = files.filter(f =>
-                f.filename.startsWith('test/') &&
-                ['modified', 'removed', 'renamed', 'changed'].includes(f.status)
-              );
-              if (testModified.length > 0) {
-                const contributors = new Set();
-                for (const file of testModified) {
-                  try {
-                    const { data: commits } = await github.rest.repos.listCommits({
-                      owner: context.repo.owner,
-                      repo: context.repo.repo,
-                      path: file.filename,
-                      per_page: 100,
-                    });
-                    for (const c of commits) {
-                      if (c.author?.login) contributors.add(c.author.login);
-                    }
-                  } catch (e) {}
-                }
-                const fileNames = testModified.map(f => `\`${f.filename}\``).join(', ');
-                const mentions  = [...contributors].map(l => `@${l}`).join(' ');
-                warnings.push(
-                  `> ⚠️ **此 PR 修改/删除了测试文件：${fileNames}**` +
-                  (mentions ? `\n> ${mentions}` : '')
-                );
-              }
-            } catch (e) {}
-
-            const warningBlock = warnings.length ? '\n---\n' + warnings.join('\n\n') : '';
 
             const stepRow = (name, outcome) => {
               const i = outcome === 'success' ? '✅' : outcome === 'failure' ? '❌' : '⏭️';
@@ -193,7 +131,6 @@ jobs:
               testDetailsRows,
               ``,
               `</details>`,
-              warningBlock,
               ``,
               ok ? `> D1 migrations & Worker 部署将在合并到 main 后自动执行` : `> 请修复上述失败步骤后重新推送`,
             ].join('\n');
@@ -230,4 +167,43 @@ jobs:
                 body,
               });
             }
+
+            // Auto-assign reviewers when sensitive paths change
+            try {
+              const { data: files } = await github.rest.pulls.listFiles({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.issue.number,
+                per_page: 100,
+              });
+              const sensitive = files.some(f =>
+                f.filename.startsWith('.github/') ||
+                (f.filename.startsWith('test/') && ['modified','removed','renamed','changed'].includes(f.status))
+              );
+              if (sensitive) {
+                const prAuthor = context.payload.pull_request.user.login;
+                const { data: contribs } = await github.rest.repos.listContributors({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  per_page: 100,
+                });
+                const reviewers = contribs
+                  .filter(c => c.type !== 'Bot' && c.login !== prAuthor)
+                  .map(c => c.login);
+                if (reviewers.length) {
+                  await github.rest.pulls.requestReviewers({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    pull_number: context.issue.number,
+                    reviewers,
+                  });
+                  await github.rest.issues.createComment({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: context.issue.number,
+                    body: `> ⚠️ 此 PR 修改了敏感路径（\`.github/\` 或 \`test/\`），已自动分配评审人：${reviewers.map(r => `@${r}`).join(' ')}`,
+                  });
+                }
+              }
+            } catch (e) {}
 
