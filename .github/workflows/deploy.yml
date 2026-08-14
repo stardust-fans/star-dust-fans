@@ -104,6 +104,41 @@ jobs:
             } catch (e) {}
 
 
+            // Auto-assign reviewers when sensitive paths change
+            let reviewerNote = '';
+            try {
+              const { data: files } = await github.rest.pulls.listFiles({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.issue.number,
+                per_page: 100,
+              });
+              const sensitive = files.some(f =>
+                f.filename.startsWith('.github/') ||
+                (f.filename.startsWith('test/') && ['modified','removed','renamed','changed'].includes(f.status))
+              );
+              if (sensitive) {
+                const prAuthor = context.payload.pull_request.user.login;
+                const { data: contribs } = await github.rest.repos.listContributors({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  per_page: 100,
+                });
+                const reviewers = contribs
+                  .filter(c => c.type !== 'Bot' && c.login !== prAuthor)
+                  .map(c => c.login);
+                if (reviewers.length) {
+                  await github.rest.pulls.requestReviewers({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    pull_number: context.issue.number,
+                    reviewers,
+                  });
+                  reviewerNote = `> ⚠️ 此 PR 修改了敏感路径，已自动分配评审人`;
+                }
+              }
+            } catch (e) {}
+
             const stepRow = (name, outcome) => {
               const i = outcome === 'success' ? '✅' : outcome === 'failure' ? '❌' : '⏭️';
               return `| ${i} ${name} | \`${outcome}\` |`;
@@ -133,6 +168,7 @@ jobs:
               `</details>`,
               ``,
               ok ? `> D1 migrations & Worker 部署将在合并到 main 后自动执行` : `> 请修复上述失败步骤后重新推送`,
+              ...(reviewerNote ? ['', reviewerNote] : []),
             ].join('\n');
 
             const { data: comments } = await github.rest.issues.listComments({
@@ -144,7 +180,6 @@ jobs:
             const matches = comments.filter(c =>
               c.user.type === 'Bot' && c.body.includes('<!-- stardust-ci -->')
             );
-            // delete stale duplicates, keep at most one
             for (const stale of matches.slice(1)) {
               await github.rest.issues.deleteComment({
                 owner: context.repo.owner,
@@ -167,43 +202,4 @@ jobs:
                 body,
               });
             }
-
-            // Auto-assign reviewers when sensitive paths change
-            try {
-              const { data: files } = await github.rest.pulls.listFiles({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: context.issue.number,
-                per_page: 100,
-              });
-              const sensitive = files.some(f =>
-                f.filename.startsWith('.github/') ||
-                (f.filename.startsWith('test/') && ['modified','removed','renamed','changed'].includes(f.status))
-              );
-              if (sensitive) {
-                const prAuthor = context.payload.pull_request.user.login;
-                const { data: contribs } = await github.rest.repos.listContributors({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  per_page: 100,
-                });
-                const reviewers = contribs
-                  .filter(c => c.type !== 'Bot' && c.login !== prAuthor)
-                  .map(c => c.login);
-                if (reviewers.length) {
-                  await github.rest.pulls.requestReviewers({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    pull_number: context.issue.number,
-                    reviewers,
-                  });
-                  await github.rest.issues.createComment({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    issue_number: context.issue.number,
-                    body: `> ⚠️ 此 PR 修改了敏感路径（\`.github/\` 或 \`test/\`），已自动分配评审人：${reviewers.map(r => `@${r}`).join(' ')}`,
-                  });
-                }
-              }
-            } catch (e) {}
 
