@@ -538,18 +538,36 @@ a {
 
 .hero-section {
     position: relative;
+    overflow: hidden;
     padding: 44px 28px 40px;
     margin: 8px 0 48px;
     border: 1px solid var(--line);
     border-radius: var(--radius);
+    background-image:
+        radial-gradient(130% 110% at 28% 18%, transparent 38%, rgba(7, 7, 13, 0.6) 100%),
+        url('/images/hero-bg.png');
+    background-size: 100% 100%, cover;
+    background-position: center, center 30%;
+    background-repeat: no-repeat, no-repeat;
 }
 
 .hero-content {
     position: relative;
+    z-index: 1;
     display: grid;
     grid-template-columns: 1.15fr 0.85fr;
     gap: 48px;
     align-items: center;
+}
+
+/* 文字区自带底板，保证不管画面哪一部分露在后面都能读清 */
+.hero-text {
+    padding: 22px 26px;
+    background: linear-gradient(135deg, rgba(7, 7, 13, 0.88), rgba(7, 7, 13, 0.74) 65%, rgba(7, 7, 13, 0.56));
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
 }
 
 .hero-badge {
@@ -786,6 +804,7 @@ a {
 
     .hero-section {
         padding: 32px 20px 28px;
+        background-position: center, 62% 22%;
     }
 
     .hero-info {
