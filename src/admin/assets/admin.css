@@ -108,6 +108,10 @@
             color: #444;
         }
 
+        .sidebar-footer .btn + .btn {
+            margin-top: 8px;
+        }
+
         /* ===== 主内容区 ===== */
         .main-content {
             margin-left: 220px;
@@ -210,6 +214,20 @@
             margin-top: 14px;
             font-size: 0.85rem;
             display: none;
+        }
+
+        .login-panel .btn-back-to-site {
+            margin-top: 14px;
+            background: transparent;
+            color: var(--ink-muted);
+            border: 1px solid var(--line-strong);
+            font-weight: 400;
+        }
+
+        .login-panel .btn-back-to-site:hover {
+            color: var(--ink);
+            border-color: var(--cobalt);
+            opacity: 1;
         }
 
         /* ===== 通用组件 ===== */

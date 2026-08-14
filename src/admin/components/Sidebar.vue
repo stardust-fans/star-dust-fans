@@ -13,6 +13,9 @@
       </li>
     </ul>
     <div class="sidebar-footer">
+      <button class="btn btn-outline btn-sm" style="width:100%;" @click="backToSite">
+        <i class="fas fa-arrow-left"></i> 返回前台
+      </button>
       <button class="btn btn-outline btn-sm" style="width:100%;" @click="handleLogout">
         <i class="fas fa-sign-out-alt"></i> 退出登录
       </button>
@@ -31,6 +34,10 @@ defineEmits(['close-sidebar']);
 
 const { logout } = useAdminAuth();
 const { showToast } = useToast();
+
+function backToSite() {
+  window.location.href = '/';
+}
 
 const items = [
   { key: 'songs', label: '歌曲管理', icon: 'fa-music' },
