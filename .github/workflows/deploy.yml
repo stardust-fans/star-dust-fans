@@ -29,10 +29,15 @@ jobs:
         run: npm ci
 
       - name: Build
+        id: build
         run: npm run build
 
+      - name: Create test secrets
+        run: echo "TOKEN_SECRET=test-secret-ci" > .dev.vars
+
       - name: Test
-        run: npm test
+        id: test
+        run: npx vitest run --reporter=verbose --reporter=json --outputFile=test-results.json
 
       - name: Check D1 schema
         if: github.event_name == 'push'
@@ -56,7 +61,7 @@ jobs:
 
       - name: Get commit metadata
         id: commit-info
-        if: github.event_name == 'pull_request'
+        if: always() && github.event_name == 'pull_request'
         env:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
@@ -67,12 +72,106 @@ jobs:
           echo "COMMIT_MESSAGE=$(git log -1 --format='%s' "${HEAD_SHA}")" >> $GITHUB_ENV
 
       - name: Comment on PR
-        if: github.event_name == 'pull_request'
+        if: always() && github.event_name == 'pull_request'
         uses: actions/github-script@v7
+        env:
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          TEST_OUTCOME: ${{ steps.test.outcome }}
         with:
           script: |
+            const fs = require('fs');
+            const build = process.env.BUILD_OUTCOME;
+            const test  = process.env.TEST_OUTCOME;
+            const ok    = build === 'success' && test === 'success';
+
+            // Parse test results JSON
+            let testSummaryLine = '';
+            let testDetailsRows = '_测试结果文件不可用_';
+            try {
+              const data = JSON.parse(fs.readFileSync('test-results.json', 'utf8'));
+              const total  = data.numTotalTests  || 0;
+              const passed = data.numPassedTests || 0;
+              testSummaryLine = ` — ${passed}/${total} 通过`;
+              const rows = [];
+              for (const suite of (data.testResults || [])) {
+                for (const t of (suite.assertionResults || [])) {
+                  const i   = t.status === 'passed' ? '✅' : '❌';
+                  const name = [...(t.ancestorTitles || []), t.title].join(' › ');
+                  const dur  = t.duration != null ? `${t.duration}ms` : '—';
+                  rows.push(`| ${i} | ${name} | ${dur} |`);
+                }
+              }
+              testDetailsRows = rows.length ? rows.join('\n') : '_无测试数据_';
+            } catch (e) {}
+
+            // Detect sensitive file changes and build warnings
+            const warnings = [];
+            try {
+              const { data: files } = await github.rest.pulls.listFiles({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.issue.number,
+                per_page: 100,
+              });
+
+              // .github/ any change → @all org members
+              const ghChanged = files.filter(f => f.filename.startsWith('.github/')).length;
+              if (ghChanged > 0) {
+                let mentions = '';
+                try {
+                  const { data: members } = await github.rest.orgs.listMembers({ org: context.repo.owner });
+                  mentions = members.map(m => `@${m.login}`).join(' ');
+                } catch (e) {}
+                warnings.push(
+                  `> ⚠️ **此 PR 修改了 \`.github/\` (${ghChanged} 个文件)，请人工审查 CI/CD 变更**` +
+                  (mentions ? `\n> ${mentions}` : '')
+                );
+              }
+
+              // test/ modified or deleted → @historical contributors of those files
+              const testModified = files.filter(f =>
+                f.filename.startsWith('test/') &&
+                ['modified', 'removed', 'renamed', 'changed'].includes(f.status)
+              );
+              if (testModified.length > 0) {
+                const contributors = new Set();
+                for (const file of testModified) {
+                  try {
+                    const { data: commits } = await github.rest.repos.listCommits({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      path: file.filename,
+                      per_page: 100,
+                    });
+                    for (const c of commits) {
+                      if (c.author?.login) contributors.add(c.author.login);
+                    }
+                  } catch (e) {}
+                }
+                const fileNames = testModified.map(f => `\`${f.filename}\``).join(', ');
+                const mentions  = [...contributors].map(l => `@${l}`).join(' ');
+                warnings.push(
+                  `> ⚠️ **此 PR 修改/删除了测试文件：${fileNames}**` +
+                  (mentions ? `\n> ${mentions}` : '')
+                );
+              }
+            } catch (e) {}
+
+            const warningBlock = warnings.length ? '\n---\n' + warnings.join('\n\n') : '';
+
+            const stepRow = (name, outcome) => {
+              const i = outcome === 'success' ? '✅' : outcome === 'failure' ? '❌' : '⏭️';
+              return `| ${i} ${name} | \`${outcome}\` |`;
+            };
+
             const body = [
-              `✅ Build & tests passed`,
+              `<!-- stardust-ci -->`,
+              `${ok ? '✅' : '❌'} **CI ${ok ? 'passed' : 'failed'}**${testSummaryLine}`,
+              ``,
+              `| 步骤 | 结果 |`,
+              `| :--- | :--- |`,
+              stepRow('Build', build),
+              stepRow('Test',  test),
               ``,
               `| 项目 | 详情 |`,
               `| :--- | :--- |`,
@@ -81,15 +180,25 @@ jobs:
               `| 提交者 | ${process.env.COMMIT_AUTHOR} |`,
               `| 提交信息 | ${process.env.COMMIT_MESSAGE} |`,
               ``,
-              `> D1 migrations & Worker 部署将在合并到 main 后自动执行`,
+              `<details><summary>测试详情</summary>`,
+              ``,
+              `| | 测试 | 耗时 |`,
+              `| :--- | :--- | ---: |`,
+              testDetailsRows,
+              ``,
+              `</details>`,
+              warningBlock,
+              ``,
+              ok ? `> D1 migrations & Worker 部署将在合并到 main 后自动执行` : `> 请修复上述失败步骤后重新推送`,
             ].join('\n');
+
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
             });
             const existing = comments.find(c =>
-              c.user.login === 'github-actions[bot]' && c.body.includes('Build & tests passed')
+              c.user.login === 'github-actions[bot]' && c.body.includes('<!-- stardust-ci -->')
             );
             if (existing) {
               await github.rest.issues.updateComment({

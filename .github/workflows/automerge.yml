@@ -43,8 +43,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUM: ${{ steps.pr.outputs.number }}
           SHA: ${{ steps.pr.outputs.sha }}
+          REPO: ${{ github.repository }}
         run: |
-          pr=$(gh pr view "$PR_NUM" --json isDraft,title,labels,state)
+          pr=$(gh pr view "$PR_NUM" --repo "$REPO" --json isDraft,title,labels,state)
 
           [ "$(echo "$pr" | jq -r '.state')" = "OPEN" ]       || { echo "skip: not open"; exit 0; }
           [ "$(echo "$pr" | jq -r '.isDraft')" = "false" ]    || { echo "skip: draft PR"; exit 0; }
@@ -66,4 +67,4 @@ jobs:
           fi
 
           echo "Merging PR #$PR_NUM"
-          gh pr merge "$PR_NUM" --squash --delete-branch
+          gh pr merge "$PR_NUM" --repo "$REPO" --squash --delete-branch
