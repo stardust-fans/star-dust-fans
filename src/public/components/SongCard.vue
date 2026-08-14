@@ -22,8 +22,9 @@
         <span class="stat">{{ formatDuration(song.duration) }}</span>
         <span class="stat">{{ formatDate(song.pubdate) }}</span>
       </div>
-      <div v-if="song.is_masterpiece || song.is_national_team || song.is_gods_descend || (song.special_tags && song.special_tags.length)" class="tags">
+      <div v-if="song.is_masterpiece || song.is_legend || song.is_national_team || song.is_gods_descend || (song.special_tags && song.special_tags.length)" class="tags">
         <span v-if="song.is_masterpiece" class="tag masterpiece">殿堂曲</span>
+        <span v-if="song.is_legend" class="tag legend">传说曲</span>
         <span v-if="song.is_national_team" class="tag national">国家队</span>
         <span v-if="song.is_gods_descend" class="tag gods">众神下凡</span>
         <span

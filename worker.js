@@ -42,7 +42,7 @@ export default {
                     SELECT id, bvid, title, cover_base64, description, duration, pubdate,
                            owner_name, owner_mid, owner_face,
                            stat_view, stat_danmaku, stat_reply, stat_favorite, stat_coin, stat_share, stat_like,
-                           is_masterpiece, is_national_team, is_gods_descend,
+                           is_masterpiece, is_national_team, is_gods_descend, is_legend,
                            special_tags, collaboration_details, status
                     FROM songs
                     WHERE status = 'published'
@@ -74,6 +74,7 @@ export default {
                     is_masterpiece: row.is_masterpiece === 1,
                     is_national_team: row.is_national_team === 1,
                     is_gods_descend: row.is_gods_descend === 1,
+                    is_legend: row.is_legend === 1,
                     special_tags: row.special_tags ? JSON.parse(row.special_tags) : [],
                     collaboration_details: row.collaboration_details,
                     status: row.status,
@@ -287,7 +288,7 @@ export default {
             try {
                 const body = await request.json();
                 const { bvid, special_tags, collaboration_details, status, flag_reason,
-                        is_masterpiece, is_national_team, is_gods_descend,
+                        is_masterpiece, is_national_team, is_gods_descend, is_legend,
                         cover, title, description, duration, pubdate, owner, stats } = body;
 
                 if (!bvid || !/^BV[a-zA-Z0-9]{10}$/.test(bvid)) {
@@ -317,9 +318,9 @@ export default {
                         owner_name, owner_mid, owner_face,
                         stat_view, stat_danmaku, stat_reply, stat_favorite, stat_coin, stat_share, stat_like,
                         snapshot_synced_at,
-                        is_masterpiece, is_national_team, is_gods_descend,
+                        is_masterpiece, is_national_team, is_gods_descend, is_legend,
                         special_tags, collaboration_details, status, flag_reason
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?, ?)
                 `);
                 const result = await stmt.bind(
                     bvid,
@@ -341,6 +342,7 @@ export default {
                     is_masterpiece || 0,
                     is_national_team || 0,
                     is_gods_descend || 0,
+                    is_legend || 0,
                     special_tags ? JSON.stringify(special_tags) : null,
                     collaboration_details || null,
                     status || 'published',
@@ -373,7 +375,7 @@ export default {
                 const id = putMatch[1];
                 const body = await request.json();
                 const { special_tags, collaboration_details, status, flag_reason,
-                        is_masterpiece, is_national_team, is_gods_descend,
+                        is_masterpiece, is_national_team, is_gods_descend, is_legend,
                         cover, title, description, duration, pubdate, owner, stats } = body;
 
                 let coverBase64 = null;
@@ -406,6 +408,7 @@ export default {
                         is_masterpiece = ?,
                         is_national_team = ?,
                         is_gods_descend = ?,
+                        is_legend = ?,
                         special_tags = ?,
                         collaboration_details = ?,
                         status = ?,
@@ -433,6 +436,7 @@ export default {
                     is_masterpiece || 0,
                     is_national_team || 0,
                     is_gods_descend || 0,
+                    is_legend || 0,
                     special_tags ? JSON.stringify(special_tags) : null,
                     collaboration_details || null,
                     status || 'published',

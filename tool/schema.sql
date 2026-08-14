@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS songs (
     is_masterpiece BOOLEAN DEFAULT 0,
     is_national_team BOOLEAN DEFAULT 0,
     is_gods_descend BOOLEAN DEFAULT 0,
+    is_legend BOOLEAN DEFAULT 0,
     special_tags TEXT,
     collaboration_details TEXT,
     status VARCHAR(20) DEFAULT 'published',

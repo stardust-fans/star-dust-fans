@@ -10,3 +10,4 @@ data/*.db
 .cfld.json
 .DS_Store
 dist/
+tool/.bili_cli_config.json

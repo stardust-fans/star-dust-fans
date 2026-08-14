@@ -38,6 +38,11 @@
                   style="background:rgba(255,215,0,0.15);color:#ffd700;"
                 >🏆殿堂曲</span>
                 <span
+                  v-if="song.is_legend"
+                  class="tag-item"
+                  style="background:rgba(255,95,162,0.15);color:#ff5fa2;"
+                >🌟传说曲</span>
+                <span
                   v-if="song.is_national_team"
                   class="tag-item"
                   style="background:rgba(255,50,50,0.12);color:#ff6b6b;"

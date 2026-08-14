@@ -407,6 +407,10 @@ a {
     color: var(--gold);
 }
 
+.tag.legend {
+    color: #ff5fa2;
+}
+
 .tag.national {
     color: #ff8b7a;
 }

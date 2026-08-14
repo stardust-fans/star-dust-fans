@@ -1,0 +1,3 @@
+-- Migration number: 0003 	 2026-08-14T06:25:09.933Z
+
+ALTER TABLE songs ADD COLUMN is_legend BOOLEAN DEFAULT 0;
