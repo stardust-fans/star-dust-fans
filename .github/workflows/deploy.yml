@@ -46,7 +46,7 @@ jobs:
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          command: versions upload
+          command: versions upload worker.js
 
       - name: D1 restore point
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
