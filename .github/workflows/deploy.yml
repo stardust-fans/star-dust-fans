@@ -114,13 +114,20 @@ jobs:
                 per_page: 100,
               });
 
-              // .github/ any change → @all org members
+              // .github/ any change → @all repo contributors
               const ghChanged = files.filter(f => f.filename.startsWith('.github/')).length;
               if (ghChanged > 0) {
                 let mentions = '';
                 try {
-                  const { data: members } = await github.rest.orgs.listMembers({ org: context.repo.owner });
-                  mentions = members.map(m => `@${m.login}`).join(' ');
+                  const { data: contribs } = await github.rest.repos.listContributors({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    per_page: 100,
+                  });
+                  mentions = contribs
+                    .filter(c => c.type !== 'Bot')
+                    .map(c => `@${c.login}`)
+                    .join(' ');
                 } catch (e) {}
                 warnings.push(
                   `> ⚠️ **此 PR 修改了 \`.github/\` (${ghChanged} 个文件)，请人工审查 CI/CD 变更**` +
@@ -145,6 +152,8 @@ jobs:
                     });
                     for (const c of commits) {
                       if (c.author?.login) contributors.add(c.author.login);
+                      if (c.committer?.login && c.committer.login !== 'web-flow')
+                        contributors.add(c.committer.login);
                     }
                   } catch (e) {}
                 }
