@@ -10,6 +10,7 @@
       "binding": "DB",
       "database_name": "stardust-db",
       "database_id": "d44e7a61-0493-4b0e-be5f-08806e86ec9d",
+      "migrations_dir": "migrations",
     }
   ],
   "assets": {

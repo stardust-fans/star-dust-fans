@@ -1,5 +1,7 @@
 agents/
 node_modules/
+!test/
+!vitest.config.mjs
 .env
 .dev.vars
 .wrangler/

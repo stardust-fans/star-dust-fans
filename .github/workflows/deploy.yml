@@ -1,0 +1,110 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      - name: Check D1 schema
+        if: github.event_name == 'push'
+        run: bash tool/check_schema.sh
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      - name: Apply D1 migrations
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: npx wrangler d1 migrations apply stardust-db --remote
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Deploy Worker
+        id: deploy
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy
+
+      - name: Get commit metadata
+        id: commit-info
+        if: github.event_name == 'pull_request'
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          echo "COMMIT_SHA=${HEAD_SHA}" >> $GITHUB_ENV
+          echo "COMMIT_SHA_SHORT=${HEAD_SHA::7}" >> $GITHUB_ENV
+          echo "COMMIT_AUTHOR=$(git log -1 --format='%an <%ae>' "${HEAD_SHA}")" >> $GITHUB_ENV
+          echo "COMMIT_TIME=$(git log -1 --format='%aI' "${HEAD_SHA}")" >> $GITHUB_ENV
+          echo "COMMIT_MESSAGE=$(git log -1 --format='%s' "${HEAD_SHA}")" >> $GITHUB_ENV
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = [
+              `✅ Build & tests passed`,
+              ``,
+              `| 项目 | 详情 |`,
+              `| :--- | :--- |`,
+              `| Commit | [\`${process.env.COMMIT_SHA_SHORT}\`](https://github.com/${context.repo.owner}/${context.repo.repo}/commit/${process.env.COMMIT_SHA}) |`,
+              `| 提交时间 | ${process.env.COMMIT_TIME} |`,
+              `| 提交者 | ${process.env.COMMIT_AUTHOR} |`,
+              `| 提交信息 | ${process.env.COMMIT_MESSAGE} |`,
+              ``,
+              `> D1 migrations & Worker 部署将在合并到 main 后自动执行`,
+            ].join('\n');
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(c =>
+              c.user.login === 'github-actions[bot]' && c.body.includes('Build & tests passed')
+            );
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
