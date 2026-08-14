@@ -1,0 +1,69 @@
+name: Auto Merge
+
+on:
+  workflow_run:
+    workflows: [Deploy]
+    types: [completed]
+  pull_request:
+    types: [ready_for_review, unlabeled, edited]
+
+jobs:
+  auto-merge:
+    if: |
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'pull_request') ||
+      github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: write
+
+    steps:
+      - name: Resolve PR
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            num=$(gh api \
+              "repos/${{ github.repository }}/pulls?head=${{ github.repository_owner }}:${{ github.event.workflow_run.head_branch }}&base=main&state=open" \
+              --jq '.[0].number // empty')
+            sha="${{ github.event.workflow_run.head_sha }}"
+          else
+            num="${{ github.event.pull_request.number }}"
+            sha="${{ github.event.pull_request.head.sha }}"
+          fi
+          echo "number=$num" >> $GITHUB_OUTPUT
+          echo "sha=$sha" >> $GITHUB_OUTPUT
+
+      - name: Check conditions and merge
+        if: steps.pr.outputs.number != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUM: ${{ steps.pr.outputs.number }}
+          SHA: ${{ steps.pr.outputs.sha }}
+        run: |
+          pr=$(gh pr view "$PR_NUM" --json isDraft,title,labels,state)
+
+          [ "$(echo "$pr" | jq -r '.state')" = "OPEN" ]       || { echo "skip: not open"; exit 0; }
+          [ "$(echo "$pr" | jq -r '.isDraft')" = "false" ]    || { echo "skip: draft PR"; exit 0; }
+
+          title=$(echo "$pr" | jq -r '.title')
+          [[ "$title" != *"[DRAFT]"* ]] || { echo "skip: [DRAFT] in title"; exit 0; }
+
+          labels=$(echo "$pr" | jq -r '[.labels[].name] | join(",")')
+          [[ "$labels" != *"hold"* ]] || { echo "skip: hold label"; exit 0; }
+
+          # For pull_request events (draft→ready / label removed), re-verify checks
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            all_pass=$(gh api \
+              "repos/${{ github.repository }}/commits/$SHA/check-runs" \
+              --jq '[.check_runs[] | select(.conclusion != null)] |
+                    if length == 0 then false
+                    else all(.conclusion == "success" or .conclusion == "skipped") end')
+            [ "$all_pass" = "true" ] || { echo "skip: checks not all passed yet"; exit 0; }
+          fi
+
+          echo "Merging PR #$PR_NUM"
+          gh pr merge "$PR_NUM" --squash --delete-branch
