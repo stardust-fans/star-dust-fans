@@ -37,7 +37,7 @@ jobs:
 
       - name: Test
         id: test
-        run: npm test
+        run: npx vitest run --reporter=verbose --reporter=json --outputFile=test-results.json
 
       - name: Check D1 schema
         if: github.event_name == 'push'
@@ -79,19 +79,64 @@ jobs:
           TEST_OUTCOME: ${{ steps.test.outcome }}
         with:
           script: |
+            const fs = require('fs');
             const build = process.env.BUILD_OUTCOME;
             const test  = process.env.TEST_OUTCOME;
             const ok    = build === 'success' && test === 'success';
-            const icon  = ok ? '✅' : '❌';
+
+            // Parse test results JSON
+            let testSummaryLine = '';
+            let testDetailsRows = '_测试结果文件不可用_';
+            try {
+              const data = JSON.parse(fs.readFileSync('test-results.json', 'utf8'));
+              const total  = data.numTotalTests  || 0;
+              const passed = data.numPassedTests || 0;
+              testSummaryLine = ` — ${passed}/${total} 通过`;
+              const rows = [];
+              for (const suite of (data.testResults || [])) {
+                for (const t of (suite.assertionResults || [])) {
+                  const i   = t.status === 'passed' ? '✅' : '❌';
+                  const name = [...(t.ancestorTitles || []), t.title].join(' › ');
+                  const dur  = t.duration != null ? `${t.duration}ms` : '—';
+                  rows.push(`| ${i} | ${name} | ${dur} |`);
+                }
+              }
+              testDetailsRows = rows.length ? rows.join('\n') : '_无测试数据_';
+            } catch (e) {}
+
+            // Check .github/ changes and @mention org members
+            let warningBlock = '';
+            try {
+              const { data: files } = await github.rest.pulls.listFiles({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.issue.number,
+                per_page: 100,
+              });
+              const ghChanged = files.filter(f => f.filename.startsWith('.github/')).length;
+              if (ghChanged > 0) {
+                let mentions = '';
+                try {
+                  const { data: members } = await github.rest.orgs.listMembers({ org: context.repo.owner });
+                  mentions = members.map(m => `@${m.login}`).join(' ');
+                } catch (e) {}
+                warningBlock = [
+                  '',
+                  '---',
+                  `> ⚠️ **此 PR 修改了 \`.github/\` (${ghChanged} 个文件)，请人工审查 CI/CD 变更**`,
+                  mentions ? `> ${mentions}` : '',
+                ].filter(Boolean).join('\n');
+              }
+            } catch (e) {}
 
             const stepRow = (name, outcome) => {
-              const icon = outcome === 'success' ? '✅' : outcome === 'failure' ? '❌' : '⏭️';
-              return `| ${icon} ${name} | \`${outcome}\` |`;
+              const i = outcome === 'success' ? '✅' : outcome === 'failure' ? '❌' : '⏭️';
+              return `| ${i} ${name} | \`${outcome}\` |`;
             };
 
             const body = [
               `<!-- stardust-ci -->`,
-              `${icon} **CI ${ok ? 'passed' : 'failed'}**`,
+              `${ok ? '✅' : '❌'} **CI ${ok ? 'passed' : 'failed'}**${testSummaryLine}`,
               ``,
               `| 步骤 | 结果 |`,
               `| :--- | :--- |`,
@@ -104,6 +149,15 @@ jobs:
               `| 提交时间 | ${process.env.COMMIT_TIME} |`,
               `| 提交者 | ${process.env.COMMIT_AUTHOR} |`,
               `| 提交信息 | ${process.env.COMMIT_MESSAGE} |`,
+              ``,
+              `<details><summary>测试详情</summary>`,
+              ``,
+              `| | 测试 | 耗时 |`,
+              `| :--- | :--- | ---: |`,
+              testDetailsRows,
+              ``,
+              `</details>`,
+              warningBlock,
               ``,
               ok ? `> D1 migrations & Worker 部署将在合并到 main 后自动执行` : `> 请修复上述失败步骤后重新推送`,
             ].join('\n');
