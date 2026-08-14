@@ -37,7 +37,8 @@ jobs:
           echo "number=$num" >> $GITHUB_OUTPUT
           echo "sha=$sha" >> $GITHUB_OUTPUT
 
-      - name: Check conditions and merge
+      - name: Check merge conditions
+        id: check
         if: steps.pr.outputs.number != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -45,7 +46,7 @@ jobs:
           SHA: ${{ steps.pr.outputs.sha }}
           REPO: ${{ github.repository }}
         run: |
-          pr=$(gh pr view "$PR_NUM" --repo "$REPO" --json isDraft,title,labels,state)
+          pr=$(gh pr view "$PR_NUM" --repo "$REPO" --json isDraft,title,labels,state,mergeStateStatus)
 
           [ "$(echo "$pr" | jq -r '.state')" = "OPEN" ]       || { echo "skip: not open"; exit 0; }
           [ "$(echo "$pr" | jq -r '.isDraft')" = "false" ]    || { echo "skip: draft PR"; exit 0; }
@@ -55,6 +56,14 @@ jobs:
 
           labels=$(echo "$pr" | jq -r '[.labels[].name] | join(",")')
           [[ "$labels" != *"hold"* ]] || { echo "skip: hold label"; exit 0; }
+
+          # main 在此期间被别的 PR 合并推进了，此时部署/合并会用到过期的 base，
+          # 跳过等下一次该分支有更新（push）时的 workflow_run 重新触发
+          mergeState=$(echo "$pr" | jq -r '.mergeStateStatus')
+          if [ "$mergeState" = "BEHIND" ] || [ "$mergeState" = "DIRTY" ]; then
+            echo "skip: not up to date with base ($mergeState), will retry on next push"
+            exit 0
+          fi
 
           # For pull_request events (draft→ready / label removed), re-verify checks
           if [ "${{ github.event_name }}" = "pull_request" ]; then
@@ -66,5 +75,56 @@ jobs:
             [ "$all_pass" = "true" ] || { echo "skip: checks not all passed yet"; exit 0; }
           fi
 
+          echo "proceed=true" >> $GITHUB_OUTPUT
+
+      # GITHUB_TOKEN 触发的合并不会再触发 deploy.yml 的 on:push（GitHub 防递归限制），
+      # 所以生产部署放在合并前、用同一个已验证通过的 commit 在这里直接做，合并只在部署成功后才执行
+      - name: Checkout PR head
+        if: steps.check.outputs.proceed == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.pr.outputs.sha }}
+
+      - name: Setup Node.js
+        if: steps.check.outputs.proceed == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.check.outputs.proceed == 'true'
+        run: npm ci
+
+      - name: Build
+        if: steps.check.outputs.proceed == 'true'
+        run: npm run build
+
+      - name: D1 restore point
+        if: steps.check.outputs.proceed == 'true'
+        run: bash tool/d1_migrate.sh
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      - name: Apply D1 migrations
+        if: steps.check.outputs.proceed == 'true'
+        run: npx wrangler d1 migrations apply stardust-db --remote
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      - name: Deploy Worker
+        if: steps.check.outputs.proceed == 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          command: deploy
+
+      - name: Merge PR
+        if: steps.check.outputs.proceed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUM: ${{ steps.pr.outputs.number }}
+          REPO: ${{ github.repository }}
+        run: |
           echo "Merging PR #$PR_NUM"
           gh pr merge "$PR_NUM" --repo "$REPO" --squash --delete-branch
