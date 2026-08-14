@@ -243,4 +243,6 @@ jobs:
                 event: ok ? 'APPROVE' : 'REQUEST_CHANGES',
                 body: ok ? '✅ CI 全部通过' : '❌ 请修复失败步骤后重新推送',
               });
-            } catch (e) {}
+            } catch (e) {
+              core.warning(`createReview failed: ${e.status} ${e.message}`);
+            }
