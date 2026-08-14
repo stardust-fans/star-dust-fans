@@ -59,18 +59,6 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           command: deploy
 
-      - name: Get commit metadata
-        id: commit-info
-        if: always() && github.event_name == 'pull_request'
-        env:
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          echo "COMMIT_SHA=${HEAD_SHA}" >> $GITHUB_ENV
-          echo "COMMIT_SHA_SHORT=${HEAD_SHA::7}" >> $GITHUB_ENV
-          echo "COMMIT_AUTHOR=$(git log -1 --format='%an <%ae>' "${HEAD_SHA}")" >> $GITHUB_ENV
-          echo "COMMIT_TIME=$(git log -1 --format='%aI' "${HEAD_SHA}")" >> $GITHUB_ENV
-          echo "COMMIT_MESSAGE=$(git log -1 --format='%s' "${HEAD_SHA}")" >> $GITHUB_ENV
-
       - name: Comment on PR
         if: always() && github.event_name == 'pull_request'
         uses: actions/github-script@v7
@@ -83,6 +71,18 @@ jobs:
             const build = process.env.BUILD_OUTCOME;
             const test  = process.env.TEST_OUTCOME;
             const ok    = build === 'success' && test === 'success';
+
+            // Fetch commit metadata via API (git log unreliable in shallow PR checkouts)
+            const headSha = context.payload.pull_request.head.sha;
+            const { data: commitData } = await github.rest.repos.getCommit({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: headSha,
+            });
+            const shaShort     = headSha.slice(0, 7);
+            const commitAuthor = `${commitData.commit.author.name} <${commitData.commit.author.email}>`;
+            const commitTime   = commitData.commit.author.date;
+            const commitMsg    = commitData.commit.message.split('\n')[0];
 
             // Parse test results JSON
             let testSummaryLine = '';
@@ -175,10 +175,9 @@ jobs:
               ``,
               `| 项目 | 详情 |`,
               `| :--- | :--- |`,
-              `| Commit | [\`${process.env.COMMIT_SHA_SHORT}\`](https://github.com/${context.repo.owner}/${context.repo.repo}/commit/${process.env.COMMIT_SHA}) |`,
-              `| 提交时间 | ${process.env.COMMIT_TIME} |`,
-              `| 提交者 | ${process.env.COMMIT_AUTHOR} |`,
-              `| 提交信息 | ${process.env.COMMIT_MESSAGE} |`,
+              `| Commit | [\`${shaShort}\`](https://github.com/${context.repo.owner}/${context.repo.repo}/commit/${headSha}) |`,
+              `| 提交时间 | ${commitTime} |`,
+              `| 提交者 | ${commitAuthor} |`,
               ``,
               `<details><summary>测试详情</summary>`,
               ``,
@@ -224,3 +223,15 @@ jobs:
                 body,
               });
             }
+
+            // Submit bot review: APPROVE on pass, REQUEST_CHANGES on fail
+            try {
+              await github.rest.pulls.createReview({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.issue.number,
+                commit_id: headSha,
+                event: ok ? 'APPROVE' : 'REQUEST_CHANGES',
+                body: ok ? '✅ CI 全部通过' : '❌ 请修复失败步骤后重新推送',
+              });
+            } catch (e) {}
