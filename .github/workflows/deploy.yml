@@ -196,15 +196,24 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
+              per_page: 100,
             });
-            const existing = comments.find(c =>
-              c.user.login === 'github-actions[bot]' && c.body.includes('<!-- stardust-ci -->')
+            const matches = comments.filter(c =>
+              c.user.type === 'Bot' && c.body.includes('<!-- stardust-ci -->')
             );
-            if (existing) {
+            // delete stale duplicates, keep at most one
+            for (const stale of matches.slice(1)) {
+              await github.rest.issues.deleteComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: stale.id,
+              });
+            }
+            if (matches.length > 0) {
               await github.rest.issues.updateComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                comment_id: existing.id,
+                comment_id: matches[0].id,
                 body,
               });
             } else {
