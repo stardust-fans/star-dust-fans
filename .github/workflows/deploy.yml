@@ -104,8 +104,8 @@ jobs:
               testDetailsRows = rows.length ? rows.join('\n') : '_无测试数据_';
             } catch (e) {}
 
-            // Check .github/ changes and @mention org members
-            let warningBlock = '';
+            // Detect sensitive file changes and build warnings
+            const warnings = [];
             try {
               const { data: files } = await github.rest.pulls.listFiles({
                 owner: context.repo.owner,
@@ -113,6 +113,8 @@ jobs:
                 pull_number: context.issue.number,
                 per_page: 100,
               });
+
+              // .github/ any change → @all org members
               const ghChanged = files.filter(f => f.filename.startsWith('.github/')).length;
               if (ghChanged > 0) {
                 let mentions = '';
@@ -120,14 +122,42 @@ jobs:
                   const { data: members } = await github.rest.orgs.listMembers({ org: context.repo.owner });
                   mentions = members.map(m => `@${m.login}`).join(' ');
                 } catch (e) {}
-                warningBlock = [
-                  '',
-                  '---',
-                  `> ⚠️ **此 PR 修改了 \`.github/\` (${ghChanged} 个文件)，请人工审查 CI/CD 变更**`,
-                  mentions ? `> ${mentions}` : '',
-                ].filter(Boolean).join('\n');
+                warnings.push(
+                  `> ⚠️ **此 PR 修改了 \`.github/\` (${ghChanged} 个文件)，请人工审查 CI/CD 变更**` +
+                  (mentions ? `\n> ${mentions}` : '')
+                );
+              }
+
+              // test/ modified or deleted → @historical contributors of those files
+              const testModified = files.filter(f =>
+                f.filename.startsWith('test/') &&
+                ['modified', 'removed', 'renamed', 'changed'].includes(f.status)
+              );
+              if (testModified.length > 0) {
+                const contributors = new Set();
+                for (const file of testModified) {
+                  try {
+                    const { data: commits } = await github.rest.repos.listCommits({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      path: file.filename,
+                      per_page: 100,
+                    });
+                    for (const c of commits) {
+                      if (c.author?.login) contributors.add(c.author.login);
+                    }
+                  } catch (e) {}
+                }
+                const fileNames = testModified.map(f => `\`${f.filename}\``).join(', ');
+                const mentions  = [...contributors].map(l => `@${l}`).join(' ');
+                warnings.push(
+                  `> ⚠️ **此 PR 修改/删除了测试文件：${fileNames}**` +
+                  (mentions ? `\n> ${mentions}` : '')
+                );
               }
             } catch (e) {}
+
+            const warningBlock = warnings.length ? '\n---\n' + warnings.join('\n\n') : '';
 
             const stepRow = (name, outcome) => {
               const i = outcome === 'success' ? '✅' : outcome === 'failure' ? '❌' : '⏭️';
