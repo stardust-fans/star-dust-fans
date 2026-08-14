@@ -311,8 +311,9 @@ a {
 }
 
 .song-card:hover {
-    border-color: var(--line-strong);
+    border-color: var(--cobalt-soft);
     transform: translateY(-3px);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
 }
 
 .song-card .cover-wrapper {
@@ -336,10 +337,10 @@ a {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-family: var(--font-mono);
-    font-size: 0.72rem;
-    letter-spacing: 0.1em;
+    font-family: var(--font-display);
+    font-size: 1.6rem;
     color: var(--ink-faint);
+    opacity: 0.5;
 }
 
 .song-card .info {

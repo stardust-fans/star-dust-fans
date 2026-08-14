@@ -10,7 +10,7 @@
         referrerpolicy="no-referrer"
         @error="coverError = true"
       />
-      <div v-else class="cover-placeholder">无封面</div>
+      <div v-else class="cover-placeholder">✦</div>
     </div>
     <div class="info">
       <h3>

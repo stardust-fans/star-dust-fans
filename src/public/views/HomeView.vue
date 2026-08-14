@@ -12,7 +12,7 @@
         <div class="hero-info">
           <span><span class="label">生日</span>08.12 · 狮子座</span>
           <span><span class="label">体型</span>160cm · 16岁</span>
-          <span><span class="label">代表色</span>#9999FF / #FFFF00</span>
+          <span><span class="label">代表色</span>钴蓝 / 金黄</span>
         </div>
       </div>
       <div class="hero-visual">
@@ -60,7 +60,7 @@
       <div class="about-card">
         <span class="index">01 · 声库</span>
         <h3>声源与发行</h3>
-        <p>北京福托科技开发 · VOCALOID 中文声库<br />声源：茶理理 · 2016年2月20日发售</p>
+        <p>北京福托科技 · 2016.02.20 发售<br />声源：茶理理</p>
       </div>
       <div class="about-card">
         <span class="index">02 · 生日</span>
