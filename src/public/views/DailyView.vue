@@ -2,12 +2,12 @@
   <div class="page-header">
     <span class="eyebrow page-eyebrow">04 · Archive</span>
     <h1 class="page-title">吸尘器日报</h1>
-    <p class="page-subtitle"><template v-if="items.length">星尘的最新动态 · 共 {{ items.length }} 条</template><template v-else>今日份的星尘资讯</template></p>
+    <p class="page-subtitle"><template v-if="items.length">星尘的最新动态 · 共 {{ items.length }} 条</template><template v-else>有消息会在这里更新</template></p>
   </div>
   <div v-if="items.length > 0" class="daily-list">
     <DailyCard v-for="item in items" :key="item.id" :item="item" />
   </div>
-  <EmptyState v-else message="暂无日报，敬请期待~" />
+  <EmptyState v-else message="还没有更新，等等看~" />
 </template>
 
 <script setup>

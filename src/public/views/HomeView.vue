@@ -7,16 +7,12 @@
         <p class="hero-subtitle">众星因你，皆降为尘</p>
         <p class="hero-desc">
           诞生于宇宙高次位面「以太之海」，<br />
-          用歌声连接星辰与大地。
+          发丝蓄满以太的蓝，每首歌里都带着点来处的遥远。
         </p>
         <div class="hero-info">
           <span><span class="label">生日</span>08.12 · 狮子座</span>
           <span><span class="label">体征</span>160cm · 16岁</span>
           <span><span class="label">代表色</span>#9999FF / #FFFF00</span>
-        </div>
-        <div class="hero-actions">
-          <a href="#songs" class="btn-hero-primary">听歌</a>
-          <a href="#about" class="btn-hero-secondary">了解更多</a>
         </div>
       </div>
       <div class="hero-visual">
@@ -41,7 +37,7 @@
     <div class="section-header">
       <span class="eyebrow">Discography</span>
       <h2 class="section-title">最新歌曲</h2>
-      <p class="section-subtitle">收录 {{ songs.length }} 首星尘的歌声</p>
+      <p class="section-subtitle">{{ songs.length }} 首，都在这儿了</p>
     </div>
     <template v-if="featuredSongs.length > 0">
       <div class="card-grid">
@@ -51,14 +47,14 @@
         <RouterLink to="/videos" class="btn-hero-secondary">查看全部 {{ songs.length }} 首 →</RouterLink>
       </div>
     </template>
-    <EmptyState v-else message="暂无歌曲数据，请稍后再来~" />
+    <EmptyState v-else message="还没有收录歌曲，过会儿再来" />
   </section>
 
   <section class="section" id="about">
     <div class="section-header">
       <span class="eyebrow">Profile</span>
       <h2 class="section-title">关于星尘</h2>
-      <p class="section-subtitle">VOCALOID 中文虚拟歌姬 · 用爱发电</p>
+      <p class="section-subtitle">中文 VOCALOID · 关于她</p>
     </div>
     <div class="about-grid">
       <div class="about-card">

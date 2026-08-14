@@ -797,9 +797,7 @@ a {
     }
 
     .hero-visual {
-        order: -1;
-        max-width: 200px;
-        margin: 0 auto 8px;
+        display: none;
     }
 
     .hero-section {

@@ -7,7 +7,7 @@
   <div v-if="items.length > 0" class="card-grid">
     <ShopCard v-for="item in items" :key="item.id" :item="item" />
   </div>
-  <EmptyState v-else message="暂无商品，敬请期待~" />
+  <EmptyState v-else message="暂时没有量贩，等通知吧~" />
 </template>
 
 <script setup>
