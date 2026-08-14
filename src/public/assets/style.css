@@ -613,7 +613,7 @@ a {
     display: grid;
     grid-template-columns: repeat(3, auto);
     gap: 0;
-    margin-bottom: 28px;
+    margin-bottom: 0;
     border: 1px solid var(--line);
     border-radius: var(--radius);
     max-width: 460px;

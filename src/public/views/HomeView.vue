@@ -11,7 +11,7 @@
         </p>
         <div class="hero-info">
           <span><span class="label">生日</span>08.12 · 狮子座</span>
-          <span><span class="label">体征</span>160cm · 16岁</span>
+          <span><span class="label">体型</span>160cm · 16岁</span>
           <span><span class="label">代表色</span>#9999FF / #FFFF00</span>
         </div>
       </div>
@@ -54,7 +54,7 @@
     <div class="section-header">
       <span class="eyebrow">Profile</span>
       <h2 class="section-title">关于星尘</h2>
-      <p class="section-subtitle">中文 VOCALOID · 关于她</p>
+      <p class="section-subtitle">设定档案 · 声库资讯</p>
     </div>
     <div class="about-grid">
       <div class="about-card">
@@ -64,7 +64,7 @@
       </div>
       <div class="about-card">
         <span class="index">02 · 生日</span>
-        <h3>基础信息</h3>
+        <h3>生日与星座</h3>
         <p>8月12日 · 狮子座<br />16岁 · 身高 160cm</p>
       </div>
       <div class="about-card">
