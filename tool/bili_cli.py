@@ -19,11 +19,12 @@
 已存在的 bvid（含隐藏/标记状态）自动跳过，不会重复添加或报错中断。
 
 可调参数：
-    --limit      最多爬取多少个候选视频（默认 30）
-    --delay      请求间隔（秒），调大可避免被 B 站风控（默认 0.34）
-    --max-retries 单个视频请求失败时的最大重试次数（默认 3）
-    --batch      每批提交的歌曲数量（默认 30）
-    --yes        跳过确认提示，直接提交
+    --limit         最多爬取多少个候选视频（默认 30）
+    --delay         请求间隔（秒），调大可避免被 B 站风控（默认 0.34）
+    --max-retries   单个视频请求失败时的最大重试次数（默认 3）
+    --cover-retries 封面抓取失败时的最大重试次数（默认 3）
+    --batch         每批提交的歌曲数量（默认 30）
+    --yes           跳过确认提示，直接提交
 """
 import argparse
 import getpass
@@ -308,18 +309,49 @@ def discover_by_favlist(media_id, limit, delay=0.34):
     return bvids[:limit]
 
 
-def fetch_cover_webp_base64(cover_url, max_width=480, quality=82, delay=0.34):
-    time.sleep(delay)
-    r = requests.get(cover_url, headers={"User-Agent": UA}, timeout=15)
-    r.raise_for_status()
-    img = Image.open(io.BytesIO(r.content)).convert("RGB")
-    if img.width > max_width:
-        ratio = max_width / img.width
-        img = img.resize((max_width, round(img.height * ratio)))
-    buf = io.BytesIO()
-    img.save(buf, format="WEBP", quality=quality)
-    import base64
-    return base64.b64encode(buf.getvalue()).decode("ascii")
+def fetch_cover_webp_base64(cover_url, max_width=480, quality=82, delay=0.34, max_retries=3):
+    """
+    下载封面图并转成 webp base64。
+    支持自动重试：请求失败时等待递增时间后重试，最多重试 max_retries 次。
+    """
+    last_exception = None
+
+    for attempt in range(max_retries):
+        try:
+            time.sleep(delay)
+            r = requests.get(cover_url, headers={"User-Agent": UA}, timeout=15)
+            r.raise_for_status()
+            img = Image.open(io.BytesIO(r.content)).convert("RGB")
+            if img.width > max_width:
+                ratio = max_width / img.width
+                img = img.resize((max_width, round(img.height * ratio)))
+            buf = io.BytesIO()
+            img.save(buf, format="WEBP", quality=quality)
+            import base64
+            return base64.b64encode(buf.getvalue()).decode("ascii")
+
+        except (requests.exceptions.ConnectionError,
+                requests.exceptions.Timeout,
+                requests.exceptions.RequestException) as e:
+            last_exception = e
+            if attempt < max_retries - 1:
+                wait_time = (attempt + 1) * 2
+                print(f"  ⚠️ 封面抓取第{attempt+1}次失败，等待{wait_time}秒后重试... ({e})")
+                time.sleep(wait_time)
+            else:
+                print(f"  ❌ 封面抓取重试{max_retries}次后仍失败: {e}")
+                raise
+
+        except Exception as e:
+            last_exception = e
+            if attempt < max_retries - 1:
+                wait_time = (attempt + 1) * 2
+                print(f"  ⚠️ 封面抓取第{attempt+1}次异常，等待{wait_time}秒后重试... ({e})")
+                time.sleep(wait_time)
+            else:
+                raise
+
+    raise RuntimeError(f"封面抓取所有重试均失败") from last_exception
 
 
 def compute_tiers(view_count):
@@ -364,7 +396,7 @@ class SiteClient:
         return r.status_code, r.json()
 
 
-def build_add_payload(detail, with_cover=True, delay=0.34):
+def build_add_payload(detail, with_cover=True, delay=0.34, cover_retries=3):
     tiers = compute_tiers(detail["stats"]["view"])
     payload = {
         "bvid": detail["bvid"],
@@ -384,7 +416,11 @@ def build_add_payload(detail, with_cover=True, delay=0.34):
     }
     if with_cover and detail.get("cover_url"):
         try:
-            payload["cover"] = fetch_cover_webp_base64(detail["cover_url"], delay=delay)
+            payload["cover"] = fetch_cover_webp_base64(
+                detail["cover_url"],
+                delay=delay,
+                max_retries=cover_retries
+            )
         except Exception as e:
             print(f"  ⚠️ 封面抓取失败（{e}），将不带封面提交", file=sys.stderr)
     return payload
@@ -397,7 +433,7 @@ def cmd_add(args):
     client = SiteClient(config["site_url"], config["username"], config["password"])
     client.login()
     print(f"✅ 已登录 {config['site_url']}（{config['username']}）")
-    print(f"⚙️  请求间隔: {args.delay}s，最大重试: {args.max_retries} 次，每批提交: {args.batch} 首，最多爬取: {args.limit} 个")
+    print(f"⚙️  请求间隔: {args.delay}s，最大重试: {args.max_retries} 次，封面重试: {args.cover_retries} 次，每批提交: {args.batch} 首，最多爬取: {args.limit} 个")
 
     if args.bvid:
         bvids = args.bvid
@@ -445,7 +481,7 @@ def cmd_add(args):
             print(f"[{i}/{len(batch)}] {bvid} ...", end=" ", flush=True)
             try:
                 detail = fetch_video_detail(bvid, max_retries=args.max_retries, delay=args.delay)
-                payload = build_add_payload(detail, delay=args.delay)
+                payload = build_add_payload(detail, delay=args.delay, cover_retries=args.cover_retries)
                 status, resp = client.create_song(payload)
                 if status == 409:
                     print("已存在，跳过")
@@ -475,7 +511,7 @@ def cmd_update(args):
     client = SiteClient(config["site_url"], config["username"], config["password"])
     client.login()
     print(f"✅ 已登录 {config['site_url']}（{config['username']}）")
-    print(f"⚙️  请求间隔: {args.delay}s，最大重试: {args.max_retries} 次")
+    print(f"⚙️  请求间隔: {args.delay}s，最大重试: {args.max_retries} 次，封面重试: {args.cover_retries} 次")
 
     songs = client.list_songs()
     if args.bvid:
@@ -514,7 +550,11 @@ def cmd_update(args):
             }
             if not args.no_cover:
                 try:
-                    payload["cover"] = fetch_cover_webp_base64(detail["cover_url"], delay=args.delay)
+                    payload["cover"] = fetch_cover_webp_base64(
+                        detail["cover_url"],
+                        delay=args.delay,
+                        max_retries=args.cover_retries
+                    )
                 except Exception as e:
                     print(f"(封面刷新失败: {e}) ", end="", flush=True)
             status, resp = client.update_song(song["id"], payload)
@@ -551,6 +591,7 @@ def main():
     p_add.add_argument("--limit", type=int, default=30, help="最多爬取多少个候选视频（默认 30）")
     p_add.add_argument("--delay", type=float, default=0.34, help="请求间隔（秒），调大可避免被 B 站风控（默认 0.34）")
     p_add.add_argument("--max-retries", type=int, default=3, help="单个视频请求失败时的最大重试次数（默认 3）")
+    p_add.add_argument("--cover-retries", type=int, default=3, help="封面抓取失败时的最大重试次数（默认 3）")
     p_add.add_argument("--batch", type=int, default=30, help="每批提交的歌曲数量（默认 30）")
     p_add.add_argument("--yes", action="store_true", help="跳过确认提示，直接提交")
     p_add.set_defaults(func=cmd_add)
@@ -559,6 +600,7 @@ def main():
     p_update.add_argument("--bvid", nargs="+", metavar="BV...", help="只刷新指定 bvid")
     p_update.add_argument("--delay", type=float, default=0.34, help="请求间隔（秒），调大可避免被 B 站风控（默认 0.34）")
     p_update.add_argument("--max-retries", type=int, default=3, help="单个视频请求失败时的最大重试次数（默认 3）")
+    p_update.add_argument("--cover-retries", type=int, default=3, help="封面抓取失败时的最大重试次数（默认 3）")
     p_update.add_argument("--no-cover", action="store_true", help="不重新抓取封面，只更新数字")
     p_update.set_defaults(func=cmd_update)
 
