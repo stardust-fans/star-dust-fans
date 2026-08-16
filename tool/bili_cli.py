@@ -17,6 +17,13 @@
     python3 tool/bili_cli.py update --bvid BV1xxx             # 只刷新指定歌曲
 
 已存在的 bvid（含隐藏/标记状态）自动跳过，不会重复添加或报错中断。
+
+可调参数：
+    --limit      最多爬取多少个候选视频（默认 30）
+    --delay      请求间隔（秒），调大可避免被 B 站风控（默认 0.34）
+    --max-retries 单个视频请求失败时的最大重试次数（默认 3）
+    --batch      每批提交的歌曲数量（默认 30）
+    --yes        跳过确认提示，直接提交
 """
 import argparse
 import getpass
@@ -44,7 +51,6 @@ CONFIG_PATH = ROOT / "tool" / ".bili_cli_config.json"
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/126.0 Safari/537.36")
 BILI_HEADERS = {"User-Agent": UA, "Referer": "https://www.bilibili.com/"}
-REQUEST_DELAY = 0.34  # 与 tool/bili_analyze.py、10lightyears/scripts/fetch_bilibili_meta.py 一致的限速节奏
 
 # 与 src/shared/constants.js 保持一致，改动需同步改那边
 MASTERPIECE_VIEW_THRESHOLD = 100_000
@@ -56,10 +62,6 @@ MIXIN_KEY_ENC_TAB = [
     26, 17, 0, 1, 60, 51, 30, 4, 22, 25, 54, 21, 56, 59, 6, 63, 57, 62, 11, 36,
     20, 34, 44, 52,
 ]
-
-
-def sleep_politely():
-    time.sleep(REQUEST_DELAY)
 
 
 # ===== 配置 =====
@@ -135,43 +137,85 @@ def safe_bili_json(response, context):
 
 # ===== B 站数据源 =====
 
-def fetch_video_detail(bvid):
-    """单视频完整信息，字段与 tool/bili_analyze.py 一致。"""
+def fetch_video_detail(bvid, max_retries=3, delay=0.34):
+    """
+    单视频完整信息，字段与 tool/bili_analyze.py 一致。
+    支持自动重试：请求失败时等待递增时间后重试，最多重试 max_retries 次。
+    重试全部失败后抛出异常。
+    """
     url = f"https://api.bilibili.com/x/web-interface/view?bvid={bvid}"
-    r = requests.get(url, headers=BILI_HEADERS, timeout=15)
-    data = safe_bili_json(r, bvid)
-    if data.get("code") != 0:
-        raise RuntimeError(f"{bvid}: {data.get('message', '未知错误')}")
-    d = data["data"]
-    owner = d.get("owner") or {}
-    stat = d.get("stat") or {}
-    return {
-        "bvid": d.get("bvid"),
-        "title": d.get("title") or "",
-        "description": d.get("desc") or "",
-        "cover_url": (d.get("pic") or "").replace("http://", "https://"),
-        "duration": d.get("duration") or 0,
-        "pubdate": d.get("pubdate") or 0,
-        "owner_name": owner.get("name") or "",
-        "owner_mid": owner.get("mid"),
-        "stats": {
-            "view": stat.get("view", 0),
-            "like": stat.get("like", 0),
-            "coin": stat.get("coin", 0),
-            "favorite": stat.get("favorite", 0),
-            "reply": stat.get("reply", 0),
-            "danmaku": stat.get("danmaku", 0),
-            "share": stat.get("share", 0),
-        },
-    }
+    last_exception = None
+
+    for attempt in range(max_retries):
+        try:
+            time.sleep(delay)
+            r = requests.get(url, headers=BILI_HEADERS, timeout=15)
+            data = safe_bili_json(r, bvid)
+            if data.get("code") != 0:
+                raise RuntimeError(f"{bvid}: {data.get('message', '未知错误')}")
+
+            d = data["data"]
+            owner = d.get("owner") or {}
+            stat = d.get("stat") or {}
+            return {
+                "bvid": d.get("bvid"),
+                "title": d.get("title") or "",
+                "description": d.get("desc") or "",
+                "cover_url": (d.get("pic") or "").replace("http://", "https://"),
+                "duration": d.get("duration") or 0,
+                "pubdate": d.get("pubdate") or 0,
+                "owner_name": owner.get("name") or "",
+                "owner_mid": owner.get("mid"),
+                "stats": {
+                    "view": stat.get("view", 0),
+                    "like": stat.get("like", 0),
+                    "coin": stat.get("coin", 0),
+                    "favorite": stat.get("favorite", 0),
+                    "reply": stat.get("reply", 0),
+                    "danmaku": stat.get("danmaku", 0),
+                    "share": stat.get("share", 0),
+                },
+            }
+
+        except (requests.exceptions.ConnectionError,
+                requests.exceptions.Timeout,
+                requests.exceptions.RequestException) as e:
+            last_exception = e
+            if attempt < max_retries - 1:
+                wait_time = (attempt + 1) * 2
+                print(f"  ⚠️ 第{attempt+1}次请求失败，等待{wait_time}秒后重试... ({e})")
+                time.sleep(wait_time)
+            else:
+                print(f"  ❌ 重试{max_retries}次后仍失败: {e}")
+                raise RuntimeError(f"{bvid}: 重试{max_retries}次后仍无法获取信息") from e
+
+        except BiliRiskControl as e:
+            last_exception = e
+            if attempt < max_retries - 1:
+                wait_time = (attempt + 1) * 3
+                print(f"  ⚠️ 触发风控，等待{wait_time}秒后重试... ({e})")
+                time.sleep(wait_time)
+            else:
+                raise RuntimeError(f"{bvid}: 触发风控，重试{max_retries}次后仍被拒绝") from e
+
+        except Exception as e:
+            last_exception = e
+            if attempt < max_retries - 1:
+                wait_time = (attempt + 1) * 2
+                print(f"  ⚠️ 第{attempt+1}次请求异常，等待{wait_time}秒后重试... ({e})")
+                time.sleep(wait_time)
+            else:
+                raise
+
+    raise RuntimeError(f"{bvid}: 所有重试均失败") from last_exception
 
 
-def discover_by_search(keyword, limit):
+def discover_by_search(keyword, limit, delay=0.34):
     img_key, sub_key = get_wbi_keys()
     bvids = []
     page = 1
     while len(bvids) < limit:
-        sleep_politely()
+        time.sleep(delay)
         params = wbi_sign({"search_type": "video", "keyword": keyword, "page": page}, img_key, sub_key)
         r = requests.get("https://api.bilibili.com/x/web-interface/wbi/search/type",
                           params=params, headers=BILI_HEADERS, timeout=15)
@@ -193,18 +237,18 @@ def discover_by_search(keyword, limit):
             if len(bvids) >= limit:
                 break
         page += 1
-        if page > 20:  # 硬上限，避免关键词太宽泛时无限翻页
+        if page > 20:
             break
     return bvids[:limit]
 
 
-def discover_by_uid(mid, limit):
+def discover_by_uid(mid, limit, delay=0.34):
     img_key, sub_key = get_wbi_keys()
     bvids = []
     page = 1
     ps = 30
     while len(bvids) < limit:
-        sleep_politely()
+        time.sleep(delay)
         params = wbi_sign({"mid": mid, "ps": ps, "pn": page, "order": "pubdate"}, img_key, sub_key)
         r = requests.get("https://api.bilibili.com/x/space/wbi/arc/search",
                           params=params, headers=BILI_HEADERS, timeout=15)
@@ -231,12 +275,12 @@ def discover_by_uid(mid, limit):
     return bvids[:limit]
 
 
-def discover_by_favlist(media_id, limit):
+def discover_by_favlist(media_id, limit, delay=0.34):
     bvids = []
     page = 1
     ps = 20
     while len(bvids) < limit:
-        sleep_politely()
+        time.sleep(delay)
         params = {"media_id": media_id, "pn": page, "ps": ps, "platform": "web"}
         r = requests.get("https://api.bilibili.com/x/v3/fav/resource/list",
                           params=params, headers=BILI_HEADERS, timeout=15)
@@ -264,8 +308,8 @@ def discover_by_favlist(media_id, limit):
     return bvids[:limit]
 
 
-def fetch_cover_webp_base64(cover_url, max_width=480, quality=82):
-    sleep_politely()
+def fetch_cover_webp_base64(cover_url, max_width=480, quality=82, delay=0.34):
+    time.sleep(delay)
     r = requests.get(cover_url, headers={"User-Agent": UA}, timeout=15)
     r.raise_for_status()
     img = Image.open(io.BytesIO(r.content)).convert("RGB")
@@ -320,7 +364,7 @@ class SiteClient:
         return r.status_code, r.json()
 
 
-def build_add_payload(detail, with_cover=True):
+def build_add_payload(detail, with_cover=True, delay=0.34):
     tiers = compute_tiers(detail["stats"]["view"])
     payload = {
         "bvid": detail["bvid"],
@@ -340,7 +384,7 @@ def build_add_payload(detail, with_cover=True):
     }
     if with_cover and detail.get("cover_url"):
         try:
-            payload["cover"] = fetch_cover_webp_base64(detail["cover_url"])
+            payload["cover"] = fetch_cover_webp_base64(detail["cover_url"], delay=delay)
         except Exception as e:
             print(f"  ⚠️ 封面抓取失败（{e}），将不带封面提交", file=sys.stderr)
     return payload
@@ -353,23 +397,24 @@ def cmd_add(args):
     client = SiteClient(config["site_url"], config["username"], config["password"])
     client.login()
     print(f"✅ 已登录 {config['site_url']}（{config['username']}）")
+    print(f"⚙️  请求间隔: {args.delay}s，最大重试: {args.max_retries} 次，每批提交: {args.batch} 首，最多爬取: {args.limit} 个")
 
     if args.bvid:
         bvids = args.bvid
     elif args.search:
         print(f"🔍 搜索「{args.search}」...")
-        bvids = discover_by_search(args.search, args.limit)
+        bvids = discover_by_search(args.search, args.limit, delay=args.delay)
     elif args.uid:
         print(f"🔍 拉取 UID {args.uid} 的投稿列表...")
-        bvids = discover_by_uid(args.uid, args.limit)
+        bvids = discover_by_uid(args.uid, args.limit, delay=args.delay)
     elif args.favlist:
         print(f"🔍 拉取收藏夹 {args.favlist}...")
-        bvids = discover_by_favlist(args.favlist, args.limit)
+        bvids = discover_by_favlist(args.favlist, args.limit, delay=args.delay)
     else:
         print("❌ 需要指定 --bvid / --search / --uid / --favlist 之一", file=sys.stderr)
         sys.exit(1)
 
-    bvids = list(dict.fromkeys(bvids))  # 保序去重
+    bvids = list(dict.fromkeys(bvids))
     if not bvids:
         print("没有找到任何视频")
         return
@@ -391,24 +436,36 @@ def cmd_add(args):
             return
 
     added = failed = 0
-    for i, bvid in enumerate(todo, 1):
-        print(f"[{i}/{len(todo)}] {bvid} ...", end=" ", flush=True)
-        try:
-            sleep_politely()
-            detail = fetch_video_detail(bvid)
-            payload = build_add_payload(detail)
-            status, resp = client.create_song(payload)
-            if status == 409:
-                print("已存在，跳过")
-            elif 200 <= status < 300:
-                print(f"✅ {detail['title'][:30]}")
-                added += 1
-            else:
-                print(f"❌ {resp.get('error', status)}")
+
+    for batch_start in range(0, len(todo), args.batch):
+        batch = todo[batch_start:batch_start + args.batch]
+        print(f"\n📦 第 {batch_start//args.batch + 1} 批 ({len(batch)} 首)")
+
+        for i, bvid in enumerate(batch, 1):
+            print(f"[{i}/{len(batch)}] {bvid} ...", end=" ", flush=True)
+            try:
+                detail = fetch_video_detail(bvid, max_retries=args.max_retries, delay=args.delay)
+                payload = build_add_payload(detail, delay=args.delay)
+                status, resp = client.create_song(payload)
+                if status == 409:
+                    print("已存在，跳过")
+                elif 200 <= status < 300:
+                    print(f"✅ {detail['title'][:30]}")
+                    added += 1
+                else:
+                    print(f"❌ {resp.get('error', status)}")
+                    failed += 1
+            except RuntimeError as e:
+                print(f"❌ 重试失败，跳过该视频: {e}")
                 failed += 1
-        except Exception as e:
-            print(f"❌ {e}")
-            failed += 1
+            except Exception as e:
+                print(f"❌ 未知错误: {e}")
+                failed += 1
+
+        # 每批结束后休息 3 秒
+        if batch_start + args.batch < len(todo):
+            print(f"⏳ 休息 3 秒后继续下一批...")
+            time.sleep(3)
 
     print(f"\n完成：新增 {added}，失败 {failed}，跳过 {skipped_existing}")
 
@@ -418,6 +475,7 @@ def cmd_update(args):
     client = SiteClient(config["site_url"], config["username"], config["password"])
     client.login()
     print(f"✅ 已登录 {config['site_url']}（{config['username']}）")
+    print(f"⚙️  请求间隔: {args.delay}s，最大重试: {args.max_retries} 次")
 
     songs = client.list_songs()
     if args.bvid:
@@ -437,8 +495,7 @@ def cmd_update(args):
         bvid = song["bvid"]
         print(f"[{i}/{len(songs)}] {bvid} ...", end=" ", flush=True)
         try:
-            sleep_politely()
-            detail = fetch_video_detail(bvid)
+            detail = fetch_video_detail(bvid, max_retries=args.max_retries, delay=args.delay)
             tiers = compute_tiers(detail["stats"]["view"])
             payload = {
                 "title": strip_html(detail["title"]),
@@ -457,7 +514,7 @@ def cmd_update(args):
             }
             if not args.no_cover:
                 try:
-                    payload["cover"] = fetch_cover_webp_base64(detail["cover_url"])
+                    payload["cover"] = fetch_cover_webp_base64(detail["cover_url"], delay=args.delay)
                 except Exception as e:
                     print(f"(封面刷新失败: {e}) ", end="", flush=True)
             status, resp = client.update_song(song["id"], payload)
@@ -469,8 +526,11 @@ def cmd_update(args):
             else:
                 print(f"❌ {resp.get('error', status)}")
                 failed += 1
+        except RuntimeError as e:
+            print(f"❌ 重试失败，跳过该视频: {e}")
+            failed += 1
         except Exception as e:
-            print(f"❌ {e}")
+            print(f"❌ 未知错误: {e}")
             failed += 1
 
     print(f"\n完成：更新 {updated}，失败 {failed}")
@@ -488,12 +548,17 @@ def main():
     src.add_argument("--search", metavar="关键词", help="按关键词搜索添加")
     src.add_argument("--uid", type=int, metavar="UID", help="按 UP 主 UID 添加其投稿")
     src.add_argument("--favlist", type=int, metavar="MEDIA_ID", help="按收藏夹 ID 添加")
-    p_add.add_argument("--limit", type=int, default=30, help="search/uid/favlist 模式下最多取多少个候选（默认 30）")
+    p_add.add_argument("--limit", type=int, default=30, help="最多爬取多少个候选视频（默认 30）")
+    p_add.add_argument("--delay", type=float, default=0.34, help="请求间隔（秒），调大可避免被 B 站风控（默认 0.34）")
+    p_add.add_argument("--max-retries", type=int, default=3, help="单个视频请求失败时的最大重试次数（默认 3）")
+    p_add.add_argument("--batch", type=int, default=30, help="每批提交的歌曲数量（默认 30）")
     p_add.add_argument("--yes", action="store_true", help="跳过确认提示，直接提交")
     p_add.set_defaults(func=cmd_add)
 
     p_update = sub.add_parser("update", help="刷新已有歌曲的播放数据（不传 --bvid 则刷新全部）")
     p_update.add_argument("--bvid", nargs="+", metavar="BV...", help="只刷新指定 bvid")
+    p_update.add_argument("--delay", type=float, default=0.34, help="请求间隔（秒），调大可避免被 B 站风控（默认 0.34）")
+    p_update.add_argument("--max-retries", type=int, default=3, help="单个视频请求失败时的最大重试次数（默认 3）")
     p_update.add_argument("--no-cover", action="store_true", help="不重新抓取封面，只更新数字")
     p_update.set_defaults(func=cmd_update)
 
