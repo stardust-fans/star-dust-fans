@@ -2,6 +2,7 @@
   <nav class="navbar">
     <div class="nav-container">
       <RouterLink to="/" class="nav-brand">
+        <img class="nav-brand-logo" src="/logo.svg" alt="" width="26" height="26" />
         星尘
         <span class="nav-brand-mark">吸尘器聚集地</span>
       </RouterLink>

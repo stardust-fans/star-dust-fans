@@ -2,7 +2,7 @@
   <div class="topbar">
     <div>
       <button class="hamburger" @click="$emit('toggle-sidebar')"><i class="fas fa-bars"></i></button>
-      <h1>✦ 星尘粉丝站 <span>· 后台管理</span></h1>
+      <h1><img class="brand-logo" src="/logo.svg" alt="" />星尘粉丝站 <span>· 后台管理</span></h1>
       <div class="subtitle">{{ title }}</div>
     </div>
   </div>

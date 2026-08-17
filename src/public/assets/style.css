@@ -136,6 +136,14 @@ a {
     letter-spacing: 0.01em;
 }
 
+/* .nav-brand 是 baseline 对齐，图片没有文字基线，只能自己居中 */
+.nav-brand-logo {
+    align-self: center;
+    display: block;
+    width: 26px;
+    height: 26px;
+}
+
 .nav-brand .nav-brand-mark {
     font-family: var(--font-mono);
     font-size: 0.62rem;
