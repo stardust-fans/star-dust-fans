@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite dev",
     "dev:worker": "wrangler dev",
+    "prebuild": "node tool/fetch_contributors.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "deploy": "wrangler deploy",
