@@ -43,6 +43,8 @@ async function main() {
         if (!Array.isArray(list)) throw new Error('GitHub 返回格式异常');
 
         const contributors = normalizeContributors(list);
+        // 空名单会让关于页变成「由共同主导」，宁可当成失败走沿用旧文件那条路
+        if (!contributors.length) throw new Error('贡献者列表为空');
         write(contributors);
         console.log(`贡献者名单已更新：${contributors.map(c => c.name).join('、')}`);
     } catch (error) {
