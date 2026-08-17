@@ -7,8 +7,27 @@
 
   <div class="about-content">
     <p>
-      关于星尘粉丝站，本身其实是由{{ signature }}共同主导、搭建、维护的。
+      关于星尘粉丝站，本身其实是由下面这些人共同主导、搭建、维护的。
     </p>
+
+    <table class="credits">
+      <caption>制作</caption>
+      <thead>
+        <tr>
+          <th scope="col">署名</th>
+          <th scope="col">GitHub</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="person in contributors" :key="person.login">
+          <td>{{ person.name }}</td>
+          <td>
+            <a :href="`https://github.com/${person.login}`" target="_blank" rel="noopener">@{{ person.login }}</a>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
     <p>
       这会产生许多成本，比如域名费用、服务器维护费、以及其他乱七八糟的开支。
     </p>
@@ -37,7 +56,6 @@
 import contributors from '../../shared/contributors.json';
 
 const imageUrl = '/images/bayuep-support.png';
-const signature = contributors.map(c => c.name).join('、');
 </script>
 
 <style scoped>
@@ -51,6 +69,59 @@ const signature = contributors.map(c => c.name).join('、');
   font-size: 1.05rem;
   line-height: 1.9;
   margin-bottom: 20px;
+}
+
+.credits {
+  width: 100%;
+  margin: 0 0 28px;
+  border-collapse: collapse;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  font-size: 0.95rem;
+}
+
+.credits caption {
+  padding-bottom: 10px;
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  color: var(--cobalt-soft);
+}
+
+.credits th {
+  padding: 10px 0;
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  border-bottom: 1px solid var(--line);
+}
+
+.credits td {
+  padding: 12px 0;
+  color: var(--ink-soft);
+  border-bottom: 1px solid var(--line);
+}
+
+.credits tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.credits td a {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--cobalt);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.2s var(--ease);
+}
+
+.credits td a:hover {
+  border-bottom-color: var(--cobalt-soft);
 }
 
 .sponsor-image-wrapper {
