@@ -1,0 +1,1099 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>十光年的距离</title>
+<meta name="description" content="星尘十周年 · 曲目星图">
+<link rel="icon" href="./icon.svg" type="image/svg+xml">
+<style>
+  :root {
+    --ink: #05070f;
+    --accent: #f2c84b;
+    --accent-warm: #ffe6b0;
+    --reticle: #7ec8ff;
+    --text: #dfe8f2;
+    --text-dim: #8497ad;
+    --ring-r: 15px;
+    --panel-l: 26rem;
+    --panel-r: 24rem;
+    /* 中心指示器（准星 #reticle + 锁定指示器 #lock-dot）共用的缩放系数：
+       断点里只改这一个变量，两个元素永远一起变——上一轮只放大了准星、
+       忘了锁定点也要跟着放大，就是因为两处各自维护了一份数值 */
+    --reticle-scale: 1;
+    /* rotateY 正角把左缘转近观察者：左板取正让内(右)缘转远，
+       透视上内侧显得更窄更远，配合剪影的「内窄上提」 */
+    --tilt-l: 8.5deg;
+    --tilt-r: -8.5deg;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: var(--ink); color: var(--text);
+    font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* canvas 是替换元素：position:fixed+inset:0 单独并不会把它撑满视口——
+     没有显式 width/height 时它会回落到自身的 width/height 内容属性
+     （renderer.setSize 写入的是设备像素，如 904 CSS px 视口在 dpr=2 下
+     会写成 1808），于是画布的 CSS 渲染尺寸变成设备像素数值本身，比真实
+     视口大了 dpr 倍——画面等于被放大裁切，WebGL 渲的光点位置和 SVG
+     覆盖层（用真实视口算的 project()）对不上，正是"渲染偏移"的根因。
+     显式给 100%/100% 才能让它真正撑满视口，不回落到属性值。 */
+  #stage { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+  #nebula {
+    position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background:
+      radial-gradient(60vw 48vh at 22% 18%, rgba(64, 108, 168, 0.20), transparent 62%),
+      radial-gradient(52vw 44vh at 82% 76%, rgba(150, 84, 168, 0.16), transparent 64%),
+      radial-gradient(80vw 70vh at 50% 50%, rgba(20, 34, 62, 0.55), transparent 78%),
+      var(--ink);
+  }
+
+  /* ── 选中 / 悬停标记与引线 ─────────────────────────── */
+  #link-layer {
+    position: fixed; inset: 0; width: 100%; height: 100%;
+    z-index: 5; pointer-events: none;
+  }
+  #leader, #ring, #ring-glow, #hover-ring {
+    fill: none; stroke: var(--accent); opacity: 0;
+    transition: opacity .24s ease;
+  }
+  #leader { stroke-width: 1; stroke-dasharray: 3 4; }
+  #ring { stroke-width: 1.4; }
+  #ring-glow { stroke-width: 4; }
+  #hover-ring { stroke-width: 1.4; transition: opacity .12s ease; }
+  #link-layer.sel #leader { opacity: .62; }
+  #link-layer.sel #ring { opacity: 1; }
+  #link-layer.sel #ring-glow { opacity: .16; }
+  #link-layer.hov #hover-ring { opacity: .4; }
+  #ring-dist, #ring-cls {
+    fill: var(--accent); font-size: .58rem; letter-spacing: .12em;
+    font-variant-numeric: tabular-nums;
+    opacity: 0; transition: opacity .24s ease;
+  }
+  #ring-cls { font-weight: 700; }   /* 恒星类型字母，颜色由光谱色内联给出 */
+  #link-layer.sel #ring-dist, #link-layer.sel #ring-cls { opacity: .9; }
+  /* 锁定指示器：未选中时暗白守在屏幕正中，选中后移动到目标身上并变亮。
+     半径跟 --reticle-scale 联动、和 #reticle 大小成比例，但 r 属性用
+     calc(var(...)*N) 在测试环境下解析不可靠（width/height 这类常规盒
+     模型属性没问题，只有 r 这样的 SVG 几何属性会出错），改成 JS 在
+     updateMarker() 里读同一个变量后直接算好数值赋值。
+     这里的字面量 r 不只是"第一帧前"的占位——main.js 加载星表数据要
+     await 一次网络请求，在此之前 resize()/frame() 一次都不会跑，
+     updateMarker() 更新不到，所以这个 CSS 初值在窄屏断点下必须自己
+     算对（下面两条 max-width:1100px 断点各自覆盖了一份 9.1/6.24，
+     对应 --reticle-scale:2.6 那一档），否则从首屏到数据载入完成这段
+     时间里，窄屏用户看到的锁定点会是桌面尺寸——这正是本条注释旁边这份
+     字面量存在的原因。*/
+  #lock-dot {
+    fill: #fff; opacity: .35; r: 3.5;
+    transition: cx .3s ease, cy .3s ease, opacity .25s ease, r .25s ease;
+  }
+  #lock-dot.locked {
+    opacity: .95;
+    filter: drop-shadow(0 0 4px rgba(255,255,255,.8));
+  }
+
+  /* ── 中央指示器：上下各 120° 的蓝色半透明圆 ─────────── */
+  #reticle {
+    position: fixed; left: 50%; top: 50%;
+    width: calc(var(--reticle-scale) * 1rem); height: calc(var(--reticle-scale) * 1rem);
+    transform: translate(-50%, -50%);
+    z-index: 4; pointer-events: none;
+  }
+  #reticle path { fill: none; stroke: var(--reticle); stroke-width: 20;
+                  opacity: .42; stroke-linecap: round; }
+  #reticle circle { fill: var(--reticle); opacity: .55; }
+
+  /* ── 底部弧形仪表 ─────────────────────────────────── */
+  #hud {
+    position: fixed; left: 0; top: 0; width: 100%; height: 100%;
+    z-index: 6; pointer-events: none;
+  }
+  #hud .track { fill: none; stroke: rgba(242, 200, 75, .14); stroke-width: 1.2; }
+  #hud .fill  { fill: none; stroke: var(--accent); stroke-width: 2.2; opacity: .8;
+                stroke-linecap: butt; filter: drop-shadow(0 0 4px rgba(242,200,75,.45)); }
+  #hud .tick  { stroke: rgba(242, 200, 75, .26); stroke-width: 1; }
+  #hud .zero  { stroke: rgba(242, 200, 75, .5); stroke-width: 1.4; }
+  #hud .tgt-arc { fill: none; stroke: rgba(126, 200, 255, .62);
+                  stroke-width: 1.6; }
+  #speed-mark { fill: var(--accent); opacity: .9;
+                filter: drop-shadow(0 0 5px rgba(242,200,75,.6)); }
+  /* 空心三角：节流目标档位游标 */
+  #hud .set { fill: none; stroke: var(--accent); stroke-width: 1.4; opacity: .85; }
+  #hud.rev #speed-mark { fill: #ff9a6b; filter: drop-shadow(0 0 5px rgba(255,154,107,.7)); }
+  /* 指向线操控：中心到光标的连线 + 端点圈，按住才显示 */
+  #steer-line { stroke: var(--reticle); stroke-width: 1.2;
+                opacity: 0; transition: opacity .15s ease; }
+  #steer-dot  { fill: var(--reticle); opacity: 0; transition: opacity .15s ease; }
+  #hud.steering #steer-line, #hud.steering #steer-dot { opacity: .7; }
+
+  #hud-labels {
+    position: fixed; left: 0; right: 0; z-index: 7;
+    display: flex; flex-direction: column; align-items: center; gap: .26rem;
+    pointer-events: none; text-align: center;
+  }
+  #hud-icons { display: flex; gap: .8rem; }
+  .ic { display: flex; flex-direction: column; align-items: center; gap: .14rem;
+        opacity: .22; transition: opacity .2s, filter .2s; }
+  .ic svg { width: 1.05rem; height: 1.05rem; fill: none; stroke: var(--accent);
+            stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+  .ic .fl { fill: var(--accent); stroke: none; }
+  .ic.on { opacity: 1; filter: drop-shadow(0 0 5px rgba(242,200,75,.7)); }
+  #ic-rev.on svg { stroke: #ff9a6b; }
+  #ic-rev.on { filter: drop-shadow(0 0 5px rgba(255,154,107,.7)); }
+
+  /* 速度读数嵌在两条弧之间 */
+  #speed-readout {
+    position: fixed; z-index: 7; pointer-events: none;
+    transform: translate(-50%, -50%);
+    font-size: .58rem; letter-spacing: .06em; color: var(--accent);
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+  }
+  #speed-readout em { font-style: normal; color: var(--text-dim); font-size: .5rem; }
+
+  /* ── 底部左右信息卡：梯形，上下边同向朝中心收拢，外侧边高、内侧带短 ── */
+  .hud-panel {
+    position: fixed; bottom: 1.2rem; z-index: 6;
+    background: linear-gradient(150deg, rgba(9, 15, 28, .62), rgba(7, 11, 21, .48));
+    backdrop-filter: blur(12px) saturate(1.15);
+    -webkit-backdrop-filter: blur(12px) saturate(1.15);
+    transform-origin: center;
+    opacity: 0; visibility: hidden;
+    transition: opacity .28s ease, visibility .28s;
+  }
+  .hud-panel.on { opacity: 1; visibility: visible; }
+  /* 左板没有曲目也没有 BGM 行时是一块空楔形，整板收起 */
+  body:not(.has-sel):not(.bgm-on) #panel-left { opacity: 0; visibility: hidden; }
+  /* 内容跟着梯形一起倾斜，否则文字与边缘不平行 */
+  #panel-left > *:not(.panel-edge) { transform: skewY(var(--skew-l, 0deg)); }
+  #panel-right > *:not(.panel-edge) { transform: skewY(var(--skew-r, 0deg)); }
+  /* clip-path 会把 border 一起裁掉，边框改用内嵌 SVG 描边 */
+  .panel-edge {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    pointer-events: none; overflow: visible;
+  }
+  .panel-edge polygon {
+    fill: none; stroke: rgba(242, 200, 75, .34); stroke-width: 1;
+    vector-effect: non-scaling-stroke;
+  }
+
+  /* 近似平行四边形：外侧边全高，内侧边（朝屏幕中心）上下各收进约 6°，
+     上下留白按同一收进量给足，两条斜边彼此近似平行 */
+  #panel-left {
+    left: 8vw; width: var(--panel-r);
+    clip-path: polygon(0 0, 100% 10%, 100% 90%, 0 100%);
+    padding: 2.8rem 1.4rem 2.8rem 1.1rem;
+    display: flex; flex-direction: column; gap: .32rem;
+  }
+  #panel-right {
+    right: 8vw; width: var(--panel-l);
+    clip-path: polygon(0 10%, 100% 0, 100% 100%, 0 90%);
+    padding: 3rem 1rem 3rem 1.3rem;
+    min-height: 14rem;
+  }
+  @media (orientation: landscape) {
+    #panel-left { transform: perspective(1100px) rotateY(var(--tilt-l));
+                  transform-origin: left center; }
+    #panel-right { transform: perspective(1100px) rotateY(var(--tilt-r));
+                   transform-origin: right center; }
+  }
+  /* 伪横屏等价命中（JS 置 body.fake-land）；长度单位随旋转互换 vw/vh */
+  body.fake-land #panel-left { left: 8vh;
+    transform: perspective(1100px) rotateY(var(--tilt-l));
+    transform-origin: left center; }
+  body.fake-land #panel-right { right: 8vh;
+    transform: perspective(1100px) rotateY(var(--tilt-r));
+    transform-origin: right center; }
+  /* 伪横屏下视口单位互换：逻辑横向用 vh、纵向用 vw */
+  body.fake-land #results { max-height: 40vw; }
+
+  #cover {
+    width: 100%; aspect-ratio: 16 / 10; position: relative; overflow: hidden;
+    background:
+      radial-gradient(circle at 50% 45%, rgba(242, 200, 75, .22), transparent 62%),
+      linear-gradient(150deg, rgba(16,29,51,.7), rgba(10,17,32,.7));
+    display: grid; place-items: center;
+  }
+  #cover .glyph { width: 2.8rem; height: auto; opacity: .45;
+                  filter: drop-shadow(0 0 14px rgba(242, 200, 75, .45)); }
+  #cover iframe {
+    position: absolute; inset: 0; width: 100%; height: 100%; border: 0;
+    opacity: 0; transition: opacity .35s ease;
+  }
+  #cover iframe.on { opacity: 1; }
+
+  #title {
+    font-size: .68rem; line-height: 1.38; font-weight: 600;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .rule { height: 1px; background: linear-gradient(90deg, rgba(242,200,75,.3), transparent); }
+  .field {
+    display: flex; justify-content: space-between; gap: .6rem;
+    font-size: .6rem; line-height: 1.6;
+  }
+  .field span { color: var(--text-dim); letter-spacing: .13em; flex: none; }
+  /* 长串（复合光谱、UP 主名）禁止省略号折叠，一律换行完整展示 */
+  .field b {
+    color: var(--text); font-weight: 500; font-variant-numeric: tabular-nums;
+    text-align: right; min-width: 0;
+    white-space: normal; word-break: break-word; line-height: 1.35;
+  }
+  .field.hot b { color: var(--accent); }
+  .field.warm b { color: var(--accent-warm); }
+  .track-only { display: none; }
+  body.has-sel .track-only { display: block; }
+  .field.bgm { display: none; }
+  body.bgm-on .field.bgm { display: flex; }
+  .field.bgm b { color: var(--accent); }
+
+  /* ── 攻击指示器：相近曲目的槽位 ─────────────────────── */
+  #targets { position: fixed; inset: 0; z-index: 6; pointer-events: none; }
+  .target {
+    position: absolute; pointer-events: auto; cursor: pointer;
+    display: flex; align-items: center; gap: .4rem;
+    width: 15rem; min-height: 1.55rem; padding: .22rem .7rem;
+    border-radius: 999px;
+    font-size: .58rem; line-height: 1.3; letter-spacing: .02em;
+    opacity: 0; transition: opacity .3s ease, filter .18s;
+  }
+  /* 极淡的蓝底，朝向中心的一侧略深，取代原来生硬的边框 */
+  .target.left  { background: linear-gradient(to left,
+                    rgba(126, 200, 255, .20), rgba(126, 200, 255, .04)); }
+  .target.right { background: linear-gradient(to right,
+                    rgba(126, 200, 255, .20), rgba(126, 200, 255, .04)); }
+  #targets.on .target { opacity: .9; }
+  .target:hover { opacity: 1; filter: brightness(1.5); }
+  /* 数字键预选：高亮候选，等按空格确认才真正切换过去；限定在 #targets.on
+     下——不然槽位隐藏态时 .target.pending 的选择器特异性会盖过 .target 的
+     opacity:0，把本该藏起来的槽位强制顶出来 */
+  #targets.on .target.pending {
+    opacity: 1; outline: 1px dashed var(--accent); outline-offset: 2px;
+  }
+  .target .t { flex: 1; min-width: 0; color: var(--text);
+               overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .target .w { flex: none; color: var(--accent); font-size: .52rem;
+               font-variant-numeric: tabular-nums; }
+  /* 数字放离心侧：左列在最左，右列在最右 */
+  /* 锚在弧的外侧：左列向左展开，右列向右展开 */
+  .target.left { transform: translate(-100%, -50%); flex-direction: row-reverse; }
+  .target.right { transform: translateY(-50%); }
+  /* 文本靠内：左列贴右缘，右列贴左缘 */
+  .target.left .t { text-align: right; }
+  .target.right .t { text-align: left; }
+
+  /* ── 搜索：延长药丸，点击放大镜横向展开露出内嵌输入框 ── */
+  #search-wrap {
+    position: relative; z-index: 8;
+    display: flex; align-items: center;
+    background: rgba(8, 14, 26, .7);
+    border: 1px solid rgba(242, 200, 75, .26); border-radius: 999px;
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    transition: border-color .2s, box-shadow .2s;
+  }
+  #search-wrap:hover { border-color: rgba(242, 200, 75, .5); }
+  #search-wrap.on {
+    border-color: rgba(242, 200, 75, .6);
+    box-shadow: 0 0 0 3px rgba(242, 200, 75, .10);
+  }
+  #search-btn {
+    display: flex; align-items: center; padding: .4rem .62rem;
+    background: none; border: 0; color: var(--text-dim);
+    font: inherit; cursor: pointer; transition: color .2s;
+  }
+  #search-btn:hover, #search-wrap.on #search-btn { color: var(--accent); }
+  #search {
+    width: 13rem; max-width: 0; min-width: 0; padding: 0; opacity: 0;
+    background: none; border: 0; outline: none;
+    color: var(--text); font: inherit; font-size: .68rem; letter-spacing: .04em;
+    transition: max-width .28s ease, opacity .2s ease, padding .28s ease;
+  }
+  #search-wrap.on #search { max-width: 13rem; opacity: 1; padding: .4rem .9rem .4rem 0; }
+  #search::placeholder { color: var(--text-dim); }
+  #results {
+    position: absolute; left: 0; top: calc(100% + .45rem);
+    width: min(16rem, 70vw); max-height: 52vh; overflow-y: auto;
+    background: rgba(7, 12, 23, .88); border: 1px solid rgba(242, 200, 75, .18);
+    border-radius: 12px; display: none;
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    scrollbar-width: thin; scrollbar-color: rgba(242,200,75,.3) transparent;
+  }
+  #results.on { display: block; }
+  #results::-webkit-scrollbar { width: 6px; }
+  #results::-webkit-scrollbar-thumb { background: rgba(242,200,75,.3); border-radius: 3px; }
+  .hit {
+    padding: .44rem .8rem; cursor: pointer; font-size: .68rem; line-height: 1.4;
+    border-bottom: 1px solid rgba(242, 200, 75, .07);
+  }
+  .hit:last-child { border-bottom: 0; }
+  .hit:hover, .hit.cur { background: rgba(242, 200, 75, .12); }
+  .hit .n { color: var(--text); display: block;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hit .s { color: var(--text-dim); font-size: .6rem; }
+  .hit mark { background: none; color: var(--accent); }
+  #results .none { padding: .6rem .8rem; font-size: .66rem; color: var(--text-dim); }
+
+  /* ── 姿态指示器：底部中央，只画 3D 方向/坐标投影本身，不带外圈边框 ── */
+  #attitude {
+    position: fixed; left: 50%; bottom: 1.2rem; z-index: 6;
+    width: 8.5rem; height: 8.5rem; transform: translateX(-50%);
+    pointer-events: none;
+    background: radial-gradient(circle at 50% 42%,
+      rgba(12, 20, 36, .34), transparent 72%);
+  }
+
+  /* ── 操作指南弹窗 ─────────────────────────────────── */
+  #help-modal {
+    position: fixed; inset: 0; z-index: 30;
+    display: grid; place-items: center;
+    background: rgba(3, 5, 11, .55);
+    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  }
+  #help-modal[hidden] { display: none; }
+  #help-modal:not([hidden]) { animation: help-in .25s ease; }
+  @keyframes help-in { from { opacity: 0; } }
+  #help-panel {
+    position: relative; width: min(24rem, 86vw);
+    max-height: 84vh; overflow-y: auto;
+    padding: 1rem 1.1rem .9rem;
+    background: linear-gradient(160deg, rgba(10, 17, 31, .94), rgba(7, 11, 21, .92));
+    border: 1px solid rgba(242, 200, 75, .4); border-radius: 14px;
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    scrollbar-width: thin; scrollbar-color: rgba(242,200,75,.3) transparent;
+  }
+  #help-panel h2 {
+    margin: 0 0 .5rem; font-size: .82rem; font-weight: 600;
+    letter-spacing: .3em; color: var(--accent);
+    text-shadow: 0 0 10px rgba(242, 200, 75, .35);
+  }
+  #help-close {
+    position: absolute; right: .6rem; top: .6rem;
+    width: 1.5rem; height: 1.5rem; display: grid; place-items: center;
+    border: 1px solid rgba(242, 200, 75, .3); border-radius: 50%;
+    background: none; color: var(--text-dim);
+    font: inherit; font-size: .78rem; line-height: 1; cursor: pointer;
+    transition: color .2s, border-color .2s;
+  }
+  #help-close:hover { color: var(--accent); border-color: rgba(242, 200, 75, .6); }
+  .help-grp {
+    margin: .8rem 0 .2rem; font-size: .56rem; letter-spacing: .24em;
+    color: var(--accent); opacity: .8;
+  }
+  .help-row {
+    display: flex; justify-content: space-between; gap: .8rem;
+    font-size: .62rem; line-height: 2;
+  }
+  .help-row span { color: var(--text-dim); letter-spacing: .13em; flex: none; }
+  .help-row b {
+    color: var(--text); font-weight: 500; text-align: right;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  /* ── 角落 ─────────────────────────────────────────── */
+  #brand {
+    position: fixed; right: 2.4rem; top: 1.7rem; z-index: 5; pointer-events: none;
+    display: flex; align-items: center; gap: .8rem; text-align: right;
+    flex-direction: row-reverse;
+  }
+  #mark { flex: none; width: clamp(1.9rem, 4vh, 2.4rem); height: auto;
+          filter: drop-shadow(0 0 12px rgba(242, 200, 75, .5)); }
+  #brand h1 { margin: 0; font-size: clamp(1rem, 2.2vh, 1.5rem); font-weight: 300;
+              letter-spacing: .34em; color: #fdf4e0;
+              text-shadow: 0 0 26px rgba(242,200,75,.45); }
+  #brand p { margin: .38rem 0 0; font-size: .58rem; letter-spacing: .22em; color: var(--text-dim); }
+
+  /* 左上控制区：模式切换器 + 圆角胶囊按钮 */
+  #controls {
+    position: fixed; left: 2.4rem; top: 1.9rem; z-index: 9;
+    display: flex; flex-direction: column; align-items: flex-start; gap: .5rem;
+  }
+  #ctl-row { display: flex; gap: .5rem; }
+  #opt-btn {
+    display: flex; align-items: center; gap: .45rem;
+    padding: .4rem .9rem;
+    background: rgba(8, 14, 26, .7); color: var(--text-dim);
+    border: 1px solid rgba(242, 200, 75, .26); border-radius: 999px;
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    font: inherit; font-size: .62rem; letter-spacing: .12em; cursor: pointer;
+    transition: color .2s, border-color .2s;
+  }
+  #opt-btn:hover { color: var(--text); border-color: rgba(242, 200, 75, .5); }
+  #opt-btn.on { color: var(--accent); border-color: rgba(242, 200, 75, .5); }
+
+  /* 三段式模式切换：连体分段胶囊，内部分隔线，.cur 金色高亮 */
+  #mode-switch {
+    display: flex; flex: none; border-radius: 999px; overflow: hidden;
+    background: rgba(8, 14, 26, .7);
+    border: 1px solid rgba(242, 200, 75, .26);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  }
+  #mode-switch button {
+    padding: .4rem .8rem; border: 0; background: none; color: var(--text-dim);
+    font: inherit; font-size: .62rem; letter-spacing: .12em; cursor: pointer;
+    transition: color .2s, background .25s;
+  }
+  #mode-switch button + button { border-left: 1px solid rgba(242, 200, 75, .18); }
+  #mode-switch button:hover { color: var(--text); }
+  #mode-switch button.cur {
+    color: var(--accent); background: rgba(242, 200, 75, .12);
+    text-shadow: 0 0 8px rgba(242, 200, 75, .35);
+  }
+
+  /* 全屏/帮助按钮：不依赖同族共享选择器 */
+  #fs-btn, #help-btn {
+    display: flex; align-items: center; padding: .4rem .62rem;
+    background: rgba(8, 14, 26, .7); color: var(--text-dim);
+    border: 1px solid rgba(242, 200, 75, .26); border-radius: 999px;
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    font: inherit; cursor: pointer;
+    transition: color .2s, border-color .2s;
+  }
+  #fs-btn[hidden] { display: none; }
+  #fs-btn:hover, #help-btn:hover { color: var(--text); border-color: rgba(242, 200, 75, .5); }
+  #fs-btn.on { color: var(--accent); border-color: rgba(242, 200, 75, .5); }
+  #fs-btn .fs-out, #fs-btn.on .fs-in { display: none; }
+  #fs-btn.on .fs-out { display: inline; }
+
+  #opts {
+    display: none; flex-direction: column; gap: .34rem;
+    padding: .6rem .8rem;
+    background: rgba(8, 14, 26, .82); border: 1px solid rgba(242, 200, 75, .2);
+    border-radius: 10px;
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    font-size: .62rem; letter-spacing: .08em; color: var(--text-dim);
+  }
+  #opts.on { display: flex; }
+  #opts label { display: flex; align-items: center; gap: .45rem; cursor: pointer; }
+  #opts label:hover { color: var(--text); }
+  #opts input { accent-color: var(--accent); width: .78rem; height: .78rem; cursor: pointer; }
+  #opts label:has(select) { justify-content: space-between; }
+  #opts select {
+    background: rgba(242, 200, 75, .08); color: var(--text);
+    border: 1px solid rgba(242, 200, 75, .3); border-radius: 5px;
+    font: inherit; font-size: .6rem; letter-spacing: .06em;
+    padding: .12rem .3rem; cursor: pointer;
+  }
+  #opts button {
+    margin-top: .3rem; padding: .34rem 0 0;
+    border: 0; border-top: 1px solid rgba(242, 200, 75, .16);
+    background: none; color: var(--text-dim);
+    font: inherit; font-size: .62rem; letter-spacing: .12em;
+    text-align: left; cursor: pointer; transition: color .2s;
+  }
+  #opts button:hover { color: var(--accent); }
+
+  body.no-reticle #reticle,
+  body.no-targets #targets, body.no-targets #hud .tgt-arc,
+  body.no-navball #attitude,
+  body.no-footer #footer { display: none; }
+  body.auto #search-wrap, body.auto #footer,
+  body.wander #search-wrap, body.wander #footer { opacity: 0; pointer-events: none; }
+  #search-wrap, #footer { transition: opacity .4s ease; }
+
+  #tooltip {
+    position: fixed; z-index: 9; pointer-events: none; opacity: 0;
+    max-width: 21rem; padding: .36rem .6rem;
+    background: rgba(6, 11, 22, .9); border: 1px solid rgba(242,200,75,.26);
+    border-radius: 7px; font-size: .66rem; line-height: 1.45;
+    transition: opacity .13s ease;
+  }
+
+  /* 伪横屏提示浮窗：右上角小胶囊（旋转后坐标系），金色边线 */
+  #rotate-toast {
+    /* 让开右上角站标（≤900 时缩为 2rem 图标贴 .7rem） */
+    position: fixed; right: 1rem; top: 3.4rem; z-index: 12;
+    padding: .4rem .9rem;
+    background: rgba(8, 14, 26, .78); color: var(--accent);
+    border: 1px solid rgba(242, 200, 75, .5); border-radius: 999px;
+    font-size: .62rem; letter-spacing: .18em; cursor: pointer;
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    opacity: 0; transition: opacity .6s ease;
+  }
+  #rotate-toast.on { opacity: 1; }
+  #rotate-toast[hidden] { display: none; }
+  /* 方向簇、中键/空格按钮仅触屏显示，样式在 pointer:coarse 块 */
+  #dpad, #mid-btn, #spc-btn { display: none; }
+
+  #footer {
+    position: fixed; left: 0; right: 0; bottom: .7rem; z-index: 5;
+    text-align: center; font-size: .55rem; letter-spacing: .1em;
+    color: var(--text-dim); pointer-events: none; opacity: .75;
+  }
+  #footer a { color: var(--text-dim); text-decoration: none; pointer-events: auto;
+              border-bottom: 1px solid rgba(242, 200, 75, .22); transition: color .2s; }
+  #footer a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+  #footer .sep { opacity: .45; margin: 0 .45rem; }
+
+  #loading {
+    position: fixed; inset: 0; z-index: 20; display: grid; place-items: center;
+    background: var(--ink); transition: opacity .7s ease; color: var(--text-dim);
+  }
+  #loading.done { opacity: 0; pointer-events: none; }
+  #load-inner { display: flex; flex-direction: column; align-items: center; gap: .9rem; }
+  #load-mark { width: 2.6rem; height: auto; opacity: .85;
+               filter: drop-shadow(0 0 16px rgba(242, 200, 75, .5)); }
+  #load-text { letter-spacing: .3em; font-size: .68rem; }
+  #load-track { width: min(18rem, 52vw); height: 2px; border-radius: 2px;
+                background: rgba(242, 200, 75, .16); overflow: hidden; }
+  #load-bar { height: 100%; width: 0%; border-radius: 2px;
+              background: linear-gradient(90deg, rgba(242,200,75,.5), var(--accent));
+              transition: width .18s ease-out; }
+  #load-pct { font-size: .62rem; letter-spacing: .14em;
+              font-variant-numeric: tabular-nums; color: var(--accent); }
+
+  /* 触屏竖屏：整站顺时针旋 90° 伪装横屏。body 定位后成为全部 fixed
+     后代的包含块；先上移自身高度再旋转，恰好盖满物理视口 */
+  @media (max-width: 900px) and (orientation: portrait) and (pointer: coarse) {
+    body {
+      position: fixed; top: 0; left: 0;
+      width: 100vh; height: 100vw;
+      width: 100dvh; height: 100dvw;
+      transform-origin: left top;
+      transform: rotate(90deg) translateY(-100%);
+    }
+  }
+
+  /* 不限定 orientation：非触屏窄视口（比如把本站塞进一个窄 iframe/分栏）
+     宽高比往往是竖直的，但既不满足 landscape 也不满足伪横屏所需的
+     pointer:coarse，会跳过所有收紧规则——两侧面板停在桌面默认的
+     26rem/24rem + 8vw 起始位置，宽度不够时直接左右重叠、互相盖住内容
+     （含 #cover 播放器），这才是「iframe 嵌入不工作」在窄宽度下的真因 */
+  @media (max-width: 1100px) {
+    :root { --panel-l: 17rem; --panel-r: 15rem; --reticle-scale: 2.6; }
+    /* r 不支持 calc()，这两个数字是 3.5/2.4 × 2.6（见上面 #lock-dot 处的
+       说明）；--reticle-scale 这个断点值改了，这两行也要跟着手动改 */
+    #lock-dot { r: 9.1; }
+    #lock-dot.locked { r: 6.24; }
+    #panel-left { left: 3vw; }
+    #panel-right { right: 3vw; min-height: 11rem; }
+    #footer { display: none; }
+    #attitude { width: 6.5rem; height: 6.5rem; bottom: .9rem; }
+    .target { width: 10rem; }
+    /* 按钮区允许换行，给后续新增按钮留余量 */
+    #ctl-row { flex-wrap: wrap; }
+  }
+
+  /* 伪横屏的窄横屏等价：旋转后的横向宽度即物理高度 */
+  @media (max-height: 1100px) {
+    body.fake-land { --panel-l: 17rem; --panel-r: 15rem; --reticle-scale: 2.6; }
+    body.fake-land #lock-dot { r: 9.1; }
+    body.fake-land #lock-dot.locked { r: 6.24; }
+    body.fake-land #panel-left { left: 3vh; }
+    body.fake-land #panel-right { right: 3vh; min-height: 11rem; }
+    body.fake-land #footer { display: none; }
+    body.fake-land #attitude { width: 6.5rem; height: 6.5rem; bottom: .9rem; }
+    body.fake-land .target { width: 10rem; }
+    body.fake-land #ctl-row { flex-wrap: wrap; }
+  }
+
+  /* 触屏进一步收紧信息窗并朝内靠：上面两条给的是"窄横屏通用"尺寸，
+     触屏还要再让出两侧按钮簇的空间（那一片外沿到 7.6rem 左右，留半个
+     rem 余量到 8.3rem），面板整体再缩小一档、起始位置移到按钮簇之外 */
+  @media (max-width: 1100px) and (orientation: landscape) and (pointer: coarse) {
+    :root { --panel-l: 11rem; --panel-r: 10rem; }
+    #panel-left { left: 8.3rem; padding: 1.5rem .8rem 1.5rem .7rem; }
+    #panel-right { right: 8.3rem; padding: 1.7rem .7rem 1.7rem .8rem; min-height: 8rem; }
+  }
+  @media (max-height: 1100px) {
+    body.fake-land { --panel-l: 11rem; --panel-r: 10rem; }
+    body.fake-land #panel-left { left: 7.8rem; padding: 1.5rem .8rem 1.5rem .7rem; }
+    body.fake-land #panel-right { right: 7.8rem; padding: 1.7rem .7rem 1.7rem .8rem; min-height: 8rem; }
+  }
+
+  /* 手机整体缩小：rem 是全站尺寸单位，改根字号即可让按钮/面板/HUD 文字
+     等比收紧，不必逐个断点微调 */
+  @media (pointer: coarse) and (max-width: 900px) {
+    html { font-size: 14px; }
+  }
+
+  @media (max-width: 900px) {
+    #results { max-height: 40vh; }
+    #brand { right: .7rem; top: .7rem; gap: 0; }
+    #brand h1, #brand p { display: none; }
+    #mark { width: 2rem; }
+    #controls { left: .7rem; top: .7rem; }
+  }
+
+  @media (pointer: coarse) {
+    #stage { touch-action: none; }
+    #tooltip { display: none; }
+    /* 左侧四方向按钮簇：上下=油门连续调速，左右=翻滚；中键按钮在簇正中央。
+       按钮式而非自由拖拽的摇杆——拖拽杆的回中反复出问题，手指滑动也容易
+       误触发方向。两侧内收、中线下移，落在楔形面板让出的空区 */
+    #dpad {
+      display: block; position: fixed; left: 3rem; top: 68%;
+      transform: translateY(-50%); width: 6.5rem; height: 6.5rem; z-index: 8;
+    }
+    .dpad-btn {
+      position: absolute; display: flex; align-items: center; justify-content: center;
+      width: 2.3rem; height: 2.3rem; border-radius: 8px;
+      background: rgba(9, 15, 28, .3); color: var(--text-dim);
+      border: 1px solid rgba(242, 200, 75, .3); touch-action: none;
+      font-size: .62rem; line-height: 1;
+    }
+    .dpad-btn:active { color: var(--accent); background: rgba(242, 200, 75, .16); }
+    #dpad-up    { left: 50%; top: 0;    transform: translateX(-50%); }
+    #dpad-down  { left: 50%; bottom: 0; transform: translateX(-50%); }
+    #dpad-left  { left: 0;   top: 50%;  transform: translateY(-50%); }
+    #dpad-right { right: 0;  top: 50%;  transform: translateY(-50%); }
+    #mid-btn {
+      position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+      display: flex; align-items: center; justify-content: center;
+      width: 2.6rem; height: 2.6rem; border-radius: 50%;
+      background: rgba(9, 15, 28, .3); color: var(--text-dim);
+      border: 1px solid rgba(242, 200, 75, .3); touch-action: none;
+    }
+    #mid-btn:active { color: var(--accent); background: rgba(242, 200, 75, .16); }
+
+    /* 空格按钮：右侧独占一簇，与左边的方向簇同高对称，因此可以放大些 */
+    #spc-btn {
+      display: flex; align-items: center; justify-content: center;
+      position: fixed; right: 4.6rem; top: 68%; transform: translateY(-50%);
+      z-index: 8; width: 3.6rem; height: 3.6rem; border-radius: 50%;
+      background: rgba(9, 15, 28, .3); color: var(--text-dim);
+      border: 1px solid rgba(242, 200, 75, .3); touch-action: none;
+    }
+    #spc-btn:active { color: var(--accent); background: rgba(242, 200, 75, .16); }
+  }
+
+  /* 窄横屏按钮簇避让：缩小、内收并下移，绕开槽位行与楔形面板 */
+  @media (max-width: 1100px) and (orientation: landscape) and (pointer: coarse) {
+    #dpad { width: 5.6rem; height: 5.6rem; top: 66%; left: 2rem; }
+    .dpad-btn { width: 2rem; height: 2rem; }
+    #mid-btn { width: 2.2rem; height: 2.2rem; }
+    #spc-btn { width: 3rem; height: 3rem; top: 66%; right: 3.4rem; }
+    /* 槽位随 JS 收窄的弧同步缩短、字更小，避开方向簇/中键/空格键 */
+    .target {
+      width: 7rem; min-height: 1.3rem; padding: .16rem .5rem;
+      font-size: .5rem; gap: .3rem;
+    }
+    .target .w { font-size: .46rem; }
+  }
+
+  /* 伪横屏按钮簇：等价窄横屏（旋转后的横向宽度即物理高度） */
+  @media (max-height: 1100px) {
+    body.fake-land #dpad { width: 5.6rem; height: 5.6rem; top: 66%; left: 2rem; }
+    body.fake-land .dpad-btn { width: 2rem; height: 2rem; }
+    body.fake-land #mid-btn { width: 2.2rem; height: 2.2rem; }
+    body.fake-land #spc-btn { width: 3rem; height: 3rem; top: 66%; right: 3.4rem; }
+    body.fake-land .target {
+      width: 7rem; min-height: 1.3rem; padding: .16rem .5rem;
+      font-size: .5rem; gap: .3rem;
+    }
+    body.fake-land .target .w { font-size: .46rem; }
+  }
+
+  /* ── 开屏贺词 ──────────────────────────────────────────── */
+  #splash {
+    position: fixed; inset: 0; z-index: 40;
+    display: grid; place-items: center;
+    background:
+      radial-gradient(70vw 55vh at 25% 18%, rgba(64, 108, 168, 0.18), transparent),
+      radial-gradient(55vw 45vh at 78% 78%, rgba(150, 84, 168, 0.14), transparent),
+      var(--ink);
+    transition: opacity .8s ease, visibility .8s;
+  }
+  #splash.out { opacity: 0; visibility: hidden; pointer-events: none; }
+  #splash-canvas {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    pointer-events: none;
+  }
+  #splash-card {
+    position: relative; z-index: 1;
+    width: min(28rem, 88vw);
+    max-height: 90vh; overflow-y: auto;
+    padding: 2.4rem 2rem 2rem;
+    background: linear-gradient(160deg, rgba(10,17,31,.92), rgba(7,11,21,.88));
+    border: 1px solid rgba(242, 200, 75, .32); border-radius: 16px;
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    text-align: center;
+    animation: splash-in .9s ease both;
+    scrollbar-width: thin; scrollbar-color: rgba(242,200,75,.3) transparent;
+  }
+  #splash-card::-webkit-scrollbar { width: 4px; }
+  #splash-card::-webkit-scrollbar-thumb { background: rgba(242,200,75,.3); border-radius: 2px; }
+  @keyframes splash-in {
+    from { opacity: 0; transform: translateY(18px); }
+  }
+  .splash-era {
+    margin: 0 0 .9rem; font-size: .52rem; letter-spacing: .36em;
+    color: var(--text-dim);
+  }
+  .splash-logo {
+    display: block; margin: 0 auto .8rem;
+    width: 2.6rem; height: auto;
+    filter: drop-shadow(0 0 14px rgba(242, 200, 75, .5));
+  }
+  .splash-title {
+    margin: 0 0 .25rem; font-size: 1.7rem; font-weight: 300;
+    letter-spacing: .5em; color: var(--accent);
+    text-shadow: 0 0 32px rgba(242, 200, 75, .45), 0 0 80px rgba(242, 200, 75, .18);
+  }
+  .splash-site {
+    margin: 0 0 1.4rem; font-size: .6rem; letter-spacing: .26em;
+    color: var(--text-dim);
+  }
+  .splash-verse {
+    margin: 0 0 1.3rem; font-size: .71rem; line-height: 2.1;
+    color: var(--text);
+  }
+  .splash-verse p { margin: 0; }
+  .splash-rule {
+    height: 1px; width: 60%; margin: 0 auto 1.2rem;
+    background: linear-gradient(90deg, transparent, rgba(242,200,75,.35), transparent);
+  }
+  .splash-credits {
+    display: flex; justify-content: center; gap: 2.4rem;
+    margin-bottom: 1rem;
+  }
+  .splash-credits > div { display: flex; flex-direction: column; gap: .18rem; }
+  .splash-role { font-size: .5rem; letter-spacing: .2em; color: var(--text-dim); }
+  .splash-author { font-size: .64rem; color: var(--text); font-weight: 500; }
+  .splash-notice {
+    margin: 0 0 1.5rem; padding: .55rem .8rem;
+    font-size: .49rem; line-height: 1.75; color: var(--text-dim);
+    background: rgba(255,255,255,.025); border-radius: 8px;
+    border: 1px solid rgba(242,200,75,.08);
+  }
+  #splash-btn {
+    width: 100%; padding: .72rem 1rem;
+    background: linear-gradient(135deg, rgba(242,200,75,.16), rgba(242,200,75,.08));
+    border: 1px solid rgba(242,200,75,.5); border-radius: 8px;
+    color: var(--accent); font: inherit; font-size: .74rem;
+    letter-spacing: .16em; cursor: pointer;
+    transition: background .22s, border-color .22s, box-shadow .22s, transform .1s;
+    animation: btn-pulse 3s ease-in-out 1.4s infinite;
+  }
+  #splash-btn:hover {
+    background: linear-gradient(135deg, rgba(242,200,75,.28), rgba(242,200,75,.14));
+    border-color: rgba(242,200,75,.8);
+    box-shadow: 0 0 0 3px rgba(242,200,75,.1), 0 0 22px rgba(242,200,75,.18);
+  }
+  #splash-btn:active { transform: scale(.98); animation: none; }
+  @keyframes btn-pulse {
+    0%, 100% { box-shadow: none; }
+    50% { box-shadow: 0 0 0 4px rgba(242,200,75,.1), 0 0 16px rgba(242,200,75,.1); }
+  }
+  /* 横屏短视口：隐 logo、压缩间距与字号 */
+  @media (max-height: 560px) {
+    #splash-card { padding: 1.1rem 1.6rem 1.2rem; }
+    .splash-era { margin-bottom: .4rem; }
+    .splash-logo { display: none; }
+    .splash-title { font-size: 1.25rem; margin-bottom: .15rem; }
+    .splash-site { margin-bottom: .7rem; }
+    .splash-verse { margin-bottom: .6rem; font-size: .64rem; line-height: 1.75; }
+    .splash-rule { margin-bottom: .6rem; }
+    .splash-credits { margin-bottom: .6rem; }
+    .splash-notice { margin-bottom: .9rem; padding: .4rem .7rem; }
+  }
+  /* 伪横屏：可用高度 = vw（物理短边） */
+  body.fake-land #splash-card { padding: 1.1rem 1.6rem 1.2rem; max-height: 88vw; }
+  body.fake-land .splash-logo { display: none; }
+  body.fake-land .splash-title { font-size: 1.25rem; margin-bottom: .15rem; }
+  body.fake-land .splash-era { margin-bottom: .4rem; }
+  body.fake-land .splash-site { margin-bottom: .7rem; }
+  body.fake-land .splash-verse { margin-bottom: .6rem; font-size: .64rem; line-height: 1.75; }
+  body.fake-land .splash-rule { margin-bottom: .6rem; }
+  body.fake-land .splash-credits { margin-bottom: .6rem; }
+  body.fake-land .splash-notice { margin-bottom: .9rem; padding: .4rem .7rem; }
+</style>
+</head>
+<body>
+<div id="nebula"></div>
+<canvas id="stage"></canvas>
+
+<svg id="reticle" viewBox="0 0 148 148" aria-hidden="true">
+  <!-- 上下左右四缺口各 60°，四段弧各 30° -->
+  <path d="M122.50,102.00 A56 56 0 0 1 102.00,122.50"/>
+  <path d="M46.00,122.50 A56 56 0 0 1 25.50,102.00"/>
+  <path d="M25.50,46.00 A56 56 0 0 1 46.00,25.50"/>
+  <path d="M102.00,25.50 A56 56 0 0 1 122.50,46.00"/>
+  <circle cx="74" cy="74" r="3"/>
+</svg>
+
+<svg id="link-layer" aria-hidden="true">
+  <path id="leader"></path>
+  <polygon id="ring-glow"></polygon>
+  <polygon id="ring"></polygon>
+  <polygon id="hover-ring"></polygon>
+  <text id="ring-cls" text-anchor="end"></text>
+  <text id="ring-dist"></text>
+  <circle id="lock-dot"></circle>
+</svg>
+
+<svg id="hud" aria-hidden="true">
+  <path id="arc-bgm-bg" class="track"></path>
+  <path id="arc-bgm" class="fill"></path>
+  <path id="arc-speed-bg" class="track"></path>
+  <g id="speed-ticks"></g>
+  <line id="speed-zero" class="zero"></line>
+  <polygon id="speed-mark"></polygon>
+  <polygon id="speed-set" class="set"></polygon>
+  <path id="arc-tgt-l" class="tgt-arc"></path>
+  <path id="arc-tgt-r" class="tgt-arc"></path>
+  <line id="steer-line"></line>
+  <circle id="steer-dot" r="4"></circle>
+</svg>
+
+<div id="hud-labels">
+  <div id="hud-icons">
+    <span class="ic" id="ic-main" title="主推进引擎">
+      <svg viewBox="0 0 24 24">
+        <path d="M12 2c2.7 2.3 3.5 5.5 3.5 8.6V14h-7v-3.4C8.5 7.5 9.3 4.3 12 2z"/>
+        <path d="M8.5 10.6 6 13.8V16h2.5M15.5 10.6l2.5 3.2V16h-2.5"/>
+        <path d="M12 16.6V21M8.7 16.6 7 20.2M15.3 16.6 17 20.2"/></svg></span>
+    <span class="ic" id="ic-rcs" title="姿态喷口">
+      <svg viewBox="0 0 24 24">
+        <rect x="8.6" y="8.6" width="6.8" height="6.8"/>
+        <path d="M9.4 5.4 12 2.8l2.6 2.6M9.4 18.6 12 21.2l2.6-2.6"/>
+        <path d="M5.4 9.4 2.8 12l2.6 2.6M18.6 9.4 21.2 12l-2.6 2.6"/></svg></span>
+    <span class="ic" id="ic-auto" title="自动驾驶">
+      <svg viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="8.6"/>
+        <path class="fl" d="M16 8 13.4 13.4 8 16l2.6-5.4z"/></svg></span>
+    <span class="ic" id="ic-lock" title="目标锁定">
+      <svg viewBox="0 0 24 24">
+        <path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4"/>
+        <circle class="fl" cx="12" cy="12" r="2.7"/></svg></span>
+    <span class="ic" id="ic-rev" title="反向推进">
+      <svg viewBox="0 0 24 24">
+        <path d="M12 2.6v7.6M8.4 6.6l3.6 3.6 3.6-3.6"/>
+        <path d="M12 13.4 16.6 21H7.4z"/></svg></span>
+  </div>
+</div>
+<div id="speed-readout">0.0 <em>ly/s</em></div>
+<canvas id="attitude" aria-hidden="true"></canvas>
+
+<div id="panel-left" class="hud-panel on">
+  <svg class="panel-edge" viewBox="0 0 100 100" preserveAspectRatio="none">
+    <polygon points="0,8 100,0 100,52 0,100"/>
+  </svg>
+  <div class="track-only"><div class="field"><span>UP 主</span><b id="f-author"></b></div></div>
+  <div class="track-only"><div class="field"><span>投稿</span><b id="f-date"></b></div></div>
+  <div class="track-only"><div class="field"><span>播放</span><b id="f-view"></b></div></div>
+  <div class="track-only rule"></div>
+  <div class="track-only"><div class="field warm"><span>恒星</span><b id="f-tyc"></b></div></div>
+  <div class="track-only"><div class="field warm"><span>光谱</span><b id="f-sp"></b></div></div>
+  <div class="track-only"><div class="field warm"><span>视星等</span><b id="f-mag"></b></div></div>
+  <div class="field bgm"><span>正在播放</span><b id="f-bgm">—</b></div>
+</div>
+
+<div id="panel-right" class="hud-panel">
+  <svg class="panel-edge" viewBox="0 0 100 100" preserveAspectRatio="none">
+    <polygon points="0,0 100,8 100,100 0,52"/>
+  </svg>
+  <div id="cover">
+    <img class="glyph" src="./icon.svg" alt="" width="44" height="44">
+  </div>
+  <div id="title"></div>
+</div>
+
+<!-- 攻击指示器：相近曲目分布在屏幕中心两侧的弧上，每侧四个槽位 -->
+<div id="targets"></div>
+
+<div id="brand">
+  <img id="mark" src="./icon.svg" alt="" width="34" height="34">
+  <div>
+    <h1>十光年的距离</h1>
+    <p>STARDUST · 10TH ANNIVERSARY</p>
+  </div>
+</div>
+
+<div id="tooltip"></div>
+
+<div id="rotate-toast" hidden>旋转手机体验更佳</div>
+
+<div id="controls">
+  <div id="ctl-row">
+    <div id="mode-switch">
+      <button id="mode-manual" type="button" class="cur">手动</button>
+      <button id="mode-cruise" type="button">巡游</button>
+      <button id="mode-wander" type="button">漫游</button>
+    </div>
+    <button id="opt-btn" type="button">显示</button>
+    <button id="help-btn" type="button" aria-label="操作指南">
+      <svg viewBox="0 0 16 16" width="13" height="13" fill="none"
+           stroke="currentColor" stroke-width="1.5">
+        <circle cx="8" cy="8" r="6.2"/>
+        <path d="M6.1 6.3a1.9 1.9 0 1 1 2.7 1.7c-.6.3-.8.6-.8 1.2v.3"/>
+        <circle cx="8" cy="11.3" r=".15" fill="currentColor" stroke="none"/>
+      </svg>
+    </button>
+    <button id="fs-btn" type="button" aria-label="全屏" hidden>
+      <svg viewBox="0 0 16 16" width="13" height="13" fill="none"
+           stroke="currentColor" stroke-width="1.5">
+        <path class="fs-in" d="M6 2.5H2.5V6M10 2.5h3.5V6M13.5 10v3.5H10M2.5 10v3.5H6"/>
+        <path class="fs-out" d="M6 2.5V6H2.5M10 2.5V6h3.5M13.5 10H10v3.5M2.5 10H6v3.5"/>
+      </svg>
+    </button>
+    <div id="search-wrap">
+      <button id="search-btn" type="button" aria-label="搜索">
+        <svg viewBox="0 0 16 16" width="13" height="13" fill="none"
+             stroke="currentColor" stroke-width="1.5">
+          <circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>
+      </button>
+      <input id="search" type="search" autocomplete="off" spellcheck="false"
+             placeholder="搜索曲名 / UP 主 / TYC 编号">
+      <div id="results"></div>
+    </div>
+  </div>
+  <div id="opts">
+    <label><input type="checkbox" id="o-reticle" checked>中央指示器</label>
+    <label><input type="checkbox" id="o-targets" checked>攻击指示器</label>
+    <label><input type="checkbox" id="o-navball" checked>姿态指示器</label>
+    <label><input type="checkbox" id="o-footer" checked>版权信息</label>
+    <label><input type="checkbox" id="o-spin" checked>自动视角转动</label>
+    <label>拖尾强度
+      <select id="o-trail">
+        <option value="off">关</option>
+        <option value="low">低</option>
+        <option value="mid">中</option>
+        <option value="high">高</option>
+      </select>
+    </label>
+  </div>
+</div>
+<audio id="bgm" preload="none"></audio>
+
+<!-- 触屏左簇：四方向按钮，上下=油门连续调速、左右=翻滚，中键在簇正中央 -->
+<div id="dpad" aria-hidden="true">
+  <button id="dpad-up" class="dpad-btn" type="button" aria-label="加速">▲</button>
+  <button id="dpad-down" class="dpad-btn" type="button" aria-label="减速">▼</button>
+  <button id="dpad-left" class="dpad-btn" type="button" aria-label="向左滚转">◀</button>
+  <button id="dpad-right" class="dpad-btn" type="button" aria-label="向右滚转">▶</button>
+  <button id="mid-btn" type="button" aria-label="停船·长按转向银心">
+    <svg viewBox="0 0 16 16" width="13" height="13" fill="none"
+         stroke="currentColor" stroke-width="1.5">
+      <circle cx="8" cy="8" r="6"/>
+      <circle cx="8" cy="8" r="1" fill="currentColor" stroke="none"/>
+    </svg>
+  </button>
+</div>
+<button id="spc-btn" type="button" aria-label="空格：确认预选 · 飞向已锁定目标">
+  <svg viewBox="0 0 16 16" width="13" height="13" fill="none"
+       stroke="currentColor" stroke-width="1.5">
+    <rect x="2" y="6.5" width="12" height="3" rx="1.2"/>
+  </svg>
+</button>
+
+<div id="footer">
+  星表 Tycho-2 · Hipparcos<span class="sep">/</span>音频特征 MERT-v1-95M
+  <span class="sep">/</span><a href="https://github.com/wuyilingwei/10lightyears"
+     target="_blank" rel="noopener">开源仓库</a>
+  <span class="sep">/</span><a href="https://www.cloudflare.com/"
+     target="_blank" rel="noopener">Powered by Cloudflare</a>
+</div>
+
+<div id="help-modal" hidden>
+  <div id="help-panel" role="dialog" aria-label="操作指南">
+    <button id="help-close" type="button" aria-label="关闭">✕</button>
+    <h2>操作指南</h2>
+    <div class="help-grp">鼠标 · 键盘</div>
+    <div class="help-row"><span>右键按住</span><b>指向线转向 · 离中心越远转得越快</b></div>
+    <div class="help-row"><span>W / A / S / D</span><b>辅助平移（上 / 左 / 下 / 右）</b></div>
+    <div class="help-row"><span>Q / E</span><b>滚转</b></div>
+    <div class="help-row"><span>滚轮</span><b>切目标速度档 · 空心三角为设定值</b></div>
+    <div class="help-row"><span>鼠标中键</span><b>速度归零 · 长按转向银心</b></div>
+    <div class="help-row"><span>左键</span><b>选中恒星（锁定）</b></div>
+    <div class="help-row"><span>Space</span><b>确认预选切换 · 无预选时飞向已锁定目标</b></div>
+    <div class="help-row"><span>1 – 8</span><b>预选攻击指示器对应目标</b></div>
+    <div class="help-row"><span>PageUp / PageDown</span><b>循环切换目标</b></div>
+    <div class="help-row"><span>「/」</span><b>搜索</b></div>
+    <div class="help-grp">触屏</div>
+    <div class="help-row"><span>左侧方向簇</span><b>上下调速 · 左右滚转</b></div>
+    <div class="help-row"><span>双指捏合</span><b>缩放</b></div>
+    <div class="help-row"><span>轻点</span><b>选中恒星（锁定）</b></div>
+    <div class="help-row"><span>中键按钮</span><b>速度归零 · 长按转向银心</b></div>
+    <div class="help-row"><span>空格按钮</span><b>确认预选切换 · 无预选时飞向已锁定目标</b></div>
+    <div class="help-grp">模式</div>
+    <div class="help-row"><span>左上角切换</span><b>手动 · 巡游 · 漫游</b></div>
+    <div class="help-row"><span>F1 / F2 / F3</span><b>切换 手动 / 巡游 / 漫游</b></div>
+  </div>
+</div>
+
+<div id="splash">
+  <canvas id="splash-canvas"></canvas>
+  <div id="splash-card">
+    <p class="splash-era">STARDUST · 2016.8.12 — 2026.8.12</p>
+    <img class="splash-logo" src="./icon.svg" alt="">
+    <h2 class="splash-title">星尘十周年</h2>
+    <p class="splash-site">十光年的距离 · 投稿星图</p>
+    <div class="splash-verse">
+      <p>十年间，B 站上每一支献给星尘的投稿都在此化为星辰</p>
+      <p>每一颗星，都是创作者对星尘的爱</p>
+      <p>星尘与热爱它的人，一同构成了这片银河</p>
+    </div>
+    <div class="splash-rule"></div>
+    <div class="splash-credits">
+      <div>
+        <span class="splash-role">美术 · 设计 · 编码</span>
+        <span class="splash-author">武乙凌薇</span>
+      </div>
+      <div>
+        <span class="splash-role">数据处理</span>
+        <span class="splash-author">StarryMiko2233</span>
+      </div>
+    </div>
+    <p class="splash-notice">曲目数据为自动抓取，以标题关键词匹配；截止 2026 年 6 月，无法保证收录无遗漏或范围精准。</p>
+    <button id="splash-btn">尘尘十周年生日快乐！！！</button>
+  </div>
+</div>
+<script>
+(function () {
+  var c = document.getElementById('splash-canvas');
+  var ctx = c.getContext('2d');
+  var dpr = Math.min(devicePixelRatio, 2);
+  var stars = [];
+  for (var i = 0; i < 140; i++) {
+    stars.push({ x: Math.random(), y: Math.random(),
+      r: Math.random() * 1.05 + 0.2,
+      ph: Math.random() * 6.28,
+      sp: Math.random() * 0.4 + 0.18 });
+  }
+  var alive = true;
+  function resize() { c.width = innerWidth * dpr; c.height = innerHeight * dpr; }
+  resize();
+  addEventListener('resize', resize);
+  function frame(t) {
+    if (!alive) return;
+    ctx.clearRect(0, 0, c.width, c.height);
+    stars.forEach(function (s) {
+      var a = 0.22 + 0.55 * (0.5 + 0.5 * Math.sin(t * 0.001 * s.sp + s.ph));
+      ctx.beginPath();
+      ctx.arc(s.x * c.width, s.y * c.height, s.r * dpr, 0, 6.28);
+      ctx.fillStyle = 'rgba(223,232,242,' + a.toFixed(2) + ')';
+      ctx.fill();
+    });
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+  document.getElementById('splash-btn').addEventListener('click', function () {
+    alive = false;
+    var el = document.getElementById('splash');
+    el.classList.add('out');
+    el.addEventListener('transitionend', function () { el.style.display = 'none'; }, { once: true });
+  });
+})();
+</script>
+
+<div id="loading">
+  <div id="load-inner">
+    <img id="load-mark" src="./icon.svg" alt="">
+    <div id="load-text">载入星表</div>
+    <div id="load-track"><div id="load-bar"></div></div>
+    <div id="load-pct">0%</div>
+  </div>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.js" } }
+</script>
+<script type="module" src="./main.js"></script>
+</body>
+</html>

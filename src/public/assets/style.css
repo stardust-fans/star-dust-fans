@@ -228,6 +228,12 @@ a {
     animation: fadeUp 0.5s var(--ease);
 }
 
+/* 整幅页面：入场动画的 transform 会让子元素的 position:fixed 改以此处为
+   参照系，导致固定层被 #app 的宽度与内边距框住，故这里关掉动画 */
+#content.content-full {
+    animation: none;
+}
+
 @keyframes fadeUp {
     from {
         opacity: 0;
