@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32"
+     role="img" aria-label="十光年的距离">
+  <defs>
+    <linearGradient id="star-body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffe9a8"/>
+      <stop offset="1" stop-color="#e8b833"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 六芒星正视图：两枚等边三角形对插，整体实心，中间不留环 -->
+  <g fill="url(#star-body)" stroke="url(#star-body)" stroke-width="1.2"
+     stroke-linejoin="round">
+    <path d="M16 3.2 27.26 22.7 4.74 22.7Z"/>
+    <path d="M16 28.8 4.74 9.3 27.26 9.3Z"/>
+  </g>
+</svg>

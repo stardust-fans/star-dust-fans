@@ -137,6 +137,14 @@ a {
     letter-spacing: 0.01em;
 }
 
+/* .nav-brand 是 baseline 对齐，图片没有文字基线，只能自己居中 */
+.nav-brand-logo {
+    align-self: center;
+    display: block;
+    width: 26px;
+    height: 26px;
+}
+
 .nav-brand .nav-brand-mark {
     font-family: var(--font-mono);
     font-size: 0.72rem;
@@ -222,6 +230,12 @@ a {
 
 #content {
     animation: fadeUp 0.5s var(--ease);
+}
+
+/* 整幅页面：入场动画的 transform 会让子元素的 position:fixed 改以此处为
+   参照系，导致固定层被 #app 的宽度与内边距框住，故这里关掉动画 */
+#content.content-full {
+    animation: none;
 }
 
 @keyframes fadeUp {

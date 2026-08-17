@@ -45,6 +45,14 @@
             transition: transform 0.3s ease;
         }
 
+        /* 跟着标题字号缩放，侧栏 1.2rem 与顶栏 1.5rem 共用同一条规则 */
+        .brand-logo {
+            width: 1.1em;
+            height: 1.1em;
+            vertical-align: -0.15em;
+            margin-right: 6px;
+        }
+
         .sidebar-brand {
             padding: 0 20px 24px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.04);
