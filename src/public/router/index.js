@@ -5,6 +5,7 @@ import VideosView from '../views/VideosView.vue';
 import DailyView from '../views/DailyView.vue';
 import FanartView from '../views/FanartView.vue';
 import ShopView from '../views/ShopView.vue';
+import AboutView from '../views/AboutView.vue';
 
 const router = createRouter({
     history: createWebHistory(),
@@ -16,6 +17,7 @@ const router = createRouter({
         { path: '/daily', name: 'daily', component: DailyView },
         { path: '/fanart', name: 'fanart', component: FanartView },
         { path: '/shop', name: 'shop', component: ShopView },
+        { path: '/about', name: 'about', component: AboutView },
         { path: '/:pathMatch(.*)*', redirect: '/' },
     ],
 });

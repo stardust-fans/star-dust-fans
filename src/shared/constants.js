@@ -38,4 +38,5 @@ export const PAGE_TITLE_MAP = {
     fanart: '同人 · 星尘粉丝站',
     shop: '量贩 · 星尘粉丝站',
     daily: '吸尘器日报 · 星尘粉丝站',
+    about: '关于 · 星尘粉丝站',
 };
