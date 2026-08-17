@@ -13,3 +13,6 @@ data/*.db
 .DS_Store
 dist/
 tool/.bili_cli_config.json
+
+# 星图星表二进制数据必须入库（全局 gitignore 忽略了 *.bin）
+!static/starmap-app/data/*.bin
