@@ -11,6 +11,7 @@
         <li><RouterLink to="/fanart" @click="closeMenu">同人</RouterLink></li>
         <li><RouterLink to="/shop" @click="closeMenu">量贩</RouterLink></li>
         <li><RouterLink to="/daily" @click="closeMenu">日报</RouterLink></li>
+        <li><RouterLink to="/about" @click="closeMenu">关于</RouterLink></li>
       </ul>
       <button class="nav-toggle" aria-label="菜单" @click="menuOpen = !menuOpen">
         <span></span><span></span><span></span>
