@@ -12,6 +12,7 @@ const OUTPUT = resolve(dirname(fileURLToPath(import.meta.url)), '../src/shared/c
 const ALIASES = {
     wuyilingwei: '武乙凌薇',
     cooollawf: '八月p',
+    cjnsasdf: 'StarryMiko2233',
 };
 
 const FALLBACK = Object.entries(ALIASES).map(([login, name]) => ({ login, name }));
@@ -21,6 +22,16 @@ export function normalizeContributors(list) {
         .filter(u => u && typeof u.login === 'string' && u.type !== 'Bot' && !u.login.endsWith('[bot]'))
         .sort((a, b) => (b.contributions || 0) - (a.contributions || 0))
         .map(u => ({ login: u.login, name: ALIASES[u.login.toLowerCase()] || u.login }));
+}
+
+// GitHub 的贡献者统计对 co-author 的收录有延迟，甚至要等下一轮统计才出现。
+// 别名表里的人是明确知道要署名的，补进名单尾部，避免名单短暂少人。
+export function withAliased(contributors) {
+    const seen = new Set(contributors.map(c => c.login.toLowerCase()));
+    const missing = Object.entries(ALIASES)
+        .filter(([login]) => !seen.has(login))
+        .map(([login, name]) => ({ login, name }));
+    return [...contributors, ...missing];
 }
 
 function write(contributors) {
@@ -42,7 +53,7 @@ async function main() {
         const list = await res.json();
         if (!Array.isArray(list)) throw new Error('GitHub 返回格式异常');
 
-        const contributors = normalizeContributors(list);
+        const contributors = withAliased(normalizeContributors(list));
         // 空名单会让关于页变成「由共同主导」，宁可当成失败走沿用旧文件那条路
         if (!contributors.length) throw new Error('贡献者列表为空');
         write(contributors);

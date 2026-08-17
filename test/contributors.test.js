@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeContributors } from '../tool/fetch_contributors.mjs';
+import { normalizeContributors, withAliased } from '../tool/fetch_contributors.mjs';
 import generated from '../src/shared/contributors.json';
 
 describe('normalizeContributors', () => {
@@ -22,6 +22,22 @@ describe('normalizeContributors', () => {
             { login: 'renovate[bot]', type: 'User', contributions: 88 },
         ]);
         expect(result.map(c => c.login)).toEqual(['wuyilingwei']);
+    });
+});
+
+describe('withAliased', () => {
+    it('补上贡献者接口里还没出现的别名成员', () => {
+        const result = withAliased([{ login: 'wuyilingwei', name: '武乙凌薇' }]);
+        expect(result.map(c => c.name)).toEqual(['武乙凌薇', '八月p', 'StarryMiko2233']);
+    });
+
+    it('已在名单里的不重复补，大小写不敏感', () => {
+        const result = withAliased([
+            { login: 'CooolLawf', name: '八月p' },
+            { login: 'cjnsasdf', name: 'StarryMiko2233' },
+            { login: 'wuyilingwei', name: '武乙凌薇' },
+        ]);
+        expect(result.map(c => c.login)).toEqual(['CooolLawf', 'cjnsasdf', 'wuyilingwei']);
     });
 });
 
