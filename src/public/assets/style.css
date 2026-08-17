@@ -147,8 +147,9 @@ a {
 
 .nav-brand .nav-brand-mark {
     font-family: var(--font-mono);
-    font-size: 0.72rem;
+    font-size: 0.70rem;
     font-weight: 900;
+    font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     letter-spacing: 0.16em;
     color: var(--ink-faint);
     text-transform: uppercase;
