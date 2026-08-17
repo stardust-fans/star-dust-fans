@@ -2,7 +2,7 @@
   <div class="sidebar-overlay" :class="{ active: sidebarOpen }" @click="$emit('close-sidebar')"></div>
   <nav class="sidebar" :class="{ open: sidebarOpen }">
     <div class="sidebar-brand">
-      <h2>✦ 星尘</h2>
+      <h2><img class="brand-logo" src="/logo.svg" alt="" />星尘</h2>
       <small>后台管理</small>
     </div>
     <ul class="sidebar-menu">
