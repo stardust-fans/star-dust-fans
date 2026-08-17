@@ -2,7 +2,7 @@
   <section class="hero-section">
     <div class="hero-content">
       <div class="hero-text">
-        <div class="hero-badge">VOCALOID · 中文虚拟歌姬</div>
+        <div class="hero-badge">STARDUST · 中文虚拟歌姬</div>
         <h1 class="hero-title">星尘</h1>
         <p class="hero-subtitle">众星因你，皆降为尘</p>
         <p class="hero-desc">
