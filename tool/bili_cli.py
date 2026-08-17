@@ -16,7 +16,7 @@
     python3 tool/bili_cli.py update                          # 刷新站内全部歌曲的播放数据
     python3 tool/bili_cli.py update --bvid BV1xxx             # 只刷新指定歌曲
 
-已存在的 bvid（含隐藏/标记状态）自动跳过，不会重复添加或报错中断。
+已存在的 bvid（含隐藏/标记状态）会自动跳过，不会重复添加或报错中断。
 
 可调参数：
     --limit         最多爬取多少个候选视频（默认 30）
