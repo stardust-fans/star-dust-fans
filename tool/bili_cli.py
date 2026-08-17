@@ -5,7 +5,7 @@
 后台"添加歌曲"已改为纯手动录入。这个工具跑在本机（不受那个封锁影响），批量抓取后直接
 用后台管理员账号调用 /api/admin/songs 提交，替代一首首手动打开浏览器录入。
 
-依赖：requests, Pillow（均为常见库，本机已确认可用）。
+依赖：requests
 
 用法：
     python3 tool/bili_cli.py configure                      # 交互式配置站点地址与管理员账号密码
@@ -15,6 +15,7 @@
     python3 tool/bili_cli.py add --favlist 123456            # 按收藏夹 ID 添加
     python3 tool/bili_cli.py update                          # 刷新站内全部歌曲的播放数据
     python3 tool/bili_cli.py update --bvid BV1xxx             # 只刷新指定歌曲
+    python3 tool/bili_cli.py update --test                   # 测试模式：只更新 cover_url，不覆盖其他字段
 
 已存在的 bvid（含隐藏/标记状态）会自动跳过，不会重复添加或报错中断。
 
@@ -22,14 +23,13 @@
     --limit         最多爬取多少个候选视频（默认 30）
     --delay         请求间隔（秒），调大可避免被 B 站风控（默认 0.34）
     --max-retries   单个视频请求失败时的最大重试次数（默认 3）
-    --cover-retries 封面抓取失败时的最大重试次数（默认 3）
     --batch         每批提交的歌曲数量（默认 30）
     --yes           跳过确认提示，直接提交
+    --test          测试模式：只更新 cover_url，不覆盖其他字段
 """
 import argparse
 import getpass
 import hashlib
-import io
 import json
 import os
 import re
@@ -39,12 +39,6 @@ import urllib.parse
 from pathlib import Path
 
 import requests
-
-try:
-    from PIL import Image
-except ImportError:
-    print("❌ 缺少 Pillow，先运行: pip3 install Pillow", file=sys.stderr)
-    sys.exit(1)
 
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = ROOT / "tool" / ".bili_cli_config.json"
@@ -140,7 +134,7 @@ def safe_bili_json(response, context):
 
 def fetch_video_detail(bvid, max_retries=3, delay=0.34):
     """
-    单视频完整信息，字段与 tool/bili_analyze.py 一致。
+    单视频完整信息。
     支持自动重试：请求失败时等待递增时间后重试，最多重试 max_retries 次。
     重试全部失败后抛出异常。
     """
@@ -309,51 +303,6 @@ def discover_by_favlist(media_id, limit, delay=0.34):
     return bvids[:limit]
 
 
-def fetch_cover_webp_base64(cover_url, max_width=480, quality=82, delay=0.34, max_retries=3):
-    """
-    下载封面图并转成 webp base64。
-    支持自动重试：请求失败时等待递增时间后重试，最多重试 max_retries 次。
-    """
-    last_exception = None
-
-    for attempt in range(max_retries):
-        try:
-            time.sleep(delay)
-            r = requests.get(cover_url, headers={"User-Agent": UA}, timeout=15)
-            r.raise_for_status()
-            img = Image.open(io.BytesIO(r.content)).convert("RGB")
-            if img.width > max_width:
-                ratio = max_width / img.width
-                img = img.resize((max_width, round(img.height * ratio)))
-            buf = io.BytesIO()
-            img.save(buf, format="WEBP", quality=quality)
-            import base64
-            return base64.b64encode(buf.getvalue()).decode("ascii")
-
-        except (requests.exceptions.ConnectionError,
-                requests.exceptions.Timeout,
-                requests.exceptions.RequestException) as e:
-            last_exception = e
-            if attempt < max_retries - 1:
-                wait_time = (attempt + 1) * 2
-                print(f"  ⚠️ 封面抓取第{attempt+1}次失败，等待{wait_time}秒后重试... ({e})")
-                time.sleep(wait_time)
-            else:
-                print(f"  ❌ 封面抓取重试{max_retries}次后仍失败: {e}")
-                raise
-
-        except Exception as e:
-            last_exception = e
-            if attempt < max_retries - 1:
-                wait_time = (attempt + 1) * 2
-                print(f"  ⚠️ 封面抓取第{attempt+1}次异常，等待{wait_time}秒后重试... ({e})")
-                time.sleep(wait_time)
-            else:
-                raise
-
-    raise RuntimeError(f"封面抓取所有重试均失败") from last_exception
-
-
 def compute_tiers(view_count):
     return {
         "is_masterpiece": view_count >= MASTERPIECE_VIEW_THRESHOLD,
@@ -396,12 +345,14 @@ class SiteClient:
         return r.status_code, r.json()
 
 
-def build_add_payload(detail, with_cover=True, delay=0.34, cover_retries=3):
+def build_add_payload(detail):
+    """构建添加歌曲的 payload，直接存 cover_url，不再转 base64"""
     tiers = compute_tiers(detail["stats"]["view"])
     payload = {
         "bvid": detail["bvid"],
         "title": strip_html(detail["title"]),
         "description": strip_html(detail["description"]),
+        "cover_url": detail.get("cover_url", ""),
         "duration": detail["duration"],
         "pubdate": detail["pubdate"],
         "owner": {"name": detail["owner_name"], "mid": detail["owner_mid"], "face": None},
@@ -414,15 +365,6 @@ def build_add_payload(detail, with_cover=True, delay=0.34, cover_retries=3):
         "is_national_team": False,
         "is_gods_descend": False,
     }
-    if with_cover and detail.get("cover_url"):
-        try:
-            payload["cover"] = fetch_cover_webp_base64(
-                detail["cover_url"],
-                delay=delay,
-                max_retries=cover_retries
-            )
-        except Exception as e:
-            print(f"  ⚠️ 封面抓取失败（{e}），将不带封面提交", file=sys.stderr)
     return payload
 
 
@@ -433,7 +375,7 @@ def cmd_add(args):
     client = SiteClient(config["site_url"], config["username"], config["password"])
     client.login()
     print(f"✅ 已登录 {config['site_url']}（{config['username']}）")
-    print(f"⚙️  请求间隔: {args.delay}s，最大重试: {args.max_retries} 次，封面重试: {args.cover_retries} 次，每批提交: {args.batch} 首，最多爬取: {args.limit} 个")
+    print(f"⚙️  请求间隔: {args.delay}s，最大重试: {args.max_retries} 次，每批提交: {args.batch} 首，最多爬取: {args.limit} 个")
 
     if args.bvid:
         bvids = args.bvid
@@ -481,7 +423,7 @@ def cmd_add(args):
             print(f"[{i}/{len(batch)}] {bvid} ...", end=" ", flush=True)
             try:
                 detail = fetch_video_detail(bvid, max_retries=args.max_retries, delay=args.delay)
-                payload = build_add_payload(detail, delay=args.delay, cover_retries=args.cover_retries)
+                payload = build_add_payload(detail)
                 status, resp = client.create_song(payload)
                 if status == 409:
                     print("已存在，跳过")
@@ -509,13 +451,78 @@ def cmd_add(args):
 def cmd_update(args):
     config = load_config()
     client = SiteClient(config["site_url"], config["username"], config["password"])
+    print("🔐 正在登录...")
     client.login()
     print(f"✅ 已登录 {config['site_url']}（{config['username']}）")
-    print(f"⚙️  请求间隔: {args.delay}s，最大重试: {args.max_retries} 次，封面重试: {args.cover_retries} 次")
+    print(f"⚙️  请求间隔: {args.delay}s，最大重试: {args.max_retries} 次")
 
+    # ===== 测试模式：直接处理，不拉取 D1 =====
+    if args.test:
+        print("🧪 测试模式：只更新 cover_url，不覆盖其他字段")
+        
+        # 如果有 --bvid，直接用指定的 BV 号
+        if args.bvid:
+            bvids = args.bvid
+            print(f"🎯 指定的 BV 号: {', '.join(bvids)}")
+            # 需要从 D1 获取这些 BV 的 id
+            print("📥 正在从 D1 获取歌曲列表...")
+            songs = client.list_songs()
+            # 过滤出指定的 BV
+            songs = [s for s in songs if s.get("bvid") in bvids]
+        else:
+            # 没有指定 BV，拉取全部，只更新 cover_url 为空的
+            print("📥 正在从 D1 获取歌曲列表...")
+            songs = client.list_songs()
+            songs = [s for s in songs if not s.get("cover_url")]
+            print(f"📊 需要更新 cover_url 的歌曲: {len(songs)} 首")
+        
+        if not songs:
+            print("没有需要更新的歌曲")
+            return
+        
+        print(f"📊 实际需要更新 {len(songs)} 首歌曲")
+        print("开始更新...")
+        
+        updated = failed = 0
+        for i, song in enumerate(songs, 1):
+            bvid = song["bvid"]
+            print(f"[{i}/{len(songs)}] {bvid} ...", end=" ", flush=True)
+            try:
+                print("请求B站...", end=" ", flush=True)
+                detail = fetch_video_detail(bvid, max_retries=args.max_retries, delay=args.delay)
+                cover_url = detail.get("cover_url", "")
+                if not cover_url:
+                    print("❌ 获取封面失败")
+                    failed += 1
+                    continue
+                
+                print("提交更新...", end=" ", flush=True)
+                payload = {"cover_url": cover_url}
+                status, resp = client.update_song(song["id"], payload)
+                if 200 <= status < 300:
+                    print(f"✅ {cover_url[:40]}...")
+                    updated += 1
+                else:
+                    print(f"❌ {resp.get('error', status)}")
+                    failed += 1
+            except RuntimeError as e:
+                print(f"❌ 重试失败，跳过该视频: {e}")
+                failed += 1
+            except Exception as e:
+                print(f"❌ 未知错误: {e}")
+                failed += 1
+        
+        print(f"\n完成：更新 {updated}，失败 {failed}")
+        return
+
+    # ===== 正常模式：拉取全部歌曲，更新所有字段 =====
+    print("📥 正在从 D1 获取歌曲列表...")
     songs = client.list_songs()
+    print(f"📊 获取到 {len(songs)} 首歌曲")
+
     if args.bvid:
         wanted = set(args.bvid)
+        print(f"🎯 只更新指定的 {len(wanted)} 个 BV 号")
         songs = [s for s in songs if s["bvid"] in wanted]
         missing = wanted - {s["bvid"] for s in songs}
         if missing:
@@ -525,17 +532,23 @@ def cmd_update(args):
         print("没有需要更新的歌曲")
         return
 
-    print(f"共 {len(songs)} 首歌曲待刷新播放数据")
+    print(f"📊 实际需要更新 {len(songs)} 首歌曲")
+    print("开始更新...")
+
     updated = failed = 0
     for i, song in enumerate(songs, 1):
         bvid = song["bvid"]
         print(f"[{i}/{len(songs)}] {bvid} ...", end=" ", flush=True)
         try:
+            print("请求B站...", end=" ", flush=True)
             detail = fetch_video_detail(bvid, max_retries=args.max_retries, delay=args.delay)
+            print("获取成功，准备更新...", end=" ", flush=True)
+
             tiers = compute_tiers(detail["stats"]["view"])
             payload = {
                 "title": strip_html(detail["title"]),
                 "description": strip_html(detail["description"]),
+                "cover_url": detail.get("cover_url", ""),
                 "duration": detail["duration"],
                 "pubdate": detail["pubdate"],
                 "owner": {"name": detail["owner_name"], "mid": detail["owner_mid"], "face": None},
@@ -548,15 +561,8 @@ def cmd_update(args):
                 "is_gods_descend": song.get("is_gods_descend", False),
                 **tiers,
             }
-            if not args.no_cover:
-                try:
-                    payload["cover"] = fetch_cover_webp_base64(
-                        detail["cover_url"],
-                        delay=args.delay,
-                        max_retries=args.cover_retries
-                    )
-                except Exception as e:
-                    print(f"(封面刷新失败: {e}) ", end="", flush=True)
+
+            print("提交更新...", end=" ", flush=True)
             status, resp = client.update_song(song["id"], payload)
             if 200 <= status < 300:
                 view = detail["stats"]["view"]
@@ -575,7 +581,6 @@ def cmd_update(args):
 
     print(f"\n完成：更新 {updated}，失败 {failed}")
 
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -591,7 +596,6 @@ def main():
     p_add.add_argument("--limit", type=int, default=30, help="最多爬取多少个候选视频（默认 30）")
     p_add.add_argument("--delay", type=float, default=0.34, help="请求间隔（秒），调大可避免被 B 站风控（默认 0.34）")
     p_add.add_argument("--max-retries", type=int, default=3, help="单个视频请求失败时的最大重试次数（默认 3）")
-    p_add.add_argument("--cover-retries", type=int, default=3, help="封面抓取失败时的最大重试次数（默认 3）")
     p_add.add_argument("--batch", type=int, default=30, help="每批提交的歌曲数量（默认 30）")
     p_add.add_argument("--yes", action="store_true", help="跳过确认提示，直接提交")
     p_add.set_defaults(func=cmd_add)
@@ -600,8 +604,8 @@ def main():
     p_update.add_argument("--bvid", nargs="+", metavar="BV...", help="只刷新指定 bvid")
     p_update.add_argument("--delay", type=float, default=0.34, help="请求间隔（秒），调大可避免被 B 站风控（默认 0.34）")
     p_update.add_argument("--max-retries", type=int, default=3, help="单个视频请求失败时的最大重试次数（默认 3）")
-    p_update.add_argument("--cover-retries", type=int, default=3, help="封面抓取失败时的最大重试次数（默认 3）")
-    p_update.add_argument("--no-cover", action="store_true", help="不重新抓取封面，只更新数字")
+    p_update.add_argument("--test", action="store_true", help="测试模式：只更新 cover_url，不覆盖其他字段")
+    p_update.add_argument("--no-cover", action="store_true", help="不重新抓取封面，只更新数字（正常模式下）")
     p_update.set_defaults(func=cmd_update)
 
     args = parser.parse_args()

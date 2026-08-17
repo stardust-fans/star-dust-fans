@@ -1122,3 +1122,125 @@ a {
     display: flex;
     gap: 16px;
 }
+
+/* ===== 排序栏 ===== */
+.sort-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+  padding: 12px 16px;
+  background: var(--bg-card);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.sort-label {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.sort-options {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.sort-btn {
+  padding: 4px 14px;
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: var(--transition);
+  font-family: inherit;
+}
+
+.sort-btn:hover {
+  border-color: var(--primary);
+  color: #fff;
+  background: rgba(153, 153, 255, 0.05);
+}
+
+.sort-btn.active {
+  border-color: var(--primary);
+  color: #fff;
+  background: rgba(153, 153, 255, 0.12);
+}
+
+@media (max-width: 480px) {
+  .sort-bar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .sort-options {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+/* ===== 排序按键 ===== */
+.sort-bar {
+  margin-bottom: 24px;
+}
+
+.sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px;
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  background: var(--bg-card);
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: var(--transition);
+  font-family: inherit;
+}
+
+.sort-btn:hover {
+  border-color: var(--primary);
+  color: #fff;
+  background: rgba(153, 153, 255, 0.05);
+}
+
+.sort-label {
+  color: var(--text-muted);
+}
+
+.sort-current {
+  color: #fff;
+  font-weight: 500;
+}
+
+.sort-arrow {
+  font-size: 1rem;
+}
+
+/* ===== 懒加载相关 ===== */
+.load-more-trigger {
+  text-align: center;
+  padding: 24px 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  cursor: default;
+}
+
+.load-more-end {
+  text-align: center;
+  padding: 24px 0;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+
+.loading-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-muted);
+}
