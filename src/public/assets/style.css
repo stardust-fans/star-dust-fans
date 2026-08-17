@@ -110,6 +110,7 @@ a {
     z-index: 1000;
     background: rgba(7, 7, 13, 0.86);
     backdrop-filter: blur(6px);
+    font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     -webkit-backdrop-filter: blur(6px);
     border-bottom: 1px solid var(--line-strong);
 }
@@ -138,8 +139,8 @@ a {
 
 .nav-brand .nav-brand-mark {
     font-family: var(--font-mono);
-    font-size: 0.62rem;
-    font-weight: 500;
+    font-size: 0.72rem;
+    font-weight: 900;
     letter-spacing: 0.16em;
     color: var(--ink-faint);
     text-transform: uppercase;
@@ -151,6 +152,8 @@ a {
 
 .nav-menu {
     display: flex;
+    font-size: 0.8rem;
+    font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     list-style: none;
     gap: 4px;
 }
@@ -161,9 +164,10 @@ a {
     text-decoration: none;
     padding: 8px 4px;
     font-family: var(--font-mono);
-    font-size: 0.76rem;
+    font-size: 0.95rem;
     font-weight: 500;
     letter-spacing: 0.1em;
+    font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     text-transform: uppercase;
     cursor: pointer;
     border-bottom: 1px solid transparent;
@@ -801,6 +805,7 @@ a {
 .about-card {
     background: var(--paper);
     padding: 22px 22px 24px;
+    font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     position: relative;
 }
 
