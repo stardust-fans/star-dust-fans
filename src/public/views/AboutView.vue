@@ -7,7 +7,7 @@
 
   <div class="about-content">
     <p>
-      关于星尘粉丝站，本身其实是由八月p与其他人共同主导、搭建、维护的。
+      关于星尘粉丝站，本身其实是由{{ signature }}共同主导、搭建、维护的。
     </p>
     <p>
       这会产生许多成本，比如域名费用、服务器维护费、以及其他乱七八糟的开支。
@@ -27,14 +27,17 @@
     </div>
 
     <div class="sponsor-note">
-      <p class="sponsor-heart">💙 众星因你，皆降为尘</p>
       <p class="sponsor-small">非官方粉丝站 · 用爱发电</p>
     </div>
   </div>
 </template>
 
 <script setup>
+// 名单由 tool/fetch_contributors.mjs 在构建期生成
+import contributors from '../../shared/contributors.json';
+
 const imageUrl = '/images/bayuep-support.png';
+const signature = contributors.map(c => c.name).join('、');
 </script>
 
 <style scoped>
@@ -68,12 +71,6 @@ const imageUrl = '/images/bayuep-support.png';
   text-align: center;
   padding: 24px 0 16px;
   border-top: 1px solid var(--border);
-}
-
-.sponsor-note .sponsor-heart {
-  margin-bottom: 4px;
-  font-size: 1rem;
-  color: var(--text);
 }
 
 .sponsor-note .sponsor-small {
