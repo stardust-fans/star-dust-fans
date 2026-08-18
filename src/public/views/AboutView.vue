@@ -7,7 +7,7 @@
 
   <div class="about-content">
     <p>
-      关于星尘粉丝站，本身其实是由下面这些人共同主导、搭建、维护的。
+      粉丝站由下面这些人一起折腾起来的，一直维护到现在。
     </p>
 
     <table class="credits">
@@ -29,16 +29,13 @@
     </table>
 
     <p>
-      这会产生许多成本，比如域名费用、服务器维护费、以及其他乱七八糟的开支。
+      维护站点有些实际开支——域名、服务器之类的，偶尔还有其他乱七八糟的费用。
     </p>
     <p>
-      Github链接：https://github.com/stardust-fans/star-dust-fans
+      代码在 <a href="https://github.com/stardust-fans/star-dust-fans" target="_blank" rel="noopener">GitHub 开源</a>，感兴趣的话可以去看看。
     </p>
     <p>
-      恳请屏幕前的吸尘器们，如果有能力，请帮助我们。
-    </p>
-    <p>
-      哪怕只是一两块，都可能是粉丝站活下去的希望。
+      如果你觉得这里还不错，随手支持一下也行——哪怕一两块，对我们来说都很有意义。
     </p>
 
     <div class="sponsor-image-wrapper">
@@ -65,10 +62,21 @@ const imageUrl = '/images/bayuep-support.png';
 }
 
 .about-content p {
-  color: var(--text-muted);
+  color: var(--ink-muted);
   font-size: 1.05rem;
   line-height: 1.9;
   margin-bottom: 20px;
+}
+
+.about-content p a {
+  color: var(--cobalt);
+  text-decoration: none;
+  border-bottom: 1px solid var(--cobalt-soft);
+  transition: border-color 0.2s;
+}
+
+.about-content p a:hover {
+  border-bottom-color: var(--cobalt);
 }
 
 .credits {
@@ -130,22 +138,22 @@ const imageUrl = '/images/bayuep-support.png';
 }
 
 .sponsor-image {
-  max-width: 400px; 
+  max-width: 400px;
   height: auto;
-  border-radius: var(--radius-sm);
-  background: var(--bg-card);
-  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
   padding: 8px;
 }
 
 .sponsor-note {
   text-align: center;
   padding: 24px 0 16px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--line);
 }
 
 .sponsor-note .sponsor-small {
   font-size: 0.85rem;
-  color: var(--text-dim);
+  color: var(--ink-faint);
 }
 </style>
