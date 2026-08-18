@@ -29,6 +29,8 @@ describe('Public API', () => {
         expect(res.status).toBe(200);
         const data = await res.json();
         expect(Array.isArray(data)).toBe(true);
+        const songs = data.data || data;
+        expect(Array.isArray(songs)).toBe(true);
     });
 
     it('GET /api/daily returns 200 with array', async () => {
