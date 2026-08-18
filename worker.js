@@ -35,11 +35,16 @@ export default {
             isAdmin = await verifyToken(token, env);
         }
 
-        // ===== 1. GET /api/songs - 获取全部歌曲（无分页限制） =====
+        // ===== 1. GET /api/songs - 分页获取歌曲列表 =====
         if (path === '/api/songs' && method === 'GET') {
             try {
+                const limit = parseInt(url.searchParams.get('limit') || '1000');
+                const offset = parseInt(url.searchParams.get('offset') || '0');
+                const safeLimit = Number.isNaN(limit) ? 1000 : Math.min(Math.max(limit, 1), 1000);
+                const safeOffset = Number.isNaN(offset) ? 0 : Math.max(offset, 0);
+
                 const stmt = env.DB.prepare(`
-                    SELECT id, bvid, title, cover_base64, cover_url, description, duration, pubdate,
+                    SELECT id, bvid, title, cover_url, description, duration, pubdate,
                            owner_name, owner_mid, owner_face,
                            stat_view, stat_danmaku, stat_reply, stat_favorite, stat_coin, stat_share, stat_like,
                            is_masterpiece, is_national_team, is_gods_descend, is_legend,
@@ -47,8 +52,9 @@ export default {
                     FROM songs
                     WHERE status = 'published'
                     ORDER BY id ASC
+                    LIMIT ? OFFSET ?
                 `);
-                const result = await stmt.all();
+                const result = await stmt.bind(safeLimit, safeOffset).all();
 
                 const songs = (result.results || []).map(row => ({
                     id: row.id,

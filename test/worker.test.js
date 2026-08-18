@@ -28,8 +28,31 @@ describe('Public API', () => {
         const res = await req('/api/songs');
         expect(res.status).toBe(200);
         const data = await res.json();
-        const songs = data.data || data;
-        expect(Array.isArray(songs)).toBe(true);
+        expect(Array.isArray(data)).toBe(true);
+    });
+
+    it('GET /api/songs?limit=N caps the batch size', async () => {
+        const res = await req('/api/songs?limit=1');
+        expect(res.status).toBe(200);
+        const data = await res.json();
+        expect(Array.isArray(data)).toBe(true);
+        expect(data.length).toBeLessThanOrEqual(1);
+    });
+
+    it('GET /api/songs clamps limit to the 1000 hard cap', async () => {
+        const res = await req('/api/songs?limit=99999');
+        expect(res.status).toBe(200);
+        const data = await res.json();
+        expect(Array.isArray(data)).toBe(true);
+        expect(data.length).toBeLessThanOrEqual(1000);
+    });
+
+    it('GET /api/songs tolerates malformed limit/offset', async () => {
+        for (const qs of ['?limit=abc', '?offset=-5', '?limit=0', '?limit=-1&offset=abc']) {
+            const res = await req(`/api/songs${qs}`);
+            expect(res.status).toBe(200);
+            expect(Array.isArray(await res.json())).toBe(true);
+        }
     });
 
     it('GET /api/daily returns 200 with array', async () => {
