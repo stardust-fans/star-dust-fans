@@ -38,7 +38,7 @@ export default {
         // ===== 1. GET /api/songs - 分页获取歌曲列表 =====
         if (path === '/api/songs' && method === 'GET') {
             try {
-                const limit = parseInt(url.searchParams.get('limit') || '30');
+                const limit = parseInt(url.searchParams.get('limit') || '99999');
                 const offset = parseInt(url.searchParams.get('offset') || '0');
                 const safeLimit = Math.min(limit, 100);
 
