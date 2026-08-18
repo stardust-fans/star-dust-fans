@@ -801,6 +801,20 @@ a {
     font-family: var(--font-mono);
     font-size: 0.82rem;
     margin-top: 6px;
+    white-space: normal;   
+    word-break: break-word; 
+    overflow: visible;      
+    text-overflow: unset;   
+}
+
+@media (max-width: 768px) {
+    .section-subtitle {
+        font-size: 0.85rem;
+        white-space: normal;
+        word-break: break-word;
+        overflow: visible;
+        text-overflow: unset;
+    }
 }
 
 .section-more {
