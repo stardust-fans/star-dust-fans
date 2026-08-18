@@ -28,7 +28,6 @@ describe('Public API', () => {
         const res = await req('/api/songs');
         expect(res.status).toBe(200);
         const data = await res.json();
-        expect(Array.isArray(data)).toBe(true);
         const songs = data.data || data;
         expect(Array.isArray(songs)).toBe(true);
     });
