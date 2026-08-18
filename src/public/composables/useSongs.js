@@ -1,12 +1,20 @@
 import { ref } from 'vue';
 import { fetchAPI } from '../../shared/api.js';
 
+const PAGE_SIZE = 200;
+
 const songs = ref([]);
 const loaded = ref(false);
 
 async function loadSongs() {
-    const data = await fetchAPI('/songs');
-    songs.value = Array.isArray(data) ? data : [];
+    const all = [];
+    for (let offset = 0; ; offset += PAGE_SIZE) {
+        const batch = await fetchAPI(`/songs?limit=${PAGE_SIZE}&offset=${offset}`);
+        if (!Array.isArray(batch) || batch.length === 0) break;
+        all.push(...batch);
+        if (batch.length < PAGE_SIZE) break;
+    }
+    songs.value = all;
     loaded.value = true;
 }
 
