@@ -35,13 +35,9 @@ export default {
             isAdmin = await verifyToken(token, env);
         }
 
-        // ===== 1. GET /api/songs - 分页获取歌曲列表 =====
+        // ===== 1. GET /api/songs - 获取全部歌曲（无分页限制） =====
         if (path === '/api/songs' && method === 'GET') {
             try {
-                const limit = parseInt(url.searchParams.get('limit') || '99999');
-                const offset = parseInt(url.searchParams.get('offset') || '0');
-                const safeLimit = Math.min(limit, 100);
-
                 const stmt = env.DB.prepare(`
                     SELECT id, bvid, title, cover_base64, cover_url, description, duration, pubdate,
                            owner_name, owner_mid, owner_face,
@@ -51,12 +47,8 @@ export default {
                     FROM songs
                     WHERE status = 'published'
                     ORDER BY id ASC
-                    LIMIT ? OFFSET ?
                 `);
-                const result = await stmt.bind(safeLimit, offset).all();
-
-                const countStmt = env.DB.prepare('SELECT COUNT(*) as total FROM songs WHERE status = "published"');
-                const countResult = await countStmt.first();
+                const result = await stmt.all();
 
                 const songs = (result.results || []).map(row => ({
                     id: row.id,
@@ -89,13 +81,7 @@ export default {
                     status: row.status,
                 }));
 
-                return jsonResponse({
-                    data: songs,
-                    total: countResult?.total || 0,
-                    limit: safeLimit,
-                    offset: offset,
-                    hasMore: (offset + safeLimit) < (countResult?.total || 0)
-                });
+                return jsonResponse(songs);
             } catch (error) {
                 console.error('❌ /api/songs 错误:', error.message);
                 return jsonResponse({ error: error.message }, 500);
