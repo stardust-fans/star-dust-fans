@@ -37,7 +37,7 @@
     <div class="section-header">
       <span class="eyebrow">Discography</span>
       <h2 class="section-title">最新歌曲</h2>
-      <p class="section-subtitle">{{ total }} 首，都在这儿了</p>
+      <p class="section-subtitle">{{ songs.length }} 首，都在这儿了</p>
     </div>
     <template v-if="featuredSongs.length > 0">
       <div class="card-grid">
