@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS songs (
     bvid VARCHAR(20) NOT NULL UNIQUE,
     title TEXT,
     cover_base64 TEXT,
+    cover_url TEXT,
     description TEXT,
     duration INTEGER DEFAULT 0,
     pubdate INTEGER DEFAULT 0,

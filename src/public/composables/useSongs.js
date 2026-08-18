@@ -6,7 +6,7 @@ const loaded = ref(false);
 
 async function loadSongs() {
     const data = await fetchAPI('/songs');
-    songs.value = data || [];
+    songs.value = data.data || [];
     loaded.value = true;
 }
 
