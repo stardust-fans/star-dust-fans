@@ -35,25 +35,32 @@ export default {
             isAdmin = await verifyToken(token, env);
         }
 
-        // ===== 1. GET /api/songs - 获取歌曲列表（公开，直接读取快照，不再实时拉取B站） =====
+        // ===== 1. GET /api/songs - 分页获取歌曲列表 =====
         if (path === '/api/songs' && method === 'GET') {
             try {
+                const limit = parseInt(url.searchParams.get('limit') || '1000');
+                const offset = parseInt(url.searchParams.get('offset') || '0');
+                const safeLimit = Number.isNaN(limit) ? 1000 : Math.min(Math.max(limit, 1), 1000);
+                const safeOffset = Number.isNaN(offset) ? 0 : Math.max(offset, 0);
+
                 const stmt = env.DB.prepare(`
-                    SELECT id, bvid, title, cover_base64, description, duration, pubdate,
+                    SELECT id, bvid, title, cover_url, description, duration, pubdate,
                            owner_name, owner_mid, owner_face,
                            stat_view, stat_danmaku, stat_reply, stat_favorite, stat_coin, stat_share, stat_like,
                            is_masterpiece, is_national_team, is_gods_descend, is_legend,
                            special_tags, collaboration_details, status
                     FROM songs
                     WHERE status = 'published'
-                    ORDER BY id DESC
+                    ORDER BY id ASC
+                    LIMIT ? OFFSET ?
                 `);
-                const result = await stmt.all();
+                const result = await stmt.bind(safeLimit, safeOffset).all();
+
                 const songs = (result.results || []).map(row => ({
                     id: row.id,
                     bvid: row.bvid,
                     title: row.title || '未知标题',
-                    cover: row.cover_base64 ? `data:image/webp;base64,${row.cover_base64}` : '',
+                    cover: row.cover_url || '',
                     description: row.description || '',
                     pubdate: row.pubdate || 0,
                     duration: row.duration || 0,
@@ -79,6 +86,7 @@ export default {
                     collaboration_details: row.collaboration_details,
                     status: row.status,
                 }));
+
                 return jsonResponse(songs);
             } catch (error) {
                 console.error('❌ /api/songs 错误:', error.message);
@@ -86,7 +94,19 @@ export default {
             }
         }
 
-                // ===== 1.5 GET /api/daily - 获取已发布的日报（公开） =====
+        // ===== 1.1 GET /api/songs/count - 获取歌曲总数（轻量） =====
+        if (path === '/api/songs/count' && method === 'GET') {
+            try {
+                const stmt = env.DB.prepare('SELECT COUNT(*) as total FROM songs WHERE status = "published"');
+                const result = await stmt.first();
+                return jsonResponse({ total: result?.total || 0 });
+            } catch (error) {
+                console.error('❌ /api/songs/count 错误:', error.message);
+                return jsonResponse({ error: error.message }, 500);
+            }
+        }
+
+        // ===== 1.5 GET /api/daily =====
         if (path === '/api/daily' && method === 'GET') {
             try {
                 const stmt = env.DB.prepare(`
@@ -103,7 +123,7 @@ export default {
             }
         }
 
-        // ===== 1.6 GET /api/fanart - 获取已发布的同人作品（公开） =====
+        // ===== 1.6 GET /api/fanart =====
         if (path === '/api/fanart' && method === 'GET') {
             try {
                 const stmt = env.DB.prepare(`
@@ -120,7 +140,7 @@ export default {
             }
         }
 
-        // ===== 1.7 GET /api/shop - 获取已发布的商品（公开） =====
+        // ===== 1.7 GET /api/shop =====
         if (path === '/api/shop' && method === 'GET') {
             try {
                 const stmt = env.DB.prepare(`
@@ -137,7 +157,7 @@ export default {
             }
         }
 
-        // ===== 3. POST /api/admin/verify - 验证管理员账号密码 =====
+        // ===== 3. POST /api/admin/verify =====
         if (path === '/api/admin/verify' && method === 'POST') {
             try {
                 const body = await request.json();
@@ -153,7 +173,7 @@ export default {
 
                 const passwordOk = row
                     ? await verifyPassword(password, row.password_hash)
-                    : await verifyPassword(password, DUMMY_PASSWORD_HASH); // 用户名不存在时仍跑一次哈希，避免时序侧信道
+                    : await verifyPassword(password, DUMMY_PASSWORD_HASH);
 
                 if (row && passwordOk) {
                     const token = await signToken({
@@ -177,7 +197,7 @@ export default {
             }
         }
 
-        // ===== 3.5 管理员账号管理：POST/GET/DELETE /api/admin/admins =====
+        // ===== 3.5 管理员账号管理 =====
         if (path === '/api/admin/admins' && method === 'POST') {
             if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
             try {
@@ -256,7 +276,7 @@ export default {
             }
         }
 
-        // ===== 3.6 GET /api/admin/audit-logs - 审计日志查询 =====
+        // ===== 3.6 GET /api/admin/audit-logs =====
         if (path === '/api/admin/audit-logs' && method === 'GET') {
             if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
             try {
@@ -282,14 +302,14 @@ export default {
             }
         }
 
-        // ===== 4. POST /api/admin/songs - 添加歌曲（含标题/封面/统计数字快照） =====
+        // ===== 4. POST /api/admin/songs =====
         if (path === '/api/admin/songs' && method === 'POST') {
             if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
             try {
                 const body = await request.json();
                 const { bvid, special_tags, collaboration_details, status, flag_reason,
                         is_masterpiece, is_national_team, is_gods_descend, is_legend,
-                        cover, title, description, duration, pubdate, owner, stats } = body;
+                        cover, title, description, duration, pubdate, owner, stats, cover_url } = body;
 
                 if (!bvid || !/^BV[a-zA-Z0-9]{10}$/.test(bvid)) {
                     return jsonResponse({ error: 'bvid 格式不正确' }, 400);
@@ -314,18 +334,19 @@ export default {
 
                 const stmt = env.DB.prepare(`
                     INSERT INTO songs (
-                        bvid, title, cover_base64, description, duration, pubdate,
+                        bvid, title, cover_base64, cover_url, description, duration, pubdate,
                         owner_name, owner_mid, owner_face,
                         stat_view, stat_danmaku, stat_reply, stat_favorite, stat_coin, stat_share, stat_like,
                         snapshot_synced_at,
                         is_masterpiece, is_national_team, is_gods_descend, is_legend,
                         special_tags, collaboration_details, status, flag_reason
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?, ?)
                 `);
                 const result = await stmt.bind(
                     bvid,
                     title,
                     coverBase64,
+                    cover_url || null,
                     description || null,
                     duration || 0,
                     pubdate || 0,
@@ -367,7 +388,7 @@ export default {
             }
         }
 
-        // ===== 5. PUT /api/admin/songs/:id - 更新歌曲（快照字段可选，未提供的保留原值） =====
+        // ===== 5. PUT /api/admin/songs/:id =====
         const putMatch = path.match(/^\/api\/admin\/songs\/(\d+)$/);
         if (putMatch && method === 'PUT') {
             if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
@@ -376,7 +397,7 @@ export default {
                 const body = await request.json();
                 const { special_tags, collaboration_details, status, flag_reason,
                         is_masterpiece, is_national_team, is_gods_descend, is_legend,
-                        cover, title, description, duration, pubdate, owner, stats } = body;
+                        cover, title, description, duration, pubdate, owner, stats, cover_url } = body;
 
                 let coverBase64 = null;
                 if (cover) {
@@ -391,6 +412,7 @@ export default {
                     UPDATE songs SET
                         title = COALESCE(?, title),
                         cover_base64 = COALESCE(?, cover_base64),
+                        cover_url = COALESCE(?, cover_url),
                         description = COALESCE(?, description),
                         duration = COALESCE(?, duration),
                         pubdate = COALESCE(?, pubdate),
@@ -419,6 +441,7 @@ export default {
                 const result = await stmt.bind(
                     title ?? null,
                     coverBase64,
+                    cover_url ?? null,
                     description ?? null,
                     duration ?? null,
                     pubdate ?? null,
@@ -462,7 +485,7 @@ export default {
             }
         }
 
-        // ===== 6. DELETE /api/admin/songs/:id - 删除歌曲 =====
+        // ===== 6. DELETE /api/admin/songs/:id =====
         const deleteMatch = path.match(/^\/api\/admin\/songs\/(\d+)$/);
         if (deleteMatch && method === 'DELETE') {
             if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
@@ -492,27 +515,19 @@ export default {
             }
         }
 
-        // ============================================================
         // ===== 7. 吸尘器日报 API =====
-        // ============================================================
-
-        // GET /api/admin/daily
         if (path === '/api/admin/daily' && method === 'GET') {
             if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
             try {
-                console.log('📊 查询 daily 表...');
                 const stmt = env.DB.prepare('SELECT * FROM daily ORDER BY publish_date DESC, id DESC');
                 const result = await stmt.all();
-                console.log('✅ daily 查询成功，共', result.results?.length || 0, '条');
                 return jsonResponse(result.results || []);
             } catch (error) {
                 console.error('❌ daily GET 错误:', error.message);
-                console.error('❌ 错误堆栈:', error.stack);
                 return jsonResponse({ error: error.message }, 500);
             }
         }
 
-        // POST /api/admin/daily
         if (path === '/api/admin/daily' && method === 'POST') {
             if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
             try {
@@ -522,14 +537,12 @@ export default {
                     VALUES (?, ?, ?, ?, ?, ?)
                 `);
                 const result = await stmt.bind(title, content, source_url || null, cover_url || null, publish_date || null, status || 'published').run();
-
                 ctx.waitUntil(logAuditEvent(env, {
                     eventType: 'create', actorAdminId: isAdmin.sub, actorUsername: isAdmin.username,
                     targetTable: 'daily', targetId: result.meta?.last_row_id,
                     summary: { title, publish_date: publish_date || null, status: status || 'published' },
                     request,
                 }));
-
                 return jsonResponse({ success: true, id: result.meta?.last_row_id });
             } catch (error) {
                 console.error('❌ daily POST 错误:', error.message);
@@ -537,7 +550,6 @@ export default {
             }
         }
 
-        // PUT /api/admin/daily/:id
         const dailyPutMatch = path.match(/^\/api\/admin\/daily\/(\d+)$/);
         if (dailyPutMatch && method === 'PUT') {
             if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
@@ -549,14 +561,12 @@ export default {
                     WHERE id = ?
                 `);
                 await stmt.bind(title, content, source_url || null, cover_url || null, publish_date || null, status || 'published', id).run();
-
                 ctx.waitUntil(logAuditEvent(env, {
                     eventType: 'update', actorAdminId: isAdmin.sub, actorUsername: isAdmin.username,
                     targetTable: 'daily', targetId: Number(id),
                     summary: { title, publish_date: publish_date || null, status: status || 'published' },
                     request,
                 }));
-
                 return jsonResponse({ success: true });
             } catch (error) {
                 console.error('❌ daily PUT 错误:', error.message);
@@ -564,7 +574,6 @@ export default {
             }
         }
 
-        // DELETE /api/admin/daily/:id
         const dailyDeleteMatch = path.match(/^\/api\/admin\/daily\/(\d+)$/);
         if (dailyDeleteMatch && method === 'DELETE') {
             if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
@@ -573,13 +582,11 @@ export default {
                 const target = await env.DB.prepare('SELECT title FROM daily WHERE id = ?').bind(id).first();
                 const stmt = env.DB.prepare('DELETE FROM daily WHERE id = ?');
                 await stmt.bind(id).run();
-
                 ctx.waitUntil(logAuditEvent(env, {
                     eventType: 'delete', actorAdminId: isAdmin.sub, actorUsername: isAdmin.username,
                     targetTable: 'daily', targetId: Number(id),
                     summary: { title: target?.title }, request,
                 }));
-
                 return jsonResponse({ success: true });
             } catch (error) {
                 console.error('❌ daily DELETE 错误:', error.message);
@@ -587,27 +594,19 @@ export default {
             }
         }
 
-        // ============================================================
         // ===== 8. 同人作品 API =====
-        // ============================================================
-
-        // GET /api/admin/fanart
         if (path === '/api/admin/fanart' && method === 'GET') {
             if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
             try {
-                console.log('📊 查询 fanart 表...');
                 const stmt = env.DB.prepare('SELECT * FROM fanart ORDER BY created_at DESC');
                 const result = await stmt.all();
-                console.log('✅ fanart 查询成功，共', result.results?.length || 0, '条');
                 return jsonResponse(result.results || []);
             } catch (error) {
                 console.error('❌ fanart GET 错误:', error.message);
-                console.error('❌ 错误堆栈:', error.stack);
                 return jsonResponse({ error: error.message }, 500);
             }
         }
 
-        // POST /api/admin/fanart
         if (path === '/api/admin/fanart' && method === 'POST') {
             if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
             try {
@@ -617,14 +616,12 @@ export default {
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 `);
                 const result = await stmt.bind(title, author || null, description || null, image_url || null, bilibili_url || null, source_url || null, type || 'illust', status || 'published').run();
-
                 ctx.waitUntil(logAuditEvent(env, {
                     eventType: 'create', actorAdminId: isAdmin.sub, actorUsername: isAdmin.username,
                     targetTable: 'fanart', targetId: result.meta?.last_row_id,
                     summary: { title, author: author || null, type: type || 'illust', status: status || 'published' },
                     request,
                 }));
-
                 return jsonResponse({ success: true, id: result.meta?.last_row_id });
             } catch (error) {
                 console.error('❌ fanart POST 错误:', error.message);
@@ -632,7 +629,6 @@ export default {
             }
         }
 
-        // PUT /api/admin/fanart/:id
         const fanartPutMatch = path.match(/^\/api\/admin\/fanart\/(\d+)$/);
         if (fanartPutMatch && method === 'PUT') {
             if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
@@ -644,14 +640,12 @@ export default {
                     WHERE id = ?
                 `);
                 await stmt.bind(title, author || null, description || null, image_url || null, bilibili_url || null, source_url || null, type || 'illust', status || 'published', id).run();
-
                 ctx.waitUntil(logAuditEvent(env, {
                     eventType: 'update', actorAdminId: isAdmin.sub, actorUsername: isAdmin.username,
                     targetTable: 'fanart', targetId: Number(id),
                     summary: { title, author: author || null, type: type || 'illust', status: status || 'published' },
                     request,
                 }));
-
                 return jsonResponse({ success: true });
             } catch (error) {
                 console.error('❌ fanart PUT 错误:', error.message);
@@ -659,7 +653,6 @@ export default {
             }
         }
 
-        // DELETE /api/admin/fanart/:id
         const fanartDeleteMatch = path.match(/^\/api\/admin\/fanart\/(\d+)$/);
         if (fanartDeleteMatch && method === 'DELETE') {
             if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
@@ -668,13 +661,11 @@ export default {
                 const target = await env.DB.prepare('SELECT title FROM fanart WHERE id = ?').bind(id).first();
                 const stmt = env.DB.prepare('DELETE FROM fanart WHERE id = ?');
                 await stmt.bind(id).run();
-
                 ctx.waitUntil(logAuditEvent(env, {
                     eventType: 'delete', actorAdminId: isAdmin.sub, actorUsername: isAdmin.username,
                     targetTable: 'fanart', targetId: Number(id),
                     summary: { title: target?.title }, request,
                 }));
-
                 return jsonResponse({ success: true });
             } catch (error) {
                 console.error('❌ fanart DELETE 错误:', error.message);
@@ -682,27 +673,19 @@ export default {
             }
         }
 
-        // ============================================================
         // ===== 9. 量贩商品 API =====
-        // ============================================================
-
-        // GET /api/admin/shop
         if (path === '/api/admin/shop' && method === 'GET') {
             if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
             try {
-                console.log('📊 查询 shop 表...');
                 const stmt = env.DB.prepare('SELECT * FROM shop ORDER BY created_at DESC');
                 const result = await stmt.all();
-                console.log('✅ shop 查询成功，共', result.results?.length || 0, '条');
                 return jsonResponse(result.results || []);
             } catch (error) {
                 console.error('❌ shop GET 错误:', error.message);
-                console.error('❌ 错误堆栈:', error.stack);
                 return jsonResponse({ error: error.message }, 500);
             }
         }
 
-        // POST /api/admin/shop
         if (path === '/api/admin/shop' && method === 'POST') {
             if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
             try {
@@ -712,14 +695,12 @@ export default {
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                 `);
                 const result = await stmt.bind(title, description || null, price || null, image_url || null, bilibili_url || null, xianyu_url || null, status || 'waiting').run();
-
                 ctx.waitUntil(logAuditEvent(env, {
                     eventType: 'create', actorAdminId: isAdmin.sub, actorUsername: isAdmin.username,
                     targetTable: 'shop', targetId: result.meta?.last_row_id,
                     summary: { title, price: price || null, status: status || 'waiting' },
                     request,
                 }));
-
                 return jsonResponse({ success: true, id: result.meta?.last_row_id });
             } catch (error) {
                 console.error('❌ shop POST 错误:', error.message);
@@ -727,7 +708,6 @@ export default {
             }
         }
 
-        // PUT /api/admin/shop/:id
         const shopPutMatch = path.match(/^\/api\/admin\/shop\/(\d+)$/);
         if (shopPutMatch && method === 'PUT') {
             if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
@@ -739,14 +719,12 @@ export default {
                     WHERE id = ?
                 `);
                 await stmt.bind(title, description || null, price || null, image_url || null, bilibili_url || null, xianyu_url || null, status || 'waiting', id).run();
-
                 ctx.waitUntil(logAuditEvent(env, {
                     eventType: 'update', actorAdminId: isAdmin.sub, actorUsername: isAdmin.username,
                     targetTable: 'shop', targetId: Number(id),
                     summary: { title, price: price || null, status: status || 'waiting' },
                     request,
                 }));
-
                 return jsonResponse({ success: true });
             } catch (error) {
                 console.error('❌ shop PUT 错误:', error.message);
@@ -754,7 +732,6 @@ export default {
             }
         }
 
-        // DELETE /api/admin/shop/:id
         const shopDeleteMatch = path.match(/^\/api\/admin\/shop\/(\d+)$/);
         if (shopDeleteMatch && method === 'DELETE') {
             if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
@@ -763,13 +740,11 @@ export default {
                 const target = await env.DB.prepare('SELECT title FROM shop WHERE id = ?').bind(id).first();
                 const stmt = env.DB.prepare('DELETE FROM shop WHERE id = ?');
                 await stmt.bind(id).run();
-
                 ctx.waitUntil(logAuditEvent(env, {
                     eventType: 'delete', actorAdminId: isAdmin.sub, actorUsername: isAdmin.username,
                     targetTable: 'shop', targetId: Number(id),
                     summary: { title: target?.title }, request,
                 }));
-
                 return jsonResponse({ success: true });
             } catch (error) {
                 console.error('❌ shop DELETE 错误:', error.message);
@@ -812,8 +787,6 @@ function base64UrlDecodeToString(str) {
     return new TextDecoder().decode(base64UrlDecodeToBytes(str));
 }
 
-// 标准 base64（非 url-safe），用于图片数据。优先用运行时原生方法（无 JS 逐字节循环），
-// 老运行时回退到手写实现——图片字节量比 token 大得多，逐字节循环会真实吃掉 CPU 预算。
 function encodeBase64(bytes) {
     if (typeof bytes.toBase64 === 'function') {
         return bytes.toBase64();
@@ -839,8 +812,6 @@ function normalizeCoverBase64(input) {
     return m ? m[1] : input;
 }
 
-// 上限约 1.5MB base64（对应 ~1.1MB 二进制），远高于预期的 20-60KB 压缩目标，
-// 只是兜底防御，真正的尺寸控制在前端 Canvas 转码阶段。
 function validateCoverBase64(raw) {
     if (raw.length > 1_500_000) {
         return { ok: false, error: '封面数据过大，请检查前端压缩逻辑' };
@@ -899,8 +870,6 @@ async function verifyToken(token, env) {
     }
 }
 
-// PBKDF2_ITERATIONS 实测方法见 agents/decisions.md（vite dev/workerd 内 performance.now() 测量，
-// 确认相对 Workers 免费版 10ms CPU 预算有余量后才定下这个数字）。
 const PBKDF2_ITERATIONS = 50_000;
 
 async function hashPassword(password, iterations = PBKDF2_ITERATIONS) {
@@ -935,8 +904,6 @@ async function verifyPassword(password, encoded) {
     }
 }
 
-// 用户名枚举防护：查无此用户名时仍跑一次哈希验证（结果丢弃），避免时序侧信道。
-// 这个哈希串由 hashPassword() 离线生成一次、硬编码，从不是真实密码。
 const DUMMY_PASSWORD_HASH = 'pbkdf2-sha256$50000$5odBT/N538xlVrDF/a45bQ==$UjyWXvGUTYv1q1mx6ejZ+fX0hYR8v1eQFt8nq5eRopU=';
 
 async function logAuditEvent(env, { eventType, actorAdminId = null, actorUsername = null, targetTable = null, targetId = null, summary = null, request }) {
@@ -954,4 +921,3 @@ async function logAuditEvent(env, { eventType, actorAdminId = null, actorUsernam
         console.error('❌ 审计日志写入失败:', e.message);
     }
 }
-

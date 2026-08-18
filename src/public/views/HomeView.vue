@@ -37,14 +37,14 @@
     <div class="section-header">
       <span class="eyebrow">Discography</span>
       <h2 class="section-title">最新歌曲</h2>
-      <p class="section-subtitle">{{ songs.length }} 首，都在这儿了</p>
+      <p class="section-subtitle">{{ total }} 首，都在这儿了</p>
     </div>
     <template v-if="featuredSongs.length > 0">
       <div class="card-grid">
         <SongCard v-for="song in featuredSongs" :key="song.id" :song="song" />
       </div>
-      <div v-if="songs.length > 6" class="section-more">
-        <RouterLink to="/videos" class="btn-hero-secondary">查看全部 {{ songs.length }} 首 →</RouterLink>
+      <div v-if="total > 6" class="section-more">
+        <RouterLink to="/videos" class="btn-hero-secondary">查看全部 {{ total }} 首 →</RouterLink>
       </div>
     </template>
     <EmptyState v-else message="还没有收录歌曲，过会儿再来" />
@@ -87,6 +87,6 @@ import { useSongs } from '../composables/useSongs.js';
 import SongCard from '../components/SongCard.vue';
 import EmptyState from '../components/EmptyState.vue';
 
-const { songs } = useSongs();
+const { songs, total } = useSongs();
 const featuredSongs = computed(() => songs.value.slice(0, 6));
 </script>
