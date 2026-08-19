@@ -9,6 +9,8 @@ import StarmapView from '../views/StarmapView.vue';
 import AboutView from '../views/AboutView.vue';
 import RegisterView from '../views/RegisterView.vue';
 import LoginView from '../views/LoginView.vue';
+import FanartDetail from '../views/FanartDetail.vue';
+import ShopDetail from '../views/ShopDetail.vue';
 
 const router = createRouter({
     history: createWebHistory(),
@@ -26,6 +28,8 @@ const router = createRouter({
         { path: '/:pathMatch(.*)*', redirect: '/' },
         { path: '/login', name: 'login', component: LoginView },
         { path: '/register', name: 'register', component: RegisterView },
+        { path: '/fanart/:id', name: 'fanart-detail', component: FanartDetail },
+        { path: '/shop/:id', name: 'shop-detail', component: ShopDetail },
     ],
 });
 

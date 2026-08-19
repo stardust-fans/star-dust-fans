@@ -23,10 +23,15 @@
         </div>
 
         <div class="form-group">
-          <label>图片 <span class="required">*</span></label>
+          <label>图片（最多 30 张）<span class="required">*</span></label>
           <div class="file-input-wrapper">
-            <input type="file" accept="image/*" @change="handleFile" />
-            <img v-if="preview" class="upload-preview" :src="preview" />
+            <input type="file" accept="image/*" multiple @change="handleFiles" />
+            <span v-if="uploadedImages.length > 0" style="color: var(--cobalt);">
+              已上传 {{ uploadedImages.length }} 张
+            </span>
+          </div>
+          <div v-if="uploadProgress > 0 && uploadProgress < 100" style="color: var(--ink-muted); font-size: 0.85rem;">
+            上传中... {{ uploadProgress }}%
           </div>
         </div>
 
@@ -48,7 +53,7 @@
         <p v-if="error" class="error-message">{{ error }}</p>
 
         <div class="form-actions">
-          <button type="submit" class="btn-submit-contribute" :disabled="loading">
+          <button type="submit" class="btn-submit-contribute" :disabled="loading || uploadedImages.length === 0">
             {{ loading ? '提交中...' : '发布' }}
           </button>
           <button type="button" class="btn-cancel-contribute" @click="close">取消</button>
@@ -69,46 +74,64 @@ const form = reactive({
   title: '',
   description: '',
   price: '',
-  image_url: '',
+  images: [],
   xianyu_url: '',
   bilibili_url: '',
   ship_time: '',
 });
 
+const uploadedImages = ref([]);
+const uploadProgress = ref(0);
 const loading = ref(false);
 const error = ref('');
-const preview = ref('');
 
 function close() {
   emit('close');
 }
 
-async function handleFile(e) {
-  const file = e.target.files[0];
-  if (!file) return;
+async function handleFiles(e) {
+  const files = Array.from(e.target.files);
+  if (files.length === 0) return;
 
-  if (file.size > 15 * 1024 * 1024) {
-    error.value = '图片不能超过 15MB';
+  if (files.length > 30) {
+    error.value = '量贩最多只能上传 30 张图片';
     return;
   }
 
-  preview.value = URL.createObjectURL(file);
+  const totalSize = files.reduce((acc, f) => acc + f.size, 0);
+  if (totalSize > 30 * 1024 * 1024) {
+    error.value = '图片总大小不能超过 30MB';
+    return;
+  }
 
-  try {
+  error.value = '';
+  const urls = [];
+  let completed = 0;
+
+  for (const file of files) {
     const formData = new FormData();
     formData.append('file', file);
-    const res = await fetch('/api/upload', {
-      method: 'POST',
-      credentials: 'include',
-      body: formData,
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || '上传失败');
-    form.image_url = data.url;
-    showToast('图片上传成功', 'success');
-  } catch (err) {
-    error.value = err.message;
+    try {
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '上传失败');
+      urls.push(data.url);
+    } catch (err) {
+      error.value = `上传失败：${err.message}`;
+      showToast(error.value, 'error');
+      return;
+    }
+    completed++;
+    uploadProgress.value = Math.round((completed / files.length) * 100);
   }
+
+  uploadedImages.value = urls;
+  form.images = urls;
+  showToast(`成功上传 ${urls.length} 张图片`, 'success');
 }
 
 async function submit() {
