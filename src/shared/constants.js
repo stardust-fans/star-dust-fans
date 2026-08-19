@@ -40,4 +40,6 @@ export const PAGE_TITLE_MAP = {
     daily: '吸尘器日报 · 星尘粉丝站',
     starmap: '星图 · 星尘粉丝站',
     about: '关于 · 星尘粉丝站',
+    register: '注册 · 星尘粉丝站',
+    login: '登录 · 星尘粉丝站',
 };

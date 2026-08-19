@@ -14,6 +14,12 @@
         <li><RouterLink to="/daily" @click="closeMenu">日报</RouterLink></li>
         <li><RouterLink to="/starmap" @click="closeMenu">星图</RouterLink></li>
         <li><RouterLink to="/about" @click="closeMenu">关于</RouterLink></li>
+        <li v-if="!user">
+          <RouterLink to="/login" @click="closeMenu">登录</RouterLink>
+        </li>
+        <li v-else>
+          <span class="nav-user" @click="handleLogout">{{ user.username }}</span>
+        </li>
       </ul>
       <button class="nav-toggle" aria-label="菜单" @click="menuOpen = !menuOpen">
         <span></span><span></span><span></span>
@@ -23,14 +29,24 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue';
+import { ref, watch, computed } from 'vue';
 import { useRoute } from 'vue-router';
+import { useLogin } from '../composables/useLogin.js';
 
 const route = useRoute();
 const menuOpen = ref(false);
+const { getUser, logout } = useLogin();
+
+const user = computed(() => getUser());
 
 function closeMenu() {
   menuOpen.value = false;
+}
+
+function handleLogout() {
+  if (confirm('确定要退出吗？')) {
+    logout();
+  }
 }
 
 watch(() => route.fullPath, () => {

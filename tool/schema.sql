@@ -92,4 +92,32 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 普通用户表
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username VARCHAR(50) NOT NULL UNIQUE,
+    email VARCHAR(100) NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 投稿关联表（记录用户投稿的内容）
+CREATE TABLE IF NOT EXISTS user_contributions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    content_type VARCHAR(20) NOT NULL, -- 'fanart' 或 'shop'
+    content_id INTEGER NOT NULL,       -- 对应 fanart.id 或 shop.id
+    status VARCHAR(20) DEFAULT 'pending', -- 'pending' / 'approved' / 'rejected'
+    reviewer_admin_id INTEGER,
+    review_comment TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    reviewed_at TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (reviewer_admin_id) REFERENCES admins(id) ON DELETE SET NULL
+);
+
+-- 为 user_id 和 status 建索引，方便后台审核查询
+CREATE INDEX IF NOT EXISTS idx_user_contributions_user_id ON user_contributions (user_id);
+CREATE INDEX IF NOT EXISTS idx_user_contributions_status ON user_contributions (status);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs (created_at DESC);
