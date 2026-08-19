@@ -46,6 +46,7 @@ const items = [
   { key: 'shop', label: '量贩管理', icon: 'fa-store' },
   { key: 'audit-log', label: '安全记录', icon: 'fa-shield-halved' },
   { key: 'admins', label: '管理员账户', icon: 'fa-user-gear' },
+  { key: 'pending', label: '投稿审核', icon: 'fa-clock' },
 ];
 
 function handleLogout() {
