@@ -601,7 +601,7 @@ a {
     border-radius: var(--radius);
     background-image:
         radial-gradient(130% 110% at 28% 18%, transparent 38%, rgba(7, 7, 13, 0.6) 100%),
-        url('/images/hero-bg.png');
+        url('/images/hero-bg.webp');
     background-size: 100% 100%, cover;
     background-position: center, center 30%;
     background-repeat: no-repeat, no-repeat;
