@@ -602,6 +602,250 @@ export default {
             }
         }
 
+        // ===== 上传图片到 R2 =====
+        if (path === '/api/upload' && method === 'POST') {
+            const cookieHeader = request.headers.get('Cookie') || '';
+            const tokenMatch = cookieHeader.match(/authToken=([^;]+)/);
+            let userId = null;
+            if (tokenMatch) {
+                const payload = await verifyToken(tokenMatch[1], env);
+                if (payload) userId = payload.sub;
+            }
+            if (!userId) {
+                return jsonResponse({ error: '请先登录' }, 401);
+            }
+
+            try {
+                const formData = await request.formData();
+                const file = formData.get('file');
+                if (!file) {
+                    return jsonResponse({ error: '没有上传文件' }, 400);
+                }
+
+                if (file.size > 15 * 1024 * 1024) {
+                    return jsonResponse({ error: '文件大小不能超过15MB' }, 400);
+                }
+
+                const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+                if (!validTypes.includes(file.type)) {
+                    return jsonResponse({ error: '只支持 JPEG、PNG、WEBP、GIF 格式' }, 400);
+                }
+
+                const ext = file.name.split('.').pop() || 'jpg';
+                const timestamp = Date.now();
+                const random = Math.random().toString(36).substring(2, 8);
+                const key = `uploads/${userId}/${timestamp}_${random}.${ext}`;
+
+                await env.R2_BUCKET.put(key, file.stream(), {
+                    httpMetadata: { contentType: file.type },
+                });
+
+                const url = `https://stardustinfinity.top/${key}`;
+
+                return jsonResponse({ success: true, url, key });
+
+            } catch (error) {
+                console.error('❌ /api/upload 错误:', error.message);
+                return jsonResponse({ error: error.message }, 500);
+            }
+        }
+
+        // ===== 公开访问 R2 图片 =====
+        if (path.startsWith('/uploads/') && method === 'GET') {
+            try {
+                const object = await env.R2_BUCKET.get(path.slice(1));
+                if (!object) {
+                    return new Response('Not Found', { status: 404 });
+                }
+                return new Response(object.body, {
+                    headers: {
+                        'Content-Type': object.httpMetadata?.contentType || 'image/jpeg',
+                        'Cache-Control': 'public, max-age=86400',
+                    },
+                });
+            } catch (error) {
+                return new Response('Error', { status: 500 });
+            }
+        }
+
+        // ===== 同人投稿 =====
+        if (path === '/api/contributions/fanart' && method === 'POST') {
+            const cookieHeader = request.headers.get('Cookie') || '';
+            const tokenMatch = cookieHeader.match(/authToken=([^;]+)/);
+            let userId = null;
+            let username = null;
+            if (tokenMatch) {
+                const payload = await verifyToken(tokenMatch[1], env);
+                if (payload) {
+                    userId = payload.sub;
+                    username = payload.username;
+                }
+            }
+            if (!userId) {
+                return jsonResponse({ error: '请先登录' }, 401);
+            }
+
+            try {
+                const body = await request.json();
+                const { title, image_url, author, description, type, bilibili_url, source_url } = body;
+
+                if (!image_url) {
+                    return jsonResponse({ error: '图片不能为空' }, 400);
+                }
+
+                const finalTitle = (title || '').trim() || '无题';
+                const finalAuthor = (author || '').trim() || username || '匿名';
+
+                const stmt = env.DB.prepare(`
+                    INSERT INTO fanart (title, author, description, image_url, bilibili_url, source_url, type, status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                `);
+                const result = await stmt.bind(
+                    finalTitle,
+                    finalAuthor,
+                    description || null,
+                    image_url,
+                    bilibili_url || null,
+                    source_url || null,
+                    type || 'illust',
+                    'pending'
+                ).run();
+
+                return jsonResponse({
+                    success: true,
+                    id: result.meta?.last_row_id || null,
+                    message: '投稿成功，等待审核'
+                }, 201);
+
+            } catch (error) {
+                console.error('❌ /api/contributions/fanart 错误:', error.message);
+                return jsonResponse({ error: error.message }, 500);
+            }
+        }
+
+        // ===== 量贩投稿 =====
+        if (path === '/api/contributions/shop' && method === 'POST') {
+            const cookieHeader = request.headers.get('Cookie') || '';
+            const tokenMatch = cookieHeader.match(/authToken=([^;]+)/);
+            let userId = null;
+            if (tokenMatch) {
+                const payload = await verifyToken(tokenMatch[1], env);
+                if (payload) userId = payload.sub;
+            }
+            if (!userId) {
+                return jsonResponse({ error: '请先登录' }, 401);
+            }
+
+            try {
+                const body = await request.json();
+                const { title, description, price, image_url, xianyu_url, bilibili_url, ship_time } = body;
+
+                if (!title || !title.trim()) {
+                    return jsonResponse({ error: '标题不能为空' }, 400);
+                }
+                if (!price || !price.trim()) {
+                    return jsonResponse({ error: '价格不能为空' }, 400);
+                }
+                if (!image_url) {
+                    return jsonResponse({ error: '图片不能为空' }, 400);
+                }
+                if (!xianyu_url || !xianyu_url.trim()) {
+                    return jsonResponse({ error: '闲鱼链接不能为空' }, 400);
+                }
+                if (!ship_time) {
+                    return jsonResponse({ error: '发车时间不能为空' }, 400);
+                }
+
+                const stmt = env.DB.prepare(`
+                    INSERT INTO shop (title, description, price, image_url, xianyu_url, bilibili_url, status, ship_time)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                `);
+                const result = await stmt.bind(
+                    title.trim(),
+                    description || null,
+                    price.trim(),
+                    image_url,
+                    xianyu_url.trim(),
+                    bilibili_url || null,
+                    'pending',
+                    ship_time
+                ).run();
+
+                return jsonResponse({
+                    success: true,
+                    id: result.meta?.last_row_id || null,
+                    message: '投稿成功，等待审核'
+                }, 201);
+
+            } catch (error) {
+                console.error('❌ /api/contributions/shop 错误:', error.message);
+                return jsonResponse({ error: error.message }, 500);
+            }
+        }
+
+        // ===== 获取待审核列表 =====
+        if (path === '/api/admin/pending' && method === 'GET') {
+            if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+            try {
+                const fanartStmt = env.DB.prepare(`
+                    SELECT id, 'fanart' as type, title, author, description, image_url, created_at
+                    FROM fanart WHERE status = 'pending'
+                `);
+                const shopStmt = env.DB.prepare(`
+                    SELECT id, 'shop' as type, title, '' as author, description, image_url, created_at
+                    FROM shop WHERE status = 'pending'
+                `);
+                const fanart = await fanartStmt.all();
+                const shop = await shopStmt.all();
+                const results = [...(fanart.results || []), ...(shop.results || [])];
+                results.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+                return jsonResponse(results);
+            } catch (error) {
+                console.error('❌ /api/admin/pending 错误:', error.message);
+                return jsonResponse({ error: error.message }, 500);
+            }
+        }
+
+        // ===== 审核通过 =====
+        const approveMatch = path.match(/^\/api\/admin\/pending\/(fanart|shop)\/(\d+)$/);
+        if (approveMatch && method === 'PUT') {
+            if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+            try {
+                const type = approveMatch[1];
+                const id = approveMatch[2];
+                const table = type === 'fanart' ? 'fanart' : 'shop';
+                const stmt = env.DB.prepare(`UPDATE ${table} SET status = 'published' WHERE id = ? AND status = 'pending'`);
+                const result = await stmt.bind(id).run();
+                if (result.meta?.changes === 0) {
+                    return jsonResponse({ error: '记录不存在或已处理' }, 404);
+                }
+                return jsonResponse({ success: true, message: '已通过' });
+            } catch (error) {
+                console.error('❌ 审核通过错误:', error.message);
+                return jsonResponse({ error: error.message }, 500);
+            }
+        }
+
+        // ===== 审核驳回 =====
+        const rejectMatch = path.match(/^\/api\/admin\/pending\/(fanart|shop)\/(\d+)$/);
+        if (rejectMatch && method === 'DELETE') {
+            if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+            try {
+                const type = rejectMatch[1];
+                const id = rejectMatch[2];
+                const table = type === 'fanart' ? 'fanart' : 'shop';
+                const stmt = env.DB.prepare(`DELETE FROM ${table} WHERE id = ? AND status = 'pending'`);
+                const result = await stmt.bind(id).run();
+                if (result.meta?.changes === 0) {
+                    return jsonResponse({ error: '记录不存在或已处理' }, 404);
+                }
+                return jsonResponse({ success: true, message: '已驳回' });
+            } catch (error) {
+                console.error('❌ 审核驳回错误:', error.message);
+                return jsonResponse({ error: error.message }, 500);
+            }
+        }        
+
         // ===== 7. 吸尘器日报 API =====
         if (path === '/api/admin/daily' && method === 'GET') {
             if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
@@ -759,6 +1003,8 @@ export default {
                 return jsonResponse({ error: error.message }, 500);
             }
         }
+
+        
 
         // ===== 9. 量贩商品 API =====
         if (path === '/api/admin/shop' && method === 'GET') {
