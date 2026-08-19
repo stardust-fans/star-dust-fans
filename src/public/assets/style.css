@@ -924,7 +924,7 @@ a {
 .daily-card {
     background: var(--paper);
     display: grid;
-    grid-template-columns: 160px 1fr;
+    grid-template-columns: 860px 4fr;
     gap: 20px;
     padding: 20px;
 }
@@ -958,6 +958,9 @@ a {
     font-weight: 600;
     margin-bottom: 6px;
     color: var(--ink);
+    word-break: normal;
+    overflow-wrap: normal;
+    white-space: normal;
 }
 
 .daily-body p {
@@ -965,11 +968,14 @@ a {
     font-size: 0.88rem;
     line-height: 1.7;
     margin-bottom: 10px;
+    word-break: normal;
+    overflow-wrap: normal;
+    white-space: normal;
 }
 
 @media (max-width: 600px) {
     .daily-card {
-        grid-template-columns: 1fr;
+        grid-template-columns: 4fr;
     }
 
     .daily-cover {
@@ -1257,4 +1263,129 @@ a {
   text-align: center;
   padding: 60px 20px;
   color: var(--text-muted);
+}
+
+/* ============================================================
+   注册页
+   ============================================================ */
+
+.register-content {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+.register-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.register-form .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.register-form .form-group label {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+  color: var(--ink-soft);
+}
+
+.register-form .form-group input {
+  padding: 12px 16px;
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font-size: 1rem;
+  transition: border-color 0.2s var(--ease);
+}
+
+.register-form .form-group input:focus {
+  outline: none;
+  border-color: var(--cobalt-soft);
+}
+
+.register-form .form-group input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.register-form .btn-submit {
+  padding: 14px;
+  background: var(--cobalt);
+  color: var(--paper);
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  font-weight: 600;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: opacity 0.2s var(--ease), transform 0.2s var(--ease);
+  margin-top: 8px;
+}
+
+.register-form .btn-submit:hover:not(:disabled) {
+  opacity: 0.85;
+  transform: translateY(-1px);
+}
+
+.register-form .btn-submit:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.register-form .error-message {
+  color: #ff6b6b;
+  font-size: 0.9rem;
+  text-align: center;
+  margin-top: 8px;
+}
+
+.register-form .cf-turnstile {
+  display: flex;
+  justify-content: center;
+  margin: 4px 0;
+  min-height: 65px;
+}
+
+.register-content .login-link {
+  text-align: center;
+  margin-top: 24px;
+  color: var(--ink-muted);
+  font-size: 0.9rem;
+}
+
+.register-content .login-link a {
+  color: var(--cobalt);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.2s var(--ease);
+}
+
+.register-content .login-link a:hover {
+  border-bottom-color: var(--cobalt-soft);
+}
+
+.nav-user {
+  display: block;
+  padding: 8px 4px;
+  color: var(--cobalt);
+  font-family: var(--font-mono);
+  font-family: 'Source Han Sans SC', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-size: 0.95rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  border-bottom: 1px solid transparent;
+  transition: color 0.2s var(--ease), border-color 0.2s var(--ease);
+}
+
+.nav-user:hover {
+  color: var(--ink);
+  border-bottom-color: var(--cobalt);
 }

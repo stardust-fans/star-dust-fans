@@ -276,6 +276,93 @@ export default {
             }
         }
 
+        // ===== 用户注册 =====
+        if (path === '/api/register' && method === 'POST') {
+            try {
+                const body = await request.json();
+                const { username, email, password, 'cf-turnstile-response': turnstileToken } = body;
+
+                if (!turnstileToken) {
+                    return jsonResponse({ error: '请完成人机验证' }, 400);
+                }
+
+                // 验证 Turnstile
+                const turnstileResult = await verifyTurnstileToken(turnstileToken, env);
+                if (!turnstileResult.success) {
+                    return jsonResponse({ error: '人机验证失败，请重试' }, 400);
+                }
+
+                // 检查用户名或邮箱是否已被注册
+                const existing = await env.DB.prepare(
+                    'SELECT id FROM users WHERE username = ? OR email = ?'
+                ).bind(username, email).first();
+
+                if (existing) {
+                    return jsonResponse({ error: '用户名或邮箱已被注册' }, 409);
+                }
+
+                // 密码哈希
+                const passwordHash = await hashPassword(password);
+
+                // 插入新用户
+                const result = await env.DB.prepare(
+                    'INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)'
+                ).bind(username, email, passwordHash).run();
+
+                return jsonResponse({
+                    success: true,
+                    message: '注册成功',
+                    userId: result.meta?.last_row_id || null
+                }, 201);
+
+            } catch (error) {
+                console.error('❌ /api/register 错误:', error.message);
+                return jsonResponse({ error: error.message }, 500);
+            }
+        }
+
+        // ===== 用户登录 =====
+        if (path === '/api/login' && method === 'POST') {
+            try {
+                const body = await request.json();
+                const { username, password } = body;
+
+                if (!username || !password) {
+                    return jsonResponse({ error: '用户名和密码不能为空' }, 400);
+                }
+
+                const user = await env.DB.prepare(
+                    'SELECT id, username, password_hash FROM users WHERE username = ?'
+                ).bind(username).first();
+
+                if (!user) {
+                    return jsonResponse({ error: '用户名或密码错误' }, 401);
+                }
+
+                const passwordOk = await verifyPassword(password, user.password_hash);
+                if (!passwordOk) {
+                    return jsonResponse({ error: '用户名或密码错误' }, 401);
+                }
+
+                const token = await signToken({
+                    sub: user.id,
+                    username: user.username,
+                    exp: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7天有效期
+                }, env);
+
+                return jsonResponse({
+                    success: true,
+                    token,
+                    user: { id: user.id, username: user.username }
+                });
+
+            } catch (error) {
+                console.error('❌ /api/login 错误:', error.message);
+                return jsonResponse({ error: error.message }, 500);
+            }
+        }
+
+        
         // ===== 3.6 GET /api/admin/audit-logs =====
         if (path === '/api/admin/audit-logs' && method === 'GET') {
             if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
@@ -759,6 +846,18 @@ export default {
 // ============================================================
 // 工具函数
 // ============================================================
+async function verifyTurnstileToken(token, env) {
+    const formData = new FormData();
+    formData.append('secret', env.TURNSTILE_SECRET);
+    formData.append('response', token);
+
+    const response = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+        method: 'POST',
+        body: formData,
+    });
+
+    return response.json();
+}
 
 function base64UrlEncodeBytes(bytes) {
     let binary = '';
