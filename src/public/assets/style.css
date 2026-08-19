@@ -1606,3 +1606,130 @@ a {
         transform: translateY(0) scale(1);
     }
 }
+
+/* ============================================================
+   详情页
+   ============================================================ */
+
+.detail-page {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.detail-back {
+  margin-bottom: 24px;
+}
+
+.detail-back a {
+  color: var(--cobalt);
+  text-decoration: none;
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+}
+
+.detail-back a:hover {
+  text-decoration: underline;
+}
+
+.detail-content {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 40px;
+}
+
+.detail-gallery {
+  min-width: 0;
+}
+
+.detail-images {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.detail-images img {
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--paper-raised);
+}
+
+.detail-info {
+  position: sticky;
+  top: 100px;
+}
+
+.detail-info h1 {
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  color: var(--ink);
+  margin-bottom: 12px;
+}
+
+.detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  font-size: 0.9rem;
+  color: var(--ink-muted);
+  margin-bottom: 16px;
+}
+
+.detail-desc {
+  color: var(--ink-soft);
+  line-height: 1.8;
+  margin-bottom: 20px;
+}
+
+.detail-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.detail-links a {
+  color: var(--cobalt);
+  text-decoration: none;
+}
+
+.detail-links a:hover {
+  text-decoration: underline;
+}
+
+.btn-link {
+  display: inline-block;
+  padding: 10px 24px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  color: var(--ink);
+  text-decoration: none;
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.btn-link:hover {
+  border-color: var(--cobalt);
+  color: var(--cobalt);
+  text-decoration: none;
+}
+
+.error-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--ink-muted);
+  font-size: 1.1rem;
+}
+
+@media (max-width: 768px) {
+  .detail-content {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  .detail-info {
+    position: static;
+  }
+}
