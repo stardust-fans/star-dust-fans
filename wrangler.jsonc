@@ -1,38 +1,40 @@
 {
-	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "stardust",
-	"main": "worker.js",
-	"account_id": "20c1630f373f1d9663f96f153d4a3194",
-	"compatibility_date": "2026-08-13",
-	"compatibility_flags": [
-		"nodejs_compat"
-	],
-	"d1_databases": [
-		{
-			"binding": "DB",
-			"database_name": "stardust-db",
-			"database_id": "d44e7a61-0493-4b0e-be5f-08806e86ec9d",
-			"migrations_dir": "migrations",
-		}
-	],
-	"assets": {
-		"directory": "./dist/client",
-		"not_found_handling": "single-page-application"
-	},
-	"routes": [
-		{
-			"pattern": "stardustinfinity.top",
-			"custom_domain": true
-		}
-	],
-	"workers_dev": true,
-	"preview_urls": true,
-	"vars": {
-		"R2_BUCKET": "stardust-uploads"
-	},
-	"observability": {
-		"logs": {
-			"enabled": true
-		}
-	}
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "stardust",
+  "main": "worker.js",
+  "account_id": "20c1630f373f1d9663f96f153d4a3194",
+  "compatibility_date": "2026-08-13",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "stardust-db",
+      "database_id": "d44e7a61-0493-4b0e-be5f-08806e86ec9d",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "R2_BUCKET",
+      "bucket_name": "stardust-uploads"
+    }
+  ],
+  "assets": {
+    "directory": "./dist/client",
+    "not_found_handling": "single-page-application"
+  },
+  "routes": [
+    {
+      "pattern": "stardustinfinity.top",
+      "custom_domain": true
+    }
+  ],
+  "workers_dev": true,
+  "preview_urls": true,
+  "vars": {},
+  "observability": {
+    "logs": {
+      "enabled": true
+    }
+  }
 }

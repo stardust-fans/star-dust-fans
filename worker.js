@@ -688,64 +688,6 @@ export default {
             }
         }
 
-        // ===== 同人投稿 =====
-        if (path === '/api/contributions/fanart' && method === 'POST') {
-            const cookieHeader = request.headers.get('Cookie') || '';
-            const tokenMatch = cookieHeader.match(/authToken=([^;]+)/);
-            let userId = null;
-            let username = null;
-            if (tokenMatch) {
-                const payload = await verifyToken(tokenMatch[1], env);
-                if (payload) {
-                    userId = payload.sub;
-                    username = payload.username;
-                }
-            }
-            if (!userId) {
-                return jsonResponse({ error: '请先登录' }, 401);
-            }
-
-            try {
-                const body = await request.json();
-                const { title, author, description, type, bilibili_url, source_url, images } = body;
-
-                if (!images || images.length === 0) {
-                    return jsonResponse({ error: '图片不能为空' }, 400);
-                }
-
-                const finalTitle = (title || '').trim() || '无题';
-                const finalAuthor = (author || '').trim() || username || '匿名';
-                const firstImage = images[0] || '';
-                const imagesJson = JSON.stringify(images);
-
-                const stmt = env.DB.prepare(`
-                    INSERT INTO fanart (title, author, description, image_url, bilibili_url, source_url, type, status, images)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                `);
-                const result = await stmt.bind(
-                    finalTitle,
-                    finalAuthor,
-                    description || null,
-                    firstImage,
-                    bilibili_url || null,
-                    source_url || null,
-                    type || 'illust',
-                    'pending',
-                    imagesJson
-                ).run();
-
-                return jsonResponse({
-                    success: true,
-                    id: result.meta?.last_row_id || null,
-                    message: '投稿成功，等待审核'
-                }, 201);
-
-            } catch (error) {
-                console.error('❌ /api/contributions/fanart 错误:', error.message);
-                return jsonResponse({ error: error.message }, 500);
-            }
-        }
-
         // ===== 量贩投稿 =====
         if (path === '/api/contributions/shop' && method === 'POST') {
             const cookieHeader = request.headers.get('Cookie') || '';
@@ -783,8 +725,8 @@ export default {
                 const imagesJson = JSON.stringify(images);
 
                 const stmt = env.DB.prepare(`
-                    INSERT INTO shop (title, description, price, image_url, xianyu_url, bilibili_url, status, ship_time, images)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO shop (title, description, price, image_url, xianyu_url, bilibili_url, status, ship_time, images, user_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `);
                 const result = await stmt.bind(
                     title.trim(),
@@ -795,7 +737,8 @@ export default {
                     bilibili_url || null,
                     'pending',
                     ship_time,
-                    imagesJson
+                    imagesJson,
+                    userId
                 ).run();
 
                 return jsonResponse({
@@ -857,8 +800,8 @@ export default {
                 const finalAuthor = (author || '').trim() || username || '匿名';
 
                 const stmt = env.DB.prepare(`
-                    INSERT INTO fanart (title, author, description, image_url, bilibili_url, source_url, type, status)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO fanart (title, author, description, image_url, bilibili_url, source_url, type, status, images, user_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `);
                 const result = await stmt.bind(
                     finalTitle,
@@ -868,7 +811,9 @@ export default {
                     bilibili_url || null,
                     source_url || null,
                     type || 'illust',
-                    'pending'
+                    'pending',
+                    JSON.stringify(images || []), 
+                    userId
                 ).run();
 
                 return jsonResponse({
@@ -879,66 +824,6 @@ export default {
 
             } catch (error) {
                 console.error('❌ /api/contributions/fanart 错误:', error.message);
-                return jsonResponse({ error: error.message }, 500);
-            }
-        }
-
-        // ===== 量贩投稿 =====
-        if (path === '/api/contributions/shop' && method === 'POST') {
-            const cookieHeader = request.headers.get('Cookie') || '';
-            const tokenMatch = cookieHeader.match(/authToken=([^;]+)/);
-            let userId = null;
-            if (tokenMatch) {
-                const payload = await verifyToken(tokenMatch[1], env);
-                if (payload) userId = payload.sub;
-            }
-            if (!userId) {
-                return jsonResponse({ error: '请先登录' }, 401);
-            }
-
-            try {
-                const body = await request.json();
-                const { title, description, price, image_url, xianyu_url, bilibili_url, ship_time } = body;
-
-                if (!title || !title.trim()) {
-                    return jsonResponse({ error: '标题不能为空' }, 400);
-                }
-                if (!price || !price.trim()) {
-                    return jsonResponse({ error: '价格不能为空' }, 400);
-                }
-                if (!image_url) {
-                    return jsonResponse({ error: '图片不能为空' }, 400);
-                }
-                if (!xianyu_url || !xianyu_url.trim()) {
-                    return jsonResponse({ error: '闲鱼链接不能为空' }, 400);
-                }
-                if (!ship_time) {
-                    return jsonResponse({ error: '发车时间不能为空' }, 400);
-                }
-
-                const stmt = env.DB.prepare(`
-                    INSERT INTO shop (title, description, price, image_url, xianyu_url, bilibili_url, status, ship_time)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                `);
-                const result = await stmt.bind(
-                    title.trim(),
-                    description || null,
-                    price.trim(),
-                    image_url,
-                    xianyu_url.trim(),
-                    bilibili_url || null,
-                    'pending',
-                    ship_time
-                ).run();
-
-                return jsonResponse({
-                    success: true,
-                    id: result.meta?.last_row_id || null,
-                    message: '投稿成功，等待审核'
-                }, 201);
-
-            } catch (error) {
-                console.error('❌ /api/contributions/shop 错误:', error.message);
                 return jsonResponse({ error: error.message }, 500);
             }
         }
@@ -974,18 +859,45 @@ export default {
                 const type = approveMatch[1];
                 const id = approveMatch[2];
                 const table = type === 'fanart' ? 'fanart' : 'shop';
+
+                // 先查投稿信息 + 用户邮箱
+                const item = await env.DB.prepare(`
+                    SELECT t.title, t.user_id, u.email
+                    FROM ${table} t
+                    JOIN users u ON t.user_id = u.id
+                    WHERE t.id = ? AND t.status = 'pending'
+                `).bind(id).first();
+
+                if (!item) {
+                    return jsonResponse({ error: '记录不存在或已处理' }, 404);
+                }
+
+                // 更新状态
                 const stmt = env.DB.prepare(`UPDATE ${table} SET status = 'published' WHERE id = ? AND status = 'pending'`);
                 const result = await stmt.bind(id).run();
+
                 if (result.meta?.changes === 0) {
                     return jsonResponse({ error: '记录不存在或已处理' }, 404);
                 }
+
+                // 发送邮件通知
+                if (item.email) {
+                    const title = item.title || '无题';
+                    await sendEmail(
+                        item.email,
+                        '✅ 投稿已通过审核',
+                        `<p>您的投稿《${title}》已通过审核，现已发布到星尘粉丝站。</p>`,
+                        env
+                    );
+                }
+
                 return jsonResponse({ success: true, message: '已通过' });
             } catch (error) {
                 console.error('❌ 审核通过错误:', error.message);
                 return jsonResponse({ error: error.message }, 500);
             }
         }
-
+        
         // ===== 审核驳回 =====
         const rejectMatch = path.match(/^\/api\/admin\/pending\/(fanart|shop)\/(\d+)$/);
         if (rejectMatch && method === 'DELETE') {
@@ -994,18 +906,49 @@ export default {
                 const type = rejectMatch[1];
                 const id = rejectMatch[2];
                 const table = type === 'fanart' ? 'fanart' : 'shop';
+
+                // 获取投稿信息 + 用户邮箱
+                const item = await env.DB.prepare(`
+                    SELECT t.title, t.user_id, u.email
+                    FROM ${table} t
+                    JOIN users u ON t.user_id = u.id
+                    WHERE t.id = ? AND t.status = 'pending'
+                `).bind(id).first();
+
+                if (!item) {
+                    return jsonResponse({ error: '记录不存在或已处理' }, 404);
+                }
+
+                // 从请求体读取驳回理由
+                const body = await request.json().catch(() => ({}));
+                const reason = body.reason || '未提供具体理由';
+
+                // 删除记录（或标记为 rejected）
                 const stmt = env.DB.prepare(`DELETE FROM ${table} WHERE id = ? AND status = 'pending'`);
                 const result = await stmt.bind(id).run();
+
                 if (result.meta?.changes === 0) {
                     return jsonResponse({ error: '记录不存在或已处理' }, 404);
                 }
+
+                // 发送驳回邮件
+                if (item.email) {
+                    const title = item.title || '不予通过';
+                    await sendEmail(
+                        item.email,
+                        '投稿被驳回',
+                        `<p>您的投稿《${title}》未通过审核。<br/>理由：${reason}</p>`,
+                        env
+                    );
+                }
+
                 return jsonResponse({ success: true, message: '已驳回' });
             } catch (error) {
                 console.error('❌ 审核驳回错误:', error.message);
                 return jsonResponse({ error: error.message }, 500);
             }
-        }        
-
+        }
+    
         // ===== 7. 吸尘器日报 API =====
         if (path === '/api/admin/daily' && method === 'GET') {
             if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
@@ -1103,8 +1046,8 @@ export default {
             try {
                 const { title, author, description, image_url, bilibili_url, source_url, type, status } = await request.json();
                 const stmt = env.DB.prepare(`
-                    INSERT INTO fanart (title, author, description, image_url, bilibili_url, source_url, type, status)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO fanart (title, author, description, image_url, bilibili_url, source_url, type, status, images, user_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `);
                 const result = await stmt.bind(title, author || null, description || null, image_url || null, bilibili_url || null, source_url || null, type || 'illust', status || 'published').run();
                 ctx.waitUntil(logAuditEvent(env, {
@@ -1184,8 +1127,8 @@ export default {
             try {
                 const { title, description, price, image_url, bilibili_url, xianyu_url, status } = await request.json();
                 const stmt = env.DB.prepare(`
-                    INSERT INTO shop (title, description, price, image_url, bilibili_url, xianyu_url, status)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO shop (title, description, price, image_url, xianyu_url, bilibili_url, status, ship_time, images, user_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `);
                 const result = await stmt.bind(title, description || null, price || null, image_url || null, bilibili_url || null, xianyu_url || null, status || 'waiting').run();
                 ctx.waitUntil(logAuditEvent(env, {
@@ -1263,6 +1206,29 @@ async function verifyTurnstileToken(token, env) {
     });
 
     return response.json();
+}
+
+// ===== 通过 Resend 发送邮件 =====
+async function sendEmail(to, subject, html, env) {
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${env.RESEND_API_KEY}`,
+      'Content-Type': 'application/json; charset=UTF-8',
+    },
+    body: JSON.stringify({
+      from: '星尘粉丝站 <noreply@stardustinfinity.top>',
+      to: [to],
+      subject: subject,
+      html: html,
+    }),
+  });
+  if (!res.ok) {
+    const error = await res.text();
+    console.error('❌ 邮件发送失败:', error);
+    throw new Error(error);
+  }
+  return res.json();
 }
 
 function base64UrlEncodeBytes(bytes) {
