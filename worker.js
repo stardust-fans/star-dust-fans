@@ -35,7 +35,7 @@ export default {
             isAdmin = await verifyToken(token, env);
         }
 
-        // ===== 1. GET /api/songs - 分页获取歌曲列表 =====
+        // ===== 1. GET /api/songs =====
         if (path === '/api/songs' && method === 'GET') {
             try {
                 const limit = parseInt(url.searchParams.get('limit') || '1000');
@@ -94,7 +94,7 @@ export default {
             }
         }
 
-        // ===== 1.1 GET /api/songs/count - 获取歌曲总数（轻量） =====
+        // ===== 1.1 GET /api/songs/count =====
         if (path === '/api/songs/count' && method === 'GET') {
             try {
                 const stmt = env.DB.prepare('SELECT COUNT(*) as total FROM songs WHERE status = "published"');
@@ -286,13 +286,11 @@ export default {
                     return jsonResponse({ error: '请完成人机验证' }, 400);
                 }
 
-                // 验证 Turnstile
                 const turnstileResult = await verifyTurnstileToken(turnstileToken, env);
                 if (!turnstileResult.success) {
                     return jsonResponse({ error: '人机验证失败，请重试' }, 400);
                 }
 
-                // 检查用户名或邮箱是否已被注册
                 const existing = await env.DB.prepare(
                     'SELECT id FROM users WHERE username = ? OR email = ?'
                 ).bind(username, email).first();
@@ -301,10 +299,8 @@ export default {
                     return jsonResponse({ error: '用户名或邮箱已被注册' }, 409);
                 }
 
-                // 密码哈希
                 const passwordHash = await hashPassword(password);
 
-                // 插入新用户
                 const result = await env.DB.prepare(
                     'INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)'
                 ).bind(username, email, passwordHash).run();
@@ -347,7 +343,7 @@ export default {
                 const token = await signToken({
                     sub: user.id,
                     username: user.username,
-                    exp: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7天有效期
+                    exp: Date.now() + 7 * 24 * 60 * 60 * 1000,
                 }, env);
 
                 return jsonResponse({
@@ -362,7 +358,6 @@ export default {
             }
         }
 
-        
         // ===== 3.6 GET /api/admin/audit-logs =====
         if (path === '/api/admin/audit-logs' && method === 'GET') {
             if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
@@ -688,6 +683,66 @@ export default {
             }
         }
 
+        // ===== 同人投稿（新版：使用 images 数组） =====
+        if (path === '/api/contributions/fanart' && method === 'POST') {
+            const cookieHeader = request.headers.get('Cookie') || '';
+            const tokenMatch = cookieHeader.match(/authToken=([^;]+)/);
+            let userId = null;
+            let username = null;
+            if (tokenMatch) {
+                const payload = await verifyToken(tokenMatch[1], env);
+                if (payload) {
+                    userId = payload.sub;
+                    username = payload.username;
+                }
+            }
+            if (!userId) {
+                return jsonResponse({ error: '请先登录' }, 401);
+            }
+
+            try {
+                const body = await request.json();
+                const { title, author, description, type, bilibili_url, source_url, images } = body;
+
+                // 校验 images 数组
+                if (!images || images.length === 0) {
+                    return jsonResponse({ error: '图片不能为空' }, 400);
+                }
+
+                const finalTitle = (title || '').trim() || '无题';
+                const finalAuthor = (author || '').trim() || username || '匿名';
+                const firstImage = images[0] || '';
+                const imagesJson = JSON.stringify(images);
+
+                const stmt = env.DB.prepare(`
+                    INSERT INTO fanart (title, author, description, image_url, bilibili_url, source_url, type, status, images, user_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `);
+                const result = await stmt.bind(
+                    finalTitle,
+                    finalAuthor,
+                    description || null,
+                    firstImage,
+                    bilibili_url || null,
+                    source_url || null,
+                    type || 'illust',
+                    'pending',
+                    imagesJson,
+                    userId
+                ).run();
+
+                return jsonResponse({
+                    success: true,
+                    id: result.meta?.last_row_id || null,
+                    message: '投稿成功，等待审核'
+                }, 201);
+
+            } catch (error) {
+                console.error('❌ /api/contributions/fanart 错误:', error.message);
+                return jsonResponse({ error: error.message }, 500);
+            }
+        }
+
         // ===== 量贩投稿 =====
         if (path === '/api/contributions/shop' && method === 'POST') {
             const cookieHeader = request.headers.get('Cookie') || '';
@@ -771,63 +826,6 @@ export default {
             }
         }
 
-        // ===== 同人投稿 =====
-        if (path === '/api/contributions/fanart' && method === 'POST') {
-            const cookieHeader = request.headers.get('Cookie') || '';
-            const tokenMatch = cookieHeader.match(/authToken=([^;]+)/);
-            let userId = null;
-            let username = null;
-            if (tokenMatch) {
-                const payload = await verifyToken(tokenMatch[1], env);
-                if (payload) {
-                    userId = payload.sub;
-                    username = payload.username;
-                }
-            }
-            if (!userId) {
-                return jsonResponse({ error: '请先登录' }, 401);
-            }
-
-            try {
-                const body = await request.json();
-                const { title, image_url, author, description, type, bilibili_url, source_url } = body;
-
-                if (!image_url) {
-                    return jsonResponse({ error: '图片不能为空' }, 400);
-                }
-
-                const finalTitle = (title || '').trim() || '无题';
-                const finalAuthor = (author || '').trim() || username || '匿名';
-
-                const stmt = env.DB.prepare(`
-                    INSERT INTO fanart (title, author, description, image_url, bilibili_url, source_url, type, status, images, user_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                `);
-                const result = await stmt.bind(
-                    finalTitle,
-                    finalAuthor,
-                    description || null,
-                    image_url,
-                    bilibili_url || null,
-                    source_url || null,
-                    type || 'illust',
-                    'pending',
-                    JSON.stringify(images || []), 
-                    userId
-                ).run();
-
-                return jsonResponse({
-                    success: true,
-                    id: result.meta?.last_row_id || null,
-                    message: '投稿成功，等待审核'
-                }, 201);
-
-            } catch (error) {
-                console.error('❌ /api/contributions/fanart 错误:', error.message);
-                return jsonResponse({ error: error.message }, 500);
-            }
-        }
-
         // ===== 获取待审核列表 =====
         if (path === '/api/admin/pending' && method === 'GET') {
             if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
@@ -860,7 +858,6 @@ export default {
                 const id = approveMatch[2];
                 const table = type === 'fanart' ? 'fanart' : 'shop';
 
-                // 先查投稿信息 + 用户邮箱
                 const item = await env.DB.prepare(`
                     SELECT t.title, t.user_id, u.email
                     FROM ${table} t
@@ -872,7 +869,6 @@ export default {
                     return jsonResponse({ error: '记录不存在或已处理' }, 404);
                 }
 
-                // 更新状态
                 const stmt = env.DB.prepare(`UPDATE ${table} SET status = 'published' WHERE id = ? AND status = 'pending'`);
                 const result = await stmt.bind(id).run();
 
@@ -880,7 +876,6 @@ export default {
                     return jsonResponse({ error: '记录不存在或已处理' }, 404);
                 }
 
-                // 发送邮件通知
                 if (item.email) {
                     const title = item.title || '无题';
                     await sendEmail(
@@ -897,7 +892,7 @@ export default {
                 return jsonResponse({ error: error.message }, 500);
             }
         }
-        
+
         // ===== 审核驳回 =====
         const rejectMatch = path.match(/^\/api\/admin\/pending\/(fanart|shop)\/(\d+)$/);
         if (rejectMatch && method === 'DELETE') {
@@ -907,7 +902,6 @@ export default {
                 const id = rejectMatch[2];
                 const table = type === 'fanart' ? 'fanart' : 'shop';
 
-                // 获取投稿信息 + 用户邮箱
                 const item = await env.DB.prepare(`
                     SELECT t.title, t.user_id, u.email
                     FROM ${table} t
@@ -919,11 +913,9 @@ export default {
                     return jsonResponse({ error: '记录不存在或已处理' }, 404);
                 }
 
-                // 从请求体读取驳回理由
                 const body = await request.json().catch(() => ({}));
                 const reason = body.reason || '未提供具体理由';
 
-                // 删除记录（或标记为 rejected）
                 const stmt = env.DB.prepare(`DELETE FROM ${table} WHERE id = ? AND status = 'pending'`);
                 const result = await stmt.bind(id).run();
 
@@ -931,7 +923,6 @@ export default {
                     return jsonResponse({ error: '记录不存在或已处理' }, 404);
                 }
 
-                // 发送驳回邮件
                 if (item.email) {
                     const title = item.title || '不予通过';
                     await sendEmail(
@@ -948,7 +939,7 @@ export default {
                 return jsonResponse({ error: error.message }, 500);
             }
         }
-    
+
         // ===== 7. 吸尘器日报 API =====
         if (path === '/api/admin/daily' && method === 'GET') {
             if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
@@ -1046,8 +1037,8 @@ export default {
             try {
                 const { title, author, description, image_url, bilibili_url, source_url, type, status } = await request.json();
                 const stmt = env.DB.prepare(`
-                    INSERT INTO fanart (title, author, description, image_url, bilibili_url, source_url, type, status, images, user_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO fanart (title, author, description, image_url, bilibili_url, source_url, type, status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 `);
                 const result = await stmt.bind(title, author || null, description || null, image_url || null, bilibili_url || null, source_url || null, type || 'illust', status || 'published').run();
                 ctx.waitUntil(logAuditEvent(env, {
@@ -1106,8 +1097,6 @@ export default {
                 return jsonResponse({ error: error.message }, 500);
             }
         }
-
-        
 
         // ===== 9. 量贩商品 API =====
         if (path === '/api/admin/shop' && method === 'GET') {
@@ -1210,25 +1199,25 @@ async function verifyTurnstileToken(token, env) {
 
 // ===== 通过 Resend 发送邮件 =====
 async function sendEmail(to, subject, html, env) {
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${env.RESEND_API_KEY}`,
-      'Content-Type': 'application/json; charset=UTF-8',
-    },
-    body: JSON.stringify({
-      from: '星尘粉丝站 <noreply@stardustinfinity.top>',
-      to: [to],
-      subject: subject,
-      html: html,
-    }),
-  });
-  if (!res.ok) {
-    const error = await res.text();
-    console.error('❌ 邮件发送失败:', error);
-    throw new Error(error);
-  }
-  return res.json();
+    const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${env.RESEND_API_KEY}`,
+            'Content-Type': 'application/json; charset=UTF-8',
+        },
+        body: JSON.stringify({
+            from: '星尘粉丝站 <noreply@stardustinfinity.top>',
+            to: [to],
+            subject: subject,
+            html: html,
+        }),
+    });
+    if (!res.ok) {
+        const error = await res.text();
+        console.error('❌ 邮件发送失败:', error);
+        throw new Error(error);
+    }
+    return res.json();
 }
 
 function base64UrlEncodeBytes(bytes) {
