@@ -1,7 +1,8 @@
 # 星尘粉丝站 (star-dust-fans)
 
 VOCALOID 中文虚拟歌姬「星尘」的非官方粉丝站，运行在 stardustinfinity.top。
-
+- [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+- 网站链接：https://stardustinfinity.top/
 ## 功能
 
 - 歌曲库：收录歌曲信息与统计数据快照，附加圈内人工评价标记（殿堂曲 / 传说曲 / 国家队 / 众神下凡 / 自定义标签）
@@ -34,6 +35,12 @@ npm run deploy         # wrangler deploy 部署 Worker
 
 数据库结构定义见 `tool/schema.sql`；增量迁移脚本在 `migrations/`，通过 `wrangler d1 migrations apply` 应用。
 
+## 一些....小故事？
+
+- 其实，这个站点域名是在2026年8月12日也就是星尘十周年时候购买的，原本的服务器还在黑龙江省绥化市肇东市部署
+- 我没想到会有一群闲的慌的（划掉）真的支持我的站点，于是就这个样子了
+- 所以说，我们不会把这个项目直接扔掉，永远不会。
+
 ## 目录结构
 
 | 路径 | 说明 |
@@ -51,4 +58,5 @@ GitHub Actions 在 Pull Request 上自动构建、测试，并在评论中给出
 
 ## 声明
 
-本站为爱好者自发维护的非官方项目，与「星尘」官方及所属公司无隶属关系。
+- 本站为爱好者自发维护的非官方项目，与「星尘」官方及所属公司“北京福托科技开发有限责任公司”无隶属关系。
+- 在此，感谢各位热爱我们，维护网站的各位吸尘器亦或者是开发者，在此非常感谢你们提供的贡献，每一段代码都是她的影子
