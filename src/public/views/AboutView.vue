@@ -32,6 +32,9 @@
       维护站点有些实际开支——域名、服务器之类的，偶尔还有其他乱七八糟的费用。
     </p>
     <p>
+      本站暂时是试运行，用户群群号是920160812，希望各位支持
+    </p>
+    <p>
       代码在 <a href="https://github.com/stardust-fans/star-dust-fans" target="_blank" rel="noopener">GitHub 开源</a>，感兴趣的话可以去看看。
     </p>
     <p>
