@@ -5,6 +5,9 @@
         <span class="eyebrow page-eyebrow">02 · Archive</span>
         <h1 class="page-title">同人</h1>
         <p class="page-subtitle">来自吸尘器的爱<template v-if="items.length"> · 共 {{ items.length }} 件作品</template></p>
+        <p class="guide-entry">
+        <RouterLink to="/guide" class="guide-link">投稿指南</RouterLink>
+        </p>
       </div>
       <button class="btn-hero-primary" @click="showModal = true">发布同人</button>
     </div>
