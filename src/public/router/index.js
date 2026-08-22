@@ -11,6 +11,7 @@ import RegisterView from '../views/RegisterView.vue';
 import LoginView from '../views/LoginView.vue';
 import FanartDetail from '../views/FanartDetail.vue';
 import ShopDetail from '../views/ShopDetail.vue';
+import GuideView from '../views/GuideView.vue';
 
 const router = createRouter({
     history: createWebHistory(),
@@ -30,6 +31,7 @@ const router = createRouter({
         { path: '/register', name: 'register', component: RegisterView },
         { path: '/fanart/:id', name: 'fanart-detail', component: FanartDetail },
         { path: '/shop/:id', name: 'shop-detail', component: ShopDetail },
+        { path: '/guide', name: 'guide', component: GuideView },
     ],
 });
 
