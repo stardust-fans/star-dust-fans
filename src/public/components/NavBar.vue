@@ -18,7 +18,9 @@
           <RouterLink to="/login" @click="closeMenu">登录</RouterLink>
         </li>
         <li v-else>
-          <span class="nav-user" @click="handleLogout">{{ user.username }}</span>
+          <RouterLink to="/user" class="nav-user" @click="closeMenu">
+            {{ user.username }}
+          </RouterLink>
         </li>
       </ul>
       <button class="nav-toggle" aria-label="菜单" @click="menuOpen = !menuOpen">

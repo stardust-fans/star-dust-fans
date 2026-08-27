@@ -664,6 +664,120 @@ export default {
             }
         }
 
+        // ===== 用户信息 API =====
+        if (path === '/api/user/profile' && method === 'GET') {
+            const cookieHeader = request.headers.get('Cookie') || '';
+            const tokenMatch = cookieHeader.match(/authToken=([^;]+)/);
+            let userId = null;
+            
+            if (tokenMatch) {
+                const payload = await verifyToken(tokenMatch[1], env);
+                if (payload) userId = payload.sub;
+            }
+            
+            if (!userId) {
+                const authHeader = request.headers.get('Authorization');
+                if (authHeader && authHeader.startsWith('Bearer ')) {
+                    const payload = await verifyToken(authHeader.slice(7), env);
+                    if (payload) userId = payload.sub;
+                }
+            }
+            
+            if (!userId) {
+                return jsonResponse({ error: '未登录' }, 401);
+            }
+            
+            try {
+                const user = await env.DB.prepare(`
+                    SELECT id, username, email, created_at,
+                        (SELECT COUNT(*) FROM fanart WHERE user_id = users.id AND status != 'pending') as fanart_count,
+                        (SELECT COUNT(*) FROM shop WHERE user_id = users.id AND status != 'pending') as shop_count
+                    FROM users WHERE id = ?
+                `).bind(userId).first();
+                
+                if (!user) {
+                    return jsonResponse({ error: '用户不存在' }, 404);
+                }
+                
+                return jsonResponse(user);
+            } catch (error) {
+                console.error('❌ GET /api/user/profile 错误:', error.message);
+                return jsonResponse({ error: error.message }, 500);
+            }
+        }
+
+        // ===== 用户同人投稿列表 =====
+        if (path === '/api/user/fanart' && method === 'GET') {
+            const cookieHeader = request.headers.get('Cookie') || '';
+            const tokenMatch = cookieHeader.match(/authToken=([^;]+)/);
+            let userId = null;
+            
+            if (tokenMatch) {
+                const payload = await verifyToken(tokenMatch[1], env);
+                if (payload) userId = payload.sub;
+            }
+            
+            if (!userId) {
+                const authHeader = request.headers.get('Authorization');
+                if (authHeader && authHeader.startsWith('Bearer ')) {
+                    const payload = await verifyToken(authHeader.slice(7), env);
+                    if (payload) userId = payload.sub;
+                }
+            }
+            
+            if (!userId) {
+                return jsonResponse({ error: '未登录' }, 401);
+            }
+            
+            try {
+                const result = await env.DB.prepare(`
+                    SELECT id, title, author, description, image_url, bilibili_url, source_url, type, status, created_at
+                    FROM fanart WHERE user_id = ? ORDER BY created_at DESC
+                `).bind(userId).all();
+                
+                return jsonResponse(result.results || []);
+            } catch (error) {
+                console.error('❌ GET /api/user/fanart 错误:', error.message);
+                return jsonResponse({ error: error.message }, 500);
+            }
+        }
+
+        // ===== 用户量贩投稿列表 =====
+        if (path === '/api/user/shop' && method === 'GET') {
+            const cookieHeader = request.headers.get('Cookie') || '';
+            const tokenMatch = cookieHeader.match(/authToken=([^;]+)/);
+            let userId = null;
+            
+            if (tokenMatch) {
+                const payload = await verifyToken(tokenMatch[1], env);
+                if (payload) userId = payload.sub;
+            }
+            
+            if (!userId) {
+                const authHeader = request.headers.get('Authorization');
+                if (authHeader && authHeader.startsWith('Bearer ')) {
+                    const payload = await verifyToken(authHeader.slice(7), env);
+                    if (payload) userId = payload.sub;
+                }
+            }
+            
+            if (!userId) {
+                return jsonResponse({ error: '未登录' }, 401);
+            }
+            
+            try {
+                const result = await env.DB.prepare(`
+                    SELECT id, title, description, price, image_url, bilibili_url, xianyu_url, status, ship_time, created_at
+                    FROM shop WHERE user_id = ? ORDER BY created_at DESC
+                `).bind(userId).all();
+                
+                return jsonResponse(result.results || []);
+            } catch (error) {
+                console.error('❌ GET /api/user/shop 错误:', error.message);
+                return jsonResponse({ error: error.message }, 500);
+            }
+        }
+
         // ===== GET /api/shop/:id =====
         if (path.startsWith('/api/shop/') && method === 'GET') {
             const id = path.split('/').pop();
