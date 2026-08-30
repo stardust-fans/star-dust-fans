@@ -619,8 +619,8 @@ export default {
 
                 const ext = file.name.split('.').pop() || 'jpg';
                 const timestamp = Date.now();
-                const random = Math.random().toString(36).substring(2, 8);
-                const key = `uploads/${userId}/${timestamp}_${random}.${ext}`;
+                const uniqueId = crypto.randomUUID();
+                const key = `uploads/${userId}/${timestamp}_${uniqueId}.${ext}`;
 
                 await env.R2_BUCKET.put(key, file.stream(), {
                     httpMetadata: { contentType: file.type },

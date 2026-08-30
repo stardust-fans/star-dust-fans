@@ -1,6 +1,6 @@
 <template>
   <CosmicBackground v-if="!fullBleed" />
-  <NavBar />
+  <NavBar v-if="!hideChrome" />
   <div id="content" :class="{ 'content-full': fullBleed }">
     <RouterView />
   </div>
@@ -24,6 +24,7 @@ const { loadSongs } = useSongs();
 
 // 整幅页面不渲染底部栏，也关掉站点背景的 WebGL（被全屏内容完全遮住）
 const fullBleed = computed(() => Boolean(route.meta.fullBleed));
+const hideChrome = computed(() => Boolean(route.meta.hideChrome));
 
 onMounted(() => {
   loadSongs();

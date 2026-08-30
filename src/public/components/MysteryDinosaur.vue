@@ -18,7 +18,10 @@
       @click="toggle"
     >
       <svg viewBox="0 0 80 56" aria-hidden="true">
-        <path class="dino-body" d="M8 44c1-18 9-29 24-29h16c9 0 17 6 20 15h6v10H57c-5 7-14 9-24 6l-9-2H8z" />
+        <path
+          class="dino-body"
+          d="M8 44c1-18 9-29 24-29h16c9 0 17 6 20 15h6v10H57c-5 7-14 9-24 6l-9-2H8z"
+        />
         <path class="dino-neck" d="M40 17C39 8 44 4 54 6c9 1 13 7 11 13l-8 1" />
         <circle class="dino-eye" cx="57" cy="11" r="2.5" />
         <path class="dino-foot" d="M21 43v8M47 44v8" />
@@ -29,17 +32,17 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue';
-import { useRoute } from 'vue-router';
+import { computed, onMounted, onUnmounted, ref } from "vue";
+import { useRoute } from "vue-router";
 
 const route = useRoute();
 const isOpen = ref(false);
 const hasVisited = ref(false);
 const hasOpened = ref(false);
 const messages = [
-  '嘘……我在这里数星星。',
-  '你发现了我，奖励一颗星尘！',
-  '今天也要好好发光。',
+  "嘘……我在这里数星星。",
+  "你发现了我，奖励一颗星尘！",
+  "今天也要好好发光。",
 ];
 const messageIndex = ref(0);
 let revealTimer;

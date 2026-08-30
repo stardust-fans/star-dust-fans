@@ -15,3 +15,6 @@
 - [对抗测试] -> 使用测试环境签发两种带角色 HMAC token -> 验证 user token 拒绝 admin 路径、admin token 拒绝 user 路径，并验证双方合法路径均返回 200；全套 31 项测试通过。
 - [补强验证] -> `npm run build && npm test` -> 构建通过；测试仍为 25/26 通过，唯一失败仍是无 `TOKEN_SECRET` 时错误凭据用例的既存 503/401 基线差异。
 - [schema 漂移] -> 空库执行 `tool/schema.sql` 时发现 Worker 使用的投稿列缺失，且存在未使用的 `user_contributions` 表 -> 将 fanart/shop 的现行字段、外键和索引写入正式 schema，删除未使用表；新增 0004 仅创建可重复执行的索引，不对生产列做 ALTER。
+- [生产 schema 只读核验] -> Wrangler 查询 `sqlite_master` -> 生产库已有人手工补齐 `users`、投稿图片、`user_id` 与 `ship_time`，但缺少仓库 migration 记录；因此 0004 只创建幂等索引，避免重复 ALTER 破坏部署。
+- [主分支规则] -> GitHub classic protection 接口返回未保护，但 repository ruleset 明确要求 PR、状态检查和评审线程解决 -> 按受保护主分支交付，不直接推送 main。
+- [浏览器验收] -> 使用本地 D1 测试账号在应用内浏览器验证桌面与 390x844 视口 -> `/user` 登录保护、资料/统计/投稿切换/退出均正常；引导娘键盘切换和 3/3 进度正常；`/aspirateur` 全屏交互正常；小恐龙延迟出现且全屏路由隐藏。

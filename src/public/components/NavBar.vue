@@ -2,7 +2,13 @@
   <nav class="navbar">
     <div class="nav-container">
       <RouterLink to="/" class="nav-brand">
-        <img class="nav-brand-logo" src="/logo.svg" alt="" width="26" height="26" />
+        <img
+          class="nav-brand-logo"
+          src="/logo.svg"
+          alt=""
+          width="26"
+          height="26"
+        />
         星尘
         <span class="nav-brand-mark">吸尘器聚集地</span>
       </RouterLink>
@@ -23,7 +29,11 @@
           </RouterLink>
         </li>
       </ul>
-      <button class="nav-toggle" aria-label="菜单" @click="menuOpen = !menuOpen">
+      <button
+        class="nav-toggle"
+        aria-label="菜单"
+        @click="menuOpen = !menuOpen"
+      >
         <span></span><span></span><span></span>
       </button>
     </div>
@@ -31,13 +41,13 @@
 </template>
 
 <script setup>
-import { ref, watch, computed } from 'vue';
-import { useRoute } from 'vue-router';
-import { useLogin } from '../composables/useLogin.js';
+import { ref, watch, computed } from "vue";
+import { useRoute } from "vue-router";
+import { useLogin } from "../composables/useLogin.js";
 
 const route = useRoute();
 const menuOpen = ref(false);
-const { getUser, logout } = useLogin();
+const { getUser } = useLogin();
 
 const user = computed(() => getUser());
 
@@ -45,13 +55,10 @@ function closeMenu() {
   menuOpen.value = false;
 }
 
-function handleLogout() {
-  if (confirm('确定要退出吗？')) {
-    logout();
-  }
-}
-
-watch(() => route.fullPath, () => {
-  menuOpen.value = false;
-});
+watch(
+  () => route.fullPath,
+  () => {
+    menuOpen.value = false;
+  },
+);
 </script>

@@ -72,15 +72,15 @@
         <p class="guide-kicker">SELECT YOUR ROUTE</p>
         <h2 id="route-title">你要从哪一站出发？</h2>
       </div>
-      <div class="route-switcher" role="tablist" aria-label="投稿身份">
+      <div class="route-switcher" role="radiogroup" aria-label="投稿身份">
         <button
           v-for="route in routes"
           :key="route.id"
           :ref="(element) => setRouteButton(element, route.id)"
           class="route-tab"
           :class="{ selected: activeRoute === route.id }"
-          role="tab"
-          :aria-selected="activeRoute === route.id"
+          role="radio"
+          :aria-checked="activeRoute === route.id"
           :tabindex="activeRoute === route.id ? 0 : -1"
           @keydown="onRouteKeydown($event, route.id)"
           @click="selectRoute(route.id)"
@@ -323,9 +323,10 @@ async function onRouteKeydown(event, route) {
 }
 function jumpTo(id) {
   activeSection.value = id;
-  document
-    .getElementById(id)
-    ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ? "auto"
+    : "smooth";
+  document.getElementById(id)?.scrollIntoView({ behavior, block: "start" });
 }
 async function completeAndNext(current, next) {
   readSections.value = new Set([...readSections.value, current]);
