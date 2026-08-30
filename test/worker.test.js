@@ -97,6 +97,18 @@ describe('Admin auth guard', () => {
     });
 });
 
+describe('User auth guard', () => {
+    it.each(['/api/user/profile', '/api/user/fanart', '/api/user/shop'])('GET %s rejects missing or malformed credentials', async (path) => {
+        const res = await req(path, {
+            headers: {
+                Authorization: 'Bearer definitely-not-a-token',
+                Cookie: 'authToken=%25invalid',
+            },
+        });
+        expect(res.status).toBe(401);
+    });
+});
+
 describe('Auth endpoint', () => {
     it('POST /api/admin/verify with wrong credentials returns 401', async () => {
         const res = await req('/api/admin/verify', {

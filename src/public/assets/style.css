@@ -1860,6 +1860,28 @@ a {
     padding: 20px 0 60px;
 }
 
+.user-feedback {
+    display: grid;
+    justify-items: center;
+    gap: 12px;
+    padding: 32px 20px;
+    margin-bottom: 32px;
+    color: var(--ink-muted);
+    background: var(--paper-raised);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    text-align: center;
+}
+
+.user-feedback p {
+    margin: 0;
+}
+
+.user-feedback-error {
+    color: var(--ink);
+    border-color: rgba(255, 100, 100, 0.45);
+}
+
 /* 用户资料卡片 */
 .user-profile-card {
     display: flex;
@@ -1991,6 +2013,11 @@ a {
 
 .tab-btn:hover {
     color: var(--ink);
+}
+
+.tab-btn:focus-visible {
+    outline: 2px solid var(--cobalt);
+    outline-offset: 3px;
 }
 
 .tab-btn.active {

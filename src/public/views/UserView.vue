@@ -1,23 +1,30 @@
 <template>
-  <div class="user-page">
+  <div class="user-page" aria-labelledby="user-page-title">
     <div class="page-header">
       <span class="eyebrow page-eyebrow">✦ 个人中心</span>
-      <h1 class="page-title">用户中心</h1>
+      <h1 id="user-page-title" class="page-title">用户中心</h1>
       <p class="page-subtitle">管理你的投稿与信息</p>
     </div>
 
     <!-- 用户基本信息 -->
-    <section class="user-profile-card">
+    <div v-if="isLoading" class="user-feedback" role="status" aria-live="polite">正在加载你的投稿…</div>
+    <div v-else-if="errorMessage" class="user-feedback user-feedback-error" role="alert">
+      <p>{{ errorMessage }}</p>
+      <button type="button" class="btn-hero-secondary" @click="fetchUserData">重新加载</button>
+    </div>
+
+    <template v-else>
+    <section class="user-profile-card" aria-labelledby="profile-title">
       <div class="user-avatar">
         <span>{{ userInitial }}</span>
       </div>
       <div class="user-info">
-        <h2>{{ userInfo.username || '用户' }}</h2>
-        <p class="user-email">{{ userInfo.email || '' }}</p>
+        <h2 id="profile-title">{{ userInfo.username || '用户' }}</h2>
+        <p v-if="userInfo.email" class="user-email">{{ userInfo.email }}</p>
         <p class="user-register-date">
           <span class="label">注册时间</span>
-          {{ formatDate(new Date(userInfo.created_at).getTime() / 1000) }}
-          <span class="days-badge">已注册 {{ registerDays }} 天</span>
+          {{ formatUserDate(userInfo.created_at) }}
+          <span v-if="registerDays !== null" class="days-badge">已注册 {{ registerDays }} 天</span>
         </p>
       </div>
     </section>
@@ -44,13 +51,19 @@
       
       <!-- Tab 切换 -->
       <div class="contribution-tabs">
-        <button 
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="activeTab === 'fanart'"
           :class="['tab-btn', { active: activeTab === 'fanart' }]"
           @click="activeTab = 'fanart'"
         >
           同人作品 ({{ fanartList.length }})
         </button>
-        <button 
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="activeTab === 'shop'"
           :class="['tab-btn', { active: activeTab === 'shop' }]"
           @click="activeTab = 'shop'"
         >
@@ -66,14 +79,14 @@
         </div>
         <div v-else class="contribution-grid">
           <div v-for="item in fanartList" :key="item.id" class="contribution-card">
-            <img :src="item.image_url" :alt="item.title" class="contribution-image" />
+            <img v-if="item.image_url" :src="item.image_url" :alt="item.title || '同人作品'" class="contribution-image" />
             <div class="contribution-info">
               <h3>{{ item.title }}</h3>
               <p class="contribution-meta">
                 <span class="status-badge" :class="`status-${item.status}`">
                   {{ statusLabel(item.status) }}
                 </span>
-                <span class="contribution-date">{{ formatDate(item.created_at) }}</span>
+                <span class="contribution-date">{{ formatUserDate(item.created_at) }}</span>
               </p>
             </div>
           </div>
@@ -88,14 +101,14 @@
         </div>
         <div v-else class="contribution-grid">
           <div v-for="item in shopList" :key="item.id" class="contribution-card">
-            <img :src="item.image_url" :alt="item.title" class="contribution-image" />
+            <img v-if="item.image_url" :src="item.image_url" :alt="item.title || '量贩商品'" class="contribution-image" />
             <div class="contribution-info">
               <h3>{{ item.title }}</h3>
               <p class="contribution-meta">
                 <span class="status-badge" :class="`status-${item.status}`">
                   {{ statusLabel(item.status) }}
                 </span>
-                <span class="contribution-date">{{ formatDate(item.created_at) }}</span>
+                <span class="contribution-date">{{ formatUserDate(item.created_at) }}</span>
                 <span class="contribution-price">{{ item.price }}</span>
               </p>
             </div>
@@ -103,6 +116,7 @@
         </div>
       </div>
     </section>
+    </template>
   </div>
 </template>
 
@@ -114,7 +128,7 @@ import { formatDate } from '../../shared/format.js';
 import { API_BASE } from '../../shared/api.js';
 
 const router = useRouter();
-const { getUser, getToken, isAuthenticated } = useLogin();
+const { getToken, isAuthenticated } = useLogin();
 
 const userInfo = ref({});
 const fanartList = ref([]);
@@ -129,10 +143,11 @@ const userInitial = computed(() => {
 
 const registerDays = computed(() => {
   if (!userInfo.value.created_at) return 0;
-  const registerDate = new Date(userInfo.value.created_at);
+  const registerDate = parseUserDate(userInfo.value.created_at);
+  if (!registerDate) return null;
   const now = new Date();
   const diff = now - registerDate;
-  return Math.floor(diff / (1000 * 60 * 60 * 24));
+  return Math.max(0, Math.floor(diff / (1000 * 60 * 60 * 24)));
 });
 
 const totalContributions = computed(() => {
@@ -150,6 +165,33 @@ const statusLabel = (status) => {
   return labels[status] || status;
 };
 
+const parseUserDate = (value) => {
+  if (typeof value === 'number' || (typeof value === 'string' && /^\d+(\.\d+)?$/.test(value))) {
+    const numeric = Number(value);
+    return new Date(numeric < 1e12 ? numeric * 1000 : numeric);
+  }
+  const parsed = new Date(String(value).replace(' ', 'T'));
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const formatUserDate = (value) => {
+  const date = parseUserDate(value);
+  if (!date) return '未知';
+  return formatDate(Math.floor(date.getTime() / 1000));
+};
+
+const fetchJson = async (path, token) => {
+  const response = await fetch(`${API_BASE}${path}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    const error = new Error(response.status === 401 ? '登录已失效，请重新登录' : '暂时无法加载用户数据');
+    error.status = response.status;
+    throw error;
+  }
+  return response.json();
+};
+
 const fetchUserData = async () => {
   if (!isAuthenticated()) {
     router.push('/login');
@@ -157,41 +199,28 @@ const fetchUserData = async () => {
   }
 
   isLoading.value = true;
+  errorMessage.value = '';
   try {
     const token = getToken();
-    
-    // 获取用户信息
-    const userResponse = await fetch(`${API_BASE}/user/profile`, {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    });
-    if (userResponse.ok) {
-      userInfo.value = await userResponse.json();
+    if (!token) {
+      router.replace('/login');
+      return;
     }
-
-    // 获取同人投稿
-    const fanartResponse = await fetch(`${API_BASE}/user/fanart`, {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    });
-    if (fanartResponse.ok) {
-      fanartList.value = await fanartResponse.json();
-    }
-
-    // 获取量贩投稿
-    const shopResponse = await fetch(`${API_BASE}/user/shop`, {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    });
-    if (shopResponse.ok) {
-      shopList.value = await shopResponse.json();
-    }
+    const [profile, fanart, shop] = await Promise.all([
+      fetchJson('/user/profile', token),
+      fetchJson('/user/fanart', token),
+      fetchJson('/user/shop', token),
+    ]);
+    userInfo.value = profile || {};
+    fanartList.value = Array.isArray(fanart) ? fanart : [];
+    shopList.value = Array.isArray(shop) ? shop : [];
   } catch (error) {
     console.error('获取用户数据失败:', error);
-    errorMessage.value = '加载失败，请稍后重试';
+    if (error.status === 401) {
+      router.replace('/login');
+      return;
+    }
+    errorMessage.value = error.message || '加载失败，请稍后重试';
   } finally {
     isLoading.value = false;
   }

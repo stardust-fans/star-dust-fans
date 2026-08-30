@@ -666,23 +666,7 @@ export default {
 
         // ===== 用户信息 API =====
         if (path === '/api/user/profile' && method === 'GET') {
-            const cookieHeader = request.headers.get('Cookie') || '';
-            const tokenMatch = cookieHeader.match(/authToken=([^;]+)/);
-            let userId = null;
-            
-            if (tokenMatch) {
-                const payload = await verifyToken(tokenMatch[1], env);
-                if (payload) userId = payload.sub;
-            }
-            
-            if (!userId) {
-                const authHeader = request.headers.get('Authorization');
-                if (authHeader && authHeader.startsWith('Bearer ')) {
-                    const payload = await verifyToken(authHeader.slice(7), env);
-                    if (payload) userId = payload.sub;
-                }
-            }
-            
+            const userId = await getAuthenticatedUserId(request, env);
             if (!userId) {
                 return jsonResponse({ error: '未登录' }, 401);
             }
@@ -690,8 +674,8 @@ export default {
             try {
                 const user = await env.DB.prepare(`
                     SELECT id, username, email, created_at,
-                        (SELECT COUNT(*) FROM fanart WHERE user_id = users.id AND status != 'pending') as fanart_count,
-                        (SELECT COUNT(*) FROM shop WHERE user_id = users.id AND status != 'pending') as shop_count
+                        (SELECT COUNT(*) FROM fanart WHERE user_id = users.id) as fanart_count,
+                        (SELECT COUNT(*) FROM shop WHERE user_id = users.id) as shop_count
                     FROM users WHERE id = ?
                 `).bind(userId).first();
                 
@@ -708,23 +692,7 @@ export default {
 
         // ===== 用户同人投稿列表 =====
         if (path === '/api/user/fanart' && method === 'GET') {
-            const cookieHeader = request.headers.get('Cookie') || '';
-            const tokenMatch = cookieHeader.match(/authToken=([^;]+)/);
-            let userId = null;
-            
-            if (tokenMatch) {
-                const payload = await verifyToken(tokenMatch[1], env);
-                if (payload) userId = payload.sub;
-            }
-            
-            if (!userId) {
-                const authHeader = request.headers.get('Authorization');
-                if (authHeader && authHeader.startsWith('Bearer ')) {
-                    const payload = await verifyToken(authHeader.slice(7), env);
-                    if (payload) userId = payload.sub;
-                }
-            }
-            
+            const userId = await getAuthenticatedUserId(request, env);
             if (!userId) {
                 return jsonResponse({ error: '未登录' }, 401);
             }
@@ -744,23 +712,7 @@ export default {
 
         // ===== 用户量贩投稿列表 =====
         if (path === '/api/user/shop' && method === 'GET') {
-            const cookieHeader = request.headers.get('Cookie') || '';
-            const tokenMatch = cookieHeader.match(/authToken=([^;]+)/);
-            let userId = null;
-            
-            if (tokenMatch) {
-                const payload = await verifyToken(tokenMatch[1], env);
-                if (payload) userId = payload.sub;
-            }
-            
-            if (!userId) {
-                const authHeader = request.headers.get('Authorization');
-                if (authHeader && authHeader.startsWith('Bearer ')) {
-                    const payload = await verifyToken(authHeader.slice(7), env);
-                    if (payload) userId = payload.sub;
-                }
-            }
-            
+            const userId = await getAuthenticatedUserId(request, env);
             if (!userId) {
                 return jsonResponse({ error: '未登录' }, 401);
             }
@@ -1419,6 +1371,27 @@ async function signToken(payload, env) {
     const signatureBuf = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payloadPart));
     const signaturePart = base64UrlEncodeBytes(new Uint8Array(signatureBuf));
     return `${payloadPart}.${signaturePart}`;
+}
+
+async function getAuthenticatedUserId(request, env) {
+    const authorization = request.headers.get('Authorization') || '';
+    let token = authorization.startsWith('Bearer ') ? authorization.slice(7).trim() : '';
+
+    if (!token) {
+        const cookie = request.headers.get('Cookie') || '';
+        const authCookie = cookie.split(';').map(part => part.trim()).find(part => part.startsWith('authToken='));
+        if (authCookie) {
+            try {
+                token = decodeURIComponent(authCookie.slice('authToken='.length));
+            } catch {
+                token = '';
+            }
+        }
+    }
+
+    if (!token) return null;
+    const payload = await verifyToken(token, env);
+    return payload?.sub || null;
 }
 
 async function verifyToken(token, env) {
