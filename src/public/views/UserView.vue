@@ -215,8 +215,8 @@ const statusLabel = (status) => {
     published: "已发布",
     pending: "待审核",
     rejected: "已驳回",
-    waiting: "等待中",
-    shipped: "已发货",
+    waiting: "等待发车",
+    shipped: "已发车",
   };
   return labels[status] || status;
 };

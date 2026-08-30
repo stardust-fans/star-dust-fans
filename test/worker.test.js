@@ -141,6 +141,68 @@ describe('User auth guard', () => {
     });
 });
 
+describe('Shop status lifecycle', () => {
+    let adminToken;
+
+    beforeAll(async () => {
+        adminToken = await token({ sub: 9002, username: 'test-admin', role: 'admin' });
+        await env.DB.prepare("INSERT OR IGNORE INTO users (id, username, email, password_hash) VALUES (9003, 'shop-owner', '', 'unused')").run();
+        await env.DB.prepare("INSERT OR REPLACE INTO shop (id, title, status, user_id) VALUES (9301, 'pending shop', 'pending', 9003)").run();
+        await env.DB.prepare("INSERT OR REPLACE INTO shop (id, title, status, user_id) VALUES (9302, 'shipped shop', 'shipped', 9003)").run();
+        await env.DB.prepare("INSERT OR REPLACE INTO fanart (id, title, status, user_id) VALUES (9401, 'pending fanart', 'pending', 9003)").run();
+    });
+
+    it('moves an approved shop from pending to waiting and exposes it publicly', async () => {
+        const approved = await req('/api/admin/pending/shop/9301', {
+            method: 'PUT',
+            headers: { Authorization: `Bearer ${adminToken}` },
+        });
+        expect(approved.status).toBe(200);
+        expect((await env.DB.prepare('SELECT status FROM shop WHERE id = 9301').first()).status).toBe('waiting');
+
+        const list = await (await req('/api/shop')).json();
+        expect(list.some(item => item.id === 9301 && item.status === 'waiting')).toBe(true);
+        expect((await req('/api/shop/9301')).status).toBe(200);
+        expect((await req('/api/shop/9302')).status).toBe(200);
+    });
+
+    it('keeps pending shops private while fanart approval still publishes', async () => {
+        await env.DB.prepare("INSERT OR REPLACE INTO shop (id, title, status, user_id) VALUES (9303, 'still pending', 'pending', 9003)").run();
+        expect((await req('/api/shop/9303')).status).toBe(404);
+
+        const approved = await req('/api/admin/pending/fanart/9401', {
+            method: 'PUT',
+            headers: { Authorization: `Bearer ${adminToken}` },
+        });
+        expect(approved.status).toBe(200);
+        expect((await env.DB.prepare('SELECT status FROM fanart WHERE id = 9401').first()).status).toBe('published');
+    });
+
+    it('creates admin shop entries with the correct link fields', async () => {
+        const created = await req('/api/admin/shop', {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${adminToken}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                title: 'admin shop',
+                bilibili_url: 'https://www.bilibili.com/video/test',
+                xianyu_url: 'https://www.goofish.com/item/test',
+                status: 'waiting',
+            }),
+        });
+        expect(created.status).toBe(200);
+        const { id } = await created.json();
+        const row = await env.DB.prepare('SELECT bilibili_url, xianyu_url, status FROM shop WHERE id = ?').bind(id).first();
+        expect(row).toEqual({
+            bilibili_url: 'https://www.bilibili.com/video/test',
+            xianyu_url: 'https://www.goofish.com/item/test',
+            status: 'waiting',
+        });
+    });
+});
+
 describe('Auth endpoint', () => {
     it('POST /api/admin/verify with wrong credentials returns 401', async () => {
         const res = await req('/api/admin/verify', {

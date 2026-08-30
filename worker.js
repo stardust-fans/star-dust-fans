@@ -141,7 +141,7 @@ export default {
                 const stmt = env.DB.prepare(`
                     SELECT id, title, description, price, image_url, bilibili_url, xianyu_url, status
                     FROM shop
-                    WHERE status = 'waiting' OR status = 'shipped'
+                    WHERE status IN ('waiting', 'shipped')
                     ORDER BY created_at DESC
                 `);
                 const result = await stmt.all();
@@ -728,7 +728,7 @@ export default {
                 return jsonResponse({ error: 'Invalid ID' }, 400);
             }
             try {
-                const stmt = env.DB.prepare('SELECT * FROM shop WHERE id = ? AND status = "published"');
+                const stmt = env.DB.prepare("SELECT * FROM shop WHERE id = ? AND status IN ('waiting', 'shipped')");
                 const result = await stmt.bind(id).first();
                 if (!result) {
                     return jsonResponse({ error: 'Not Found' }, 404);
@@ -901,6 +901,7 @@ export default {
                 const type = approveMatch[1];
                 const id = approveMatch[2];
                 const table = type === 'fanart' ? 'fanart' : 'shop';
+                const approvedStatus = type === 'fanart' ? 'published' : 'waiting';
 
                 const item = await env.DB.prepare(`
                     SELECT t.title, t.user_id, u.email
@@ -913,8 +914,8 @@ export default {
                     return jsonResponse({ error: '记录不存在或已处理' }, 404);
                 }
 
-                const stmt = env.DB.prepare(`UPDATE ${table} SET status = 'published' WHERE id = ? AND status = 'pending'`);
-                const result = await stmt.bind(id).run();
+                const stmt = env.DB.prepare(`UPDATE ${table} SET status = ? WHERE id = ? AND status = 'pending'`);
+                const result = await stmt.bind(approvedStatus, id).run();
 
                 if (result.meta?.changes === 0) {
                     return jsonResponse({ error: '记录不存在或已处理' }, 404);
@@ -1160,8 +1161,8 @@ export default {
             try {
                 const { title, description, price, image_url, bilibili_url, xianyu_url, status } = await request.json();
                 const stmt = env.DB.prepare(`
-                    INSERT INTO shop (title, description, price, image_url, xianyu_url, bilibili_url, status, ship_time, images, user_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO shop (title, description, price, image_url, bilibili_url, xianyu_url, status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                 `);
                 const result = await stmt.bind(title, description || null, price || null, image_url || null, bilibili_url || null, xianyu_url || null, status || 'waiting').run();
                 ctx.waitUntil(logAuditEvent(env, {
