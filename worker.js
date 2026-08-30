@@ -28,12 +28,7 @@ export default {
             });
         }
 
-        const authHeader = request.headers.get('Authorization');
-        let isAdmin = false;
-        if (authHeader && authHeader.startsWith('Bearer ')) {
-            const token = authHeader.slice(7);
-            isAdmin = await verifyToken(token, env);
-        }
+        const isAdmin = await getAuthenticatedUser(request, env, 'admin');
 
         // ===== 1. GET /api/songs =====
         if (path === '/api/songs' && method === 'GET') {
@@ -179,6 +174,7 @@ export default {
                     const token = await signToken({
                         sub: row.id,
                         username: row.username,
+                        role: 'admin',
                         exp: Date.now() + 24 * 60 * 60 * 1000,
                     }, env);
                     ctx.waitUntil(logAuditEvent(env, {
@@ -343,6 +339,7 @@ export default {
                 const token = await signToken({
                     sub: user.id,
                     username: user.username,
+                    role: 'user',
                     exp: Date.now() + 7 * 24 * 60 * 60 * 1000,
                 }, env);
 
@@ -599,13 +596,7 @@ export default {
 
         // ===== 上传图片到 R2 =====
         if (path === '/api/upload' && method === 'POST') {
-            const cookieHeader = request.headers.get('Cookie') || '';
-            const tokenMatch = cookieHeader.match(/authToken=([^;]+)/);
-            let userId = null;
-            if (tokenMatch) {
-                const payload = await verifyToken(tokenMatch[1], env);
-                if (payload) userId = payload.sub;
-            }
+            const userId = await getAuthenticatedUserId(request, env);
             if (!userId) {
                 return jsonResponse({ error: '请先登录' }, 401);
             }
@@ -751,17 +742,10 @@ export default {
 
         // ===== 同人投稿（新版：使用 images 数组） =====
         if (path === '/api/contributions/fanart' && method === 'POST') {
-            const cookieHeader = request.headers.get('Cookie') || '';
-            const tokenMatch = cookieHeader.match(/authToken=([^;]+)/);
-            let userId = null;
+            const payload = await getAuthenticatedUser(request, env, 'user');
+            let userId = payload?.sub || null;
             let username = null;
-            if (tokenMatch) {
-                const payload = await verifyToken(tokenMatch[1], env);
-                if (payload) {
-                    userId = payload.sub;
-                    username = payload.username;
-                }
-            }
+            if (payload) username = payload.username;
             if (!userId) {
                 return jsonResponse({ error: '请先登录' }, 401);
             }
@@ -811,13 +795,7 @@ export default {
 
         // ===== 量贩投稿 =====
         if (path === '/api/contributions/shop' && method === 'POST') {
-            const cookieHeader = request.headers.get('Cookie') || '';
-            const tokenMatch = cookieHeader.match(/authToken=([^;]+)/);
-            let userId = null;
-            if (tokenMatch) {
-                const payload = await verifyToken(tokenMatch[1], env);
-                if (payload) userId = payload.sub;
-            }
+            const userId = await getAuthenticatedUserId(request, env);
             if (!userId) {
                 return jsonResponse({ error: '请先登录' }, 401);
             }
@@ -1373,7 +1351,7 @@ async function signToken(payload, env) {
     return `${payloadPart}.${signaturePart}`;
 }
 
-async function getAuthenticatedUserId(request, env) {
+async function getAuthenticatedUser(request, env, expectedRole) {
     const authorization = request.headers.get('Authorization') || '';
     let token = authorization.startsWith('Bearer ') ? authorization.slice(7).trim() : '';
 
@@ -1391,6 +1369,11 @@ async function getAuthenticatedUserId(request, env) {
 
     if (!token) return null;
     const payload = await verifyToken(token, env);
+    return payload?.role === expectedRole ? payload : null;
+}
+
+async function getAuthenticatedUserId(request, env) {
+    const payload = await getAuthenticatedUser(request, env, 'user');
     return payload?.sub || null;
 }
 

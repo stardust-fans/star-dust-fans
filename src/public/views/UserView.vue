@@ -142,7 +142,7 @@ const userInitial = computed(() => {
 });
 
 const registerDays = computed(() => {
-  if (!userInfo.value.created_at) return 0;
+  if (!userInfo.value.created_at) return null;
   const registerDate = parseUserDate(userInfo.value.created_at);
   if (!registerDate) return null;
   const now = new Date();

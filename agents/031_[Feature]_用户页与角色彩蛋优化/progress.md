@@ -11,3 +11,5 @@
 - 2026-08-29：以 SVG/CSS 重写 `EasterEggView.vue`，加入可访问的吸尘交互与 reduced-motion 样式。
 - 2026-08-29：新增 `MysteryDinosaur.vue` 并挂载到 `App.vue`，7 秒后显示、点击展开气泡、移动端安全区适配。
 - 2026-08-29：执行 `npm ci`、`npm test`、`npm run build`；测试结果为 25/26 通过，构建通过。
+- 2026-08-29：追加角色互斥鉴权：admin/user 登录 token 分别签发 `role`，admin 与 user/upload/contribution 路由统一复用角色 helper；补充双向越权与合法路径测试；修复无注册日期时不显示“0 天”。
+- 2026-08-29：运行 `npm test` 31/31 通过、`npm run build` 成功；恢复 prebuild 产生的非任务贡献者文件改动，完成差异关键词自检。

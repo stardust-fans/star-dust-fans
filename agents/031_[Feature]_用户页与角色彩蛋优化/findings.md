@@ -11,3 +11,5 @@
 - [本次实现范围] -> 父任务拆分要求本 worktree 只处理 `/aspirateur` 与神秘小恐龙 -> 不触碰 `UserView.vue`、`worker.js`、`GuideView.vue`，并使用 Vue/CSS/SVG 原生视觉。
 - [测试基线] -> `npm test` -> 26 个用例中 25 个通过，既存的错误凭据用例在无 `TOKEN_SECRET` 环境返回 503 而非期望的 401，未涉及本次前端改动。
 - [构建] -> `npm run build` -> Vite 生产构建通过；构建脚本重排贡献者 JSON，已恢复该非本次范围文件。
+- [角色混淆] -> 对照登录签发与全路由鉴权 -> 原 token 没有 role，普通用户可被 `isAdmin` 接受且 admin token 可访问用户接口；为新 token 增加互斥 `admin`/`user` role，所有相关路径统一按期望角色验证，旧 token 不再兼容。
+- [对抗测试] -> 使用测试环境签发两种带角色 HMAC token -> 验证 user token 拒绝 admin 路径、admin token 拒绝 user 路径，并验证双方合法路径均返回 200；全套 31 项测试通过。
