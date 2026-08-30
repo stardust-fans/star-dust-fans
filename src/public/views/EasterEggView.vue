@@ -1,203 +1,314 @@
 <template>
-  <div class="user-page">
-    <div class="page-header">
-      <span class="eyebrow page-eyebrow">✦ 个人中心</span>
-      <h1 class="page-title">用户中心</h1>
-      <p class="page-subtitle">管理你的投稿与信息</p>
-    </div>
-
-    <!-- 用户基本信息 -->
-    <section class="user-profile-card">
-      <div class="user-avatar">
-        <span>{{ userInitial }}</span>
-      </div>
-      <div class="user-info">
-        <h2>{{ userInfo.username || '用户' }}</h2>
-        <p class="user-email">{{ userInfo.email || '' }}</p>
-        <p class="user-register-date">
-          <span class="label">注册时间</span>
-          {{ formatDate(new Date(userInfo.created_at).getTime() / 1000) }}
-          <span class="days-badge">已注册 {{ registerDays }} 天</span>
-        </p>
-      </div>
-    </section>
-
-    <!-- 统计概览 -->
-    <section class="user-stats">
-      <div class="stat-item">
-        <span class="stat-number">{{ fanartList.length }}</span>
-        <span class="stat-label">同人作品</span>
-      </div>
-      <div class="stat-item">
-        <span class="stat-number">{{ shopList.length }}</span>
-        <span class="stat-label">量贩商品</span>
-      </div>
-      <div class="stat-item">
-        <span class="stat-number">{{ totalContributions }}</span>
-        <span class="stat-label">总投稿</span>
-      </div>
-    </section>
-
-    <!-- 投稿列表 -->
-    <section class="user-contributions">
-      <h2 class="section-title">我的投稿</h2>
-      
-      <!-- Tab 切换 -->
-      <div class="contribution-tabs">
-        <button 
-          :class="['tab-btn', { active: activeTab === 'fanart' }]"
-          @click="activeTab = 'fanart'"
+  <main class="aspirateur" aria-labelledby="aspirateur-title">
+    <div class="aspirateur__noise" aria-hidden="true"></div>
+    <header class="aspirateur__header">
+      <RouterLink class="aspirateur__back" to="/">← 返回星尘站</RouterLink>
+      <span class="aspirateur__stamp">01.04 · secret archive</span>
+    </header>
+    <section class="aspirateur__hero">
+      <p class="aspirateur__eyebrow">un petit secret pour les curieux</p>
+      <h1 id="aspirateur-title">星尘吸尘器</h1>
+      <p class="aspirateur__lead">
+        Aspirateur，在法语里就是“吸尘器”。<br />今天，顺手把宇宙里的灰尘吸干净吧。
+      </p>
+      <div class="aspirateur__machine" :class="{ 'is-running': isRunning }">
+        <span class="aspirateur__spark aspirateur__spark--one">✦</span
+        ><span class="aspirateur__spark aspirateur__spark--two">✧</span
+        ><span class="aspirateur__spark aspirateur__spark--three">✦</span>
+        <svg
+          class="aspirateur__svg"
+          viewBox="0 0 420 280"
+          role="img"
+          aria-label="一台星尘吸尘器"
         >
-          同人作品 ({{ fanartList.length }})
-        </button>
-        <button 
-          :class="['tab-btn', { active: activeTab === 'shop' }]"
-          @click="activeTab = 'shop'"
-        >
-          量贩商品 ({{ shopList.length }})
-        </button>
+          <path class="hose" d="M265 158c58 9 71 54 103 66 18 7 30-2 31-17" />
+          <path class="wand" d="M355 207l27 41" />
+          <path
+            class="body"
+            d="M117 93c0-26 21-47 47-47h80c27 0 48 21 48 47v72c0 22-18 40-40 40H157c-22 0-40-18-40-40z"
+          />
+          <path class="body-top" d="M140 94h129" />
+          <circle class="dial" cx="182" cy="129" r="25" />
+          <path class="dial-mark" d="M182 112v17l12 9" />
+          <path
+            class="handle"
+            d="M175 45V25c0-9 7-16 16-16h43c9 0 16 7 16 16v24"
+          />
+          <path class="wheel" d="M142 205v18M250 205v18" />
+          <circle class="wheel-dot" cx="142" cy="229" r="16" />
+          <circle class="wheel-dot" cx="250" cy="229" r="16" />
+          <path class="dust-line" d="M86 194H30M76 216H48" />
+        </svg>
+        <span class="aspirateur__label">COSMIC<br />CLEANER</span>
       </div>
-
-      <!-- 同人作品列表 -->
-      <div v-if="activeTab === 'fanart'" class="contribution-list">
-        <div v-if="fanartList.length === 0" class="empty-state">
-          <p>还没有投稿同人作品</p>
-          <RouterLink to="/fanart" class="btn-hero-secondary">去投稿 →</RouterLink>
-        </div>
-        <div v-else class="contribution-grid">
-          <div v-for="item in fanartList" :key="item.id" class="contribution-card">
-            <img :src="item.image_url" :alt="item.title" class="contribution-image" />
-            <div class="contribution-info">
-              <h3>{{ item.title }}</h3>
-              <p class="contribution-meta">
-                <span class="status-badge" :class="`status-${item.status}`">
-                  {{ statusLabel(item.status) }}
-                </span>
-                <span class="contribution-date">{{ formatDate(item.created_at) }}</span>
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 量贩商品列表 -->
-      <div v-if="activeTab === 'shop'" class="contribution-list">
-        <div v-if="shopList.length === 0" class="empty-state">
-          <p>还没有投稿量贩商品</p>
-          <RouterLink to="/shop" class="btn-hero-secondary">去投稿 →</RouterLink>
-        </div>
-        <div v-else class="contribution-grid">
-          <div v-for="item in shopList" :key="item.id" class="contribution-card">
-            <img :src="item.image_url" :alt="item.title" class="contribution-image" />
-            <div class="contribution-info">
-              <h3>{{ item.title }}</h3>
-              <p class="contribution-meta">
-                <span class="status-badge" :class="`status-${item.status}`">
-                  {{ statusLabel(item.status) }}
-                </span>
-                <span class="contribution-date">{{ formatDate(item.created_at) }}</span>
-                <span class="contribution-price">{{ item.price }}</span>
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
+      <button
+        class="aspirateur__button"
+        type="button"
+        @click="toggleCleaner"
+        :aria-pressed="isRunning"
+      >
+        <span aria-hidden="true">{{ isRunning ? "◼" : "✦" }}</span
+        >{{ isRunning ? "停止吸尘" : "开始吸尘" }}
+      </button>
+      <p class="aspirateur__status" aria-live="polite">{{ status }}</p>
     </section>
-  </div>
+    <footer class="aspirateur__footer">
+      Made of stardust · Rien ne se perd, tout scintille.
+    </footer>
+  </main>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
-import { useLogin } from '../composables/useLogin.js';
-import { formatDate } from '../../shared/format.js';
-import { API_BASE } from '../../shared/api.js';
-
-const router = useRouter();
-const { getUser, getToken, isAuthenticated } = useLogin();
-
-const userInfo = ref({});
-const fanartList = ref([]);
-const shopList = ref([]);
-const activeTab = ref('fanart');
-const isLoading = ref(false);
-const errorMessage = ref('');
-
-const userInitial = computed(() => {
-  return (userInfo.value.username || '?')[0].toUpperCase();
+import { computed, ref } from "vue";
+const isRunning = ref(false);
+const cleaned = ref(0);
+const status = computed(() => {
+  if (isRunning.value) return "吸吸吸……星尘正在回到它该在的地方。";
+  if (cleaned.value > 0)
+    return `清洁完成！本次收集了 ${cleaned.value} 粒宇宙灰尘。`;
+  return "按下按钮，看看会吸出什么。";
 });
-
-const registerDays = computed(() => {
-  if (!userInfo.value.created_at) return 0;
-  const registerDate = new Date(userInfo.value.created_at);
-  const now = new Date();
-  const diff = now - registerDate;
-  return Math.floor(diff / (1000 * 60 * 60 * 24));
-});
-
-const totalContributions = computed(() => {
-  return fanartList.value.length + shopList.value.length;
-});
-
-const statusLabel = (status) => {
-  const labels = {
-    published: '已发布',
-    pending: '待审核',
-    rejected: '已驳回',
-    waiting: '等待中',
-    shipped: '已发货'
-  };
-  return labels[status] || status;
+const toggleCleaner = () => {
+  isRunning.value = !isRunning.value;
+  if (isRunning.value) cleaned.value += 7;
 };
-
-const fetchUserData = async () => {
-  if (!isAuthenticated()) {
-    router.push('/login');
-    return;
-  }
-
-  isLoading.value = true;
-  try {
-    const token = getToken();
-    
-    // 获取用户信息
-    const userResponse = await fetch(`${API_BASE}/user/profile`, {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    });
-    if (userResponse.ok) {
-      userInfo.value = await userResponse.json();
-    }
-
-    // 获取同人投稿
-    const fanartResponse = await fetch(`${API_BASE}/user/fanart`, {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    });
-    if (fanartResponse.ok) {
-      fanartList.value = await fanartResponse.json();
-    }
-
-    // 获取量贩投稿
-    const shopResponse = await fetch(`${API_BASE}/user/shop`, {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    });
-    if (shopResponse.ok) {
-      shopList.value = await shopResponse.json();
-    }
-  } catch (error) {
-    console.error('获取用户数据失败:', error);
-    errorMessage.value = '加载失败，请稍后重试';
-  } finally {
-    isLoading.value = false;
-  }
-};
-
-onMounted(() => {
-  fetchUserData();
-});
 </script>
+
+<style scoped>
+.aspirateur {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  min-height: 100dvh;
+  overflow-y: auto;
+  color: #f7f1ff;
+  background: #161329;
+  isolation: isolate;
+  font-family: Georgia, "Noto Serif SC", serif;
+}
+.aspirateur__noise {
+  position: absolute;
+  inset: 0;
+  opacity: 0.18;
+  pointer-events: none;
+  background-image: radial-gradient(#fff 0.6px, transparent 0.7px);
+  background-size: 7px 7px;
+  mask-image: linear-gradient(135deg, transparent, #000 40%, transparent 85%);
+}
+.aspirateur__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.3rem clamp(1.2rem, 5vw, 5rem);
+  font:
+    700 0.7rem/1.2 ui-monospace,
+    SFMono-Regular,
+    monospace;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.aspirateur__back {
+  color: #e4d8ff;
+  text-decoration: none;
+}
+.aspirateur__back:hover {
+  color: #fff;
+}
+.aspirateur__stamp {
+  color: #9c91ba;
+}
+.aspirateur__hero {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: clamp(2rem, 7vh, 5rem) 1.25rem 3rem;
+  text-align: center;
+}
+.aspirateur__eyebrow {
+  margin: 0 0 1rem;
+  color: #b5e8db;
+  font:
+    0.75rem/1.2 ui-monospace,
+    SFMono-Regular,
+    monospace;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+h1 {
+  margin: 0;
+  color: #fff;
+  font-size: clamp(3.2rem, 10vw, 7.5rem);
+  font-weight: 400;
+  letter-spacing: -0.06em;
+  line-height: 0.95;
+  text-shadow: 0.08em 0.08em 0 #56457b;
+}
+.aspirateur__lead {
+  margin: 1.6rem auto 0;
+  color: #c8bfdc;
+  font-size: clamp(1rem, 2vw, 1.25rem);
+  line-height: 1.8;
+}
+.aspirateur__machine {
+  position: relative;
+  width: min(420px, 94vw);
+  margin: 2.5rem 0 1rem;
+}
+.aspirateur__svg {
+  display: block;
+  width: 100%;
+  overflow: visible;
+}
+.hose,
+.wand,
+.body-top,
+.handle,
+.wheel {
+  fill: none;
+  stroke: #dbd0fb;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 10;
+}
+.wand {
+  stroke: #f6ca7e;
+  stroke-width: 7;
+}
+.body {
+  fill: #7457a2;
+  stroke: #eee7ff;
+  stroke-width: 7;
+}
+.body-top {
+  stroke-width: 7;
+}
+.dial {
+  fill: #1c1734;
+  stroke: #b5e8db;
+  stroke-width: 7;
+}
+.dial-mark {
+  fill: none;
+  stroke: #f6ca7e;
+  stroke-linecap: round;
+  stroke-width: 5;
+}
+.wheel-dot {
+  fill: #f6ca7e;
+  stroke: #fff5d8;
+  stroke-width: 5;
+}
+.dust-line {
+  fill: none;
+  stroke: #b5e8db;
+  stroke-dasharray: 9 10;
+  stroke-linecap: round;
+  stroke-width: 5;
+}
+.aspirateur__label {
+  position: absolute;
+  top: 45%;
+  left: 49%;
+  color: #f4eaff;
+  font:
+    700 0.6rem/1.1 ui-monospace,
+    monospace;
+  letter-spacing: 0.1em;
+  transform: rotate(-8deg);
+}
+.aspirateur__spark {
+  position: absolute;
+  z-index: 2;
+  color: #f6ca7e;
+  font: 2rem serif;
+}
+.aspirateur__spark--one {
+  top: 7%;
+  left: 8%;
+}
+.aspirateur__spark--two {
+  top: 21%;
+  right: 9%;
+  color: #b5e8db;
+}
+.aspirateur__spark--three {
+  bottom: 16%;
+  left: 3%;
+}
+.is-running .aspirateur__spark {
+  animation: sparkle 0.7s ease-in-out infinite alternate;
+}
+.is-running .aspirateur__svg {
+  animation: hum 0.14s linear infinite alternate;
+}
+.aspirateur__button {
+  border: 2px solid #f6ca7e;
+  border-radius: 999px;
+  padding: 0.85rem 1.5rem;
+  color: #211936;
+  background: #f6ca7e;
+  cursor: pointer;
+  font:
+    700 0.95rem/1 ui-monospace,
+    monospace;
+  box-shadow: 4px 4px 0 #614b88;
+}
+.aspirateur__button:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 5px 5px 0 #614b88;
+}
+.aspirateur__button:focus-visible {
+  outline: 3px solid #b5e8db;
+  outline-offset: 4px;
+}
+.aspirateur__status {
+  min-height: 1.4em;
+  margin: 1.25rem 0 0;
+  color: #b5e8db;
+  font-size: 0.9rem;
+}
+.aspirateur__footer {
+  position: relative;
+  z-index: 1;
+  padding: 1rem;
+  color: #75698f;
+  text-align: center;
+  font:
+    0.7rem/1.5 ui-monospace,
+    monospace;
+  letter-spacing: 0.08em;
+}
+@keyframes sparkle {
+  to {
+    transform: translateY(-8px) rotate(12deg);
+    opacity: 0.45;
+  }
+}
+@keyframes hum {
+  to {
+    transform: translateX(1px) rotate(0.2deg);
+  }
+}
+@media (max-width: 600px) {
+  .aspirateur__stamp {
+    display: none;
+  }
+  .aspirateur__header {
+    padding-top: 1rem;
+  }
+  .aspirateur__machine {
+    margin-top: 2rem;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .is-running .aspirateur__spark,
+  .is-running .aspirateur__svg {
+    animation: none;
+  }
+  .aspirateur__button:hover {
+    transform: none;
+  }
+}
+</style>

@@ -55,6 +55,9 @@ CREATE TABLE IF NOT EXISTS fanart (
     source_url VARCHAR(500),
     type VARCHAR(20) DEFAULT 'illust',
     status VARCHAR(20) DEFAULT 'published',
+    flag_reason TEXT,
+    images TEXT,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -67,6 +70,10 @@ CREATE TABLE IF NOT EXISTS shop (
     image_url VARCHAR(500),
     bilibili_url VARCHAR(500),
     xianyu_url VARCHAR(500),
+    ship_time TIMESTAMP,
+    images TEXT,
+    flag_reason TEXT,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     status VARCHAR(20) DEFAULT 'waiting',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -102,22 +109,8 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 投稿关联表（记录用户投稿的内容）
-CREATE TABLE IF NOT EXISTS user_contributions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    content_type VARCHAR(20) NOT NULL, -- 'fanart' 或 'shop'
-    content_id INTEGER NOT NULL,       -- 对应 fanart.id 或 shop.id
-    status VARCHAR(20) DEFAULT 'pending', -- 'pending' / 'approved' / 'rejected'
-    reviewer_admin_id INTEGER,
-    review_comment TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    reviewed_at TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (reviewer_admin_id) REFERENCES admins(id) ON DELETE SET NULL
-);
-
--- 为 user_id 和 status 建索引，方便后台审核查询
-CREATE INDEX IF NOT EXISTS idx_user_contributions_user_id ON user_contributions (user_id);
-CREATE INDEX IF NOT EXISTS idx_user_contributions_status ON user_contributions (status);
+CREATE INDEX IF NOT EXISTS idx_fanart_user_id ON fanart (user_id);
+CREATE INDEX IF NOT EXISTS idx_fanart_status ON fanart (status);
+CREATE INDEX IF NOT EXISTS idx_shop_user_id ON shop (user_id);
+CREATE INDEX IF NOT EXISTS idx_shop_status ON shop (status);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs (created_at DESC);
