@@ -1,82 +1,41 @@
 <template>
-  <div class="guide-page">
-    <div class="guide-header">
-      <span class="eyebrow">📖 投稿指南</span>
-      <h1>星尘粉丝站 · 投稿与量贩入驻公告</h1>
-      <p class="guide-subtitle">请仔细阅读以下规则，投稿即视为同意</p>
-    </div>
-
-    <div class="guide-content">
-      <!-- 同人作者篇 -->
-      <section class="guide-section">
-        <h2><span class="section-icon"></span> 同人作者篇</h2>
-
-        <h3>1. 投稿范围</h3>
-        <p>以星尘为核心的二创或同人创作，包括但不限于插画、漫画、小说、音乐、视频、3D作品等。<br>同时，我们欢迎星尘的衍生形象，如星尘 Minus、星砂等。</p>
-
-        <h3>2. 内容规范性</h3>
-        <ul>
-          <li>投稿作品必须为<strong>本人原创</strong>或<strong>经过原作者授权</strong>。禁止盗图、盗文、无授权转载或AI生成未经大幅修改的作品。</li>
-          <li>允许 R15 内容，<strong>不允许 R18 以上</strong>及带有 <strong>Gore（血腥猎奇）</strong> 标签的内容。</li>
-          <li>内容必须遵循社会主义核心价值观，同时<strong>不允许</strong>极端血腥猎奇、极端政治恐怖和极端主义内容。</li>
-          <li>如为合作作品，请明确标注所有合作作者。</li>
-        </ul>
-
-        <h3>3. 格式要求</h3>
-        <ul>
-          <li>图片建议转换为 <strong>WebP</strong> 格式，单张图片请勿超过 <strong>15MB</strong>。</li>
-          <li><strong>不允许</strong>任意形式的 XSS 注入攻击，一经发现将<strong>封禁 IP + 报案处理</strong>。</li>
-          <li>视频尽量使用 <strong>bilibili 链接</strong>，或提供可直接访问的视频文件链接。</li>
-          <li>小说：请提供文本内容或文档链接。</li>
-        </ul>
-
-        <h3>4. 审核流程</h3>
-        <ul>
-          <li>所有投稿将进入<strong>人工审核队列</strong>，并由人工一一审批。</li>
-          <li>审核通过后，作品将在粉丝站公开显示。<br><strong>审核通过即代表作品符合本站要求，作者享有完整署名权。</strong></li>
-          <li>若审核不通过，系统将通过邮件通知您<strong>具体驳回理由</strong>，您可修改后重新提交。</li>
-        </ul>
-
-        <p class="section-footer">本规则最终解释权归星尘粉丝站所有。</p>
-      </section>
-
-      <hr class="guide-divider">
-
-      <!-- 量贩商篇 -->
-      <section class="guide-section">
-        <h2><span class="section-icon">🛒</span> 量贩商篇</h2>
-
-        <h3>1. 商品范围</h3>
-        <ul>
-          <li><strong>周边类型</strong>：包括但不限于吧唧（徽章）、立牌、亚克力制品、毛绒玩偶、画集、服饰、同人音乐 CD 等。</li>
-          <li><strong>主题要求</strong>：商品必须以星尘为主题或包含星尘相关元素（含官方/同人授权形象）。</li>
-        </ul>
-
-        <h3>2. 内容规范</h3>
-        <ul>
-          <li><strong>版权合规</strong>：商品必须拥有合法的创作授权或官方授权。<strong>严禁售卖未经授权的盗版周边</strong>。</li>
-          <li><strong>描述真实</strong>：商品描述（材质、尺寸、工艺等）需与实物一致。</li>
-        </ul>
-
-        <h3>3. 商品信息要求</h3>
-        <ul>
-          <li><strong>标题与描述</strong>：请提供商品的清晰名称和详细描述（包含材质、尺寸、设计特点）。</li>
-          <li><strong>定价与链接</strong>：请明确标注<strong>定价</strong>，并提供闲鱼或 B站工房等交易平台的商品链接。</li>
-          <li><strong>发货时效</strong>：请注明商品为“<strong>现货</strong>”或“<strong>预售</strong>”，预售商品需明确标注截止日期和预计发货时间。</li>
-        </ul>
-
-        <h3>4. 审核流程</h3>
-        <ul>
-          <li>量贩商品同样进入<strong>人工审核队列</strong>。</li>
-          <li>审核通过后，商品将出现在<strong>量贩板块</strong>。若审核不通过，系统会邮件反馈原因。</li>
-        </ul>
-
-        <p class="section-footer">本规则最终解释权归星尘粉丝站所有。</p>
-      </section>
-    </div>
-  </div>
+  <main class="guide-page" aria-labelledby="guide-title">
+    <header class="guide-hero">
+      <div class="guide-hero-copy">
+        <p class="guide-kicker">STARDUST / FIELD GUIDE 01</p>
+        <h1 id="guide-title">让星尘引导娘，带你找到正确的轨道</h1>
+        <p class="guide-lede">这里是星尘粉丝站的投稿导航。先选择你的身份，接下来每一步都会只显示与你有关的规则。</p>
+        <div class="guide-progress" aria-label="阅读进度"><div class="guide-progress-label"><span>航线进度</span><strong>{{ completedCount }}/{{ visibleSections.length }} 已查看</strong></div><div class="guide-progress-track" role="progressbar" :aria-valuenow="completedCount" :aria-valuemin="0" :aria-valuemax="visibleSections.length"><span :style="{ width: `${progress}%` }"></span></div></div>
+      </div>
+      <div class="guide-character-wrap"><div class="guide-orbit orbit-one"></div><div class="guide-orbit orbit-two"></div><svg class="guide-character" viewBox="0 0 180 210" role="img" aria-label="戴着星形发饰的星尘引导娘插画"><title>星尘引导娘</title><path class="character-hair" d="M49 93c-17-25-3-61 31-68 39-8 67 21 54 64l-14 50-63-2z"/><path class="character-face" d="M63 70c0-22 13-34 30-34s30 12 30 34v25c0 21-14 35-30 35S63 116 63 95z"/><path class="character-hair" d="M64 67c6-27 41-35 59-11l-10-30-16-8-37 22-10 27z"/><circle class="character-eye" cx="82" cy="88" r="3"/><circle class="character-eye" cx="105" cy="88" r="3"/><path class="character-smile" d="M86 104c5 4 10 4 15 0"/><path class="character-body" d="M58 193c2-35 12-51 35-51s34 16 36 51"/><path class="character-collar" d="M82 143l11 17 11-17"/><path class="character-star" d="m125 39 3 8 9 1-7 6 2 9-7-5-8 5 3-9-7-6 9-1z"/><path class="character-arm" d="M127 158l29-25"/><path class="character-arm" d="M56 161l-22-17"/></svg><p class="character-caption">非官方站点引导角色<br><span>只负责带路，不代表官方立场</span></p></div>
+    </header>
+    <section class="guide-route" aria-labelledby="route-title"><div class="section-heading"><p class="guide-kicker">SELECT YOUR ROUTE</p><h2 id="route-title">你要从哪一站出发？</h2></div><div class="route-switcher" role="tablist" aria-label="投稿身份"><button v-for="route in routes" :key="route.id" class="route-tab" :class="{ selected: activeRoute === route.id }" role="tab" :aria-selected="activeRoute === route.id" @click="selectRoute(route.id)"><span class="route-icon" aria-hidden="true">{{ route.icon }}</span><span><strong>{{ route.title }}</strong><small>{{ route.summary }}</small></span><span class="route-arrow" aria-hidden="true">→</span></button></div><div class="route-tip" aria-live="polite"><span aria-hidden="true">✦</span> {{ activeRouteData.tip }}</div></section>
+    <div class="guide-layout"><aside class="guide-map" aria-label="规则章节导航"><p class="guide-kicker">ROUTE MAP</p><h2>沿途检查点</h2><nav><button v-for="(section, index) in visibleSections" :key="section.id" :class="{ current: activeSection === section.id, done: readSections.has(section.id) }" @click="jumpTo(section.id)"><span>{{ String(index + 1).padStart(2, '0') }}</span>{{ section.title }}<b aria-hidden="true">{{ readSections.has(section.id) ? '✓' : '○' }}</b></button></nav><p class="map-note">阅读完一站后，点击“下一站”继续。你的进度只保留在本次页面中。</p></aside><div class="guide-stops"><article v-for="(section, index) in visibleSections" :id="section.id" :key="section.id" class="guide-stop" :class="{ highlighted: activeSection === section.id }" tabindex="-1" @focusin="activeSection = section.id"><div class="stop-number">{{ String(index + 1).padStart(2, '0') }}</div><div class="stop-content"><p class="guide-kicker">CHECKPOINT {{ String(index + 1).padStart(2, '0') }}</p><h2>{{ section.title }}</h2><p class="stop-intro">{{ section.intro }}</p><ul><li v-for="item in section.items" :key="item"><span aria-hidden="true">✦</span><span v-html="item"></span></li></ul><div v-if="section.link" class="stop-action"><router-link :to="section.link.to" class="route-link">{{ section.link.label }} <span aria-hidden="true">↗</span></router-link></div><button v-if="index < visibleSections.length - 1" class="next-stop" @click="completeAndNext(section.id, visibleSections[index + 1].id)">{{ readSections.has(section.id) ? '下一站' : '读完，前往下一站' }} <span aria-hidden="true">→</span></button><div v-else class="finish-note" aria-live="polite">✦ 航线已抵达终点：准备好就去投稿吧。</div></div></article></div></div>
+    <footer class="guide-footer-note"><strong>最后提醒</strong><span>本站是非官方粉丝站。投稿会进入人工审核，审核结果和修改理由会通过邮件反馈。</span></footer>
+  </main>
 </template>
 
+<script setup>
+import { computed, nextTick, ref } from 'vue';
+const activeRoute = ref('creator'); const activeSection = ref('creator-scope'); const readSections = ref(new Set());
+const routes = [{ id: 'creator', icon: '✎', title: '同人作者', summary: '分享你的星尘创作', tip: '创作的核心是署名与授权。先确认作品来源，再选择合适的投稿素材。' }, { id: 'seller', icon: '◇', title: '量贩商', summary: '展示你的星尘周边', tip: '商品的核心是授权与信息透明。准备好实物详情，再前往量贩投稿。' }];
+const sections = [
+  { id: 'creator-scope', route: 'creator', title: '确认作品在星尘航线内', intro: '以星尘为核心的二创或同人创作都欢迎来到这里。', items: ['插画、漫画、小说、音乐、视频、3D 作品均可投稿。', '星尘 Minus、星砂等衍生形象也在欢迎范围内。'] },
+  { id: 'creator-rules', route: 'creator', title: '让作品安全通过检查', intro: '投稿前，请给作品贴上真实、清楚的标签。', items: ['作品须为 <strong>本人原创</strong> 或已获得原作者授权，禁止盗图、盗文、无授权转载。', '允许 R15，不允许 R18 以上、Gore 及极端血腥猎奇、政治恐怖、极端主义内容。', '合作作品请标注所有合作作者；不接受未经大幅修改的 AI 生成作品。'] },
+  { id: 'creator-format', route: 'creator', title: '整理投稿坐标', intro: '一份完整的资料，会让审核更快找到你的作品。', items: ['图片建议使用 WebP，单张不超过 <strong>15MB</strong>；视频优先使用 bilibili 链接。', '小说请提供文本内容或文档链接；请勿提交任何形式的 XSS 注入。'], link: { to: '/fanart', label: '前往同人投稿' } },
+  { id: 'seller-scope', route: 'seller', title: '确认商品属于星尘集市', intro: '把星尘带进日常的周边，都可以在这里找到位置。', items: ['吧唧、立牌、亚克力、毛绒、画集、服饰、同人音乐 CD 等均可。', '商品须以星尘为主题，或包含星尘相关的官方 / 同人授权形象。'] },
+  { id: 'seller-info', route: 'seller', title: '把商品信息写完整', intro: '买家需要在一眼之内知道：这是什么、多少钱、何时发货。', items: ['提供清晰标题、材质、尺寸、工艺与设计特点，描述必须与实物一致。', '标注定价与闲鱼 / B 站工房等交易链接；注明现货或预售。', '预售商品请写明截止日期和预计发货时间。'], link: { to: '/shop', label: '前往量贩投稿' } },
+  { id: 'seller-rules', route: 'seller', title: '确认授权，再发射', intro: '星尘集市尊重每一位创作者的劳动。', items: ['商品必须拥有合法创作授权或官方授权，严禁售卖未经授权的盗版周边。', '量贩商品同样进入人工审核；不通过时会通过邮件反馈具体原因。'] },
+];
+const visibleSections = computed(() => sections.filter((section) => section.route === activeRoute.value)); const activeRouteData = computed(() => routes.find((route) => route.id === activeRoute.value)); const completedCount = computed(() => visibleSections.value.filter((section) => readSections.value.has(section.id)).length); const progress = computed(() => Math.round((completedCount.value / visibleSections.value.length) * 100));
+function selectRoute(route) { activeRoute.value = route; activeSection.value = visibleSections.value[0].id; }
+function jumpTo(id) { activeSection.value = id; document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+async function completeAndNext(current, next) { readSections.value = new Set([...readSections.value, current]); await nextTick(); jumpTo(next); }
+</script>
+
 <style scoped>
-/* 注意：所有样式统一放在 src/public/assets/style.css 中，这里不写样式 */
+.guide-page{max-width:1120px;margin:0 auto;padding:7rem 1.5rem 4rem;color:var(--ink,#e7e8f2)}.guide-hero{min-height:390px;display:grid;grid-template-columns:1fr 290px;gap:2rem;align-items:center;border-bottom:1px solid var(--line-strong,rgba(190,193,224,.3))}.guide-kicker{color:var(--gold,#e8c76f);font:700 .7rem/1.3 var(--font-mono,monospace);letter-spacing:.14em;text-transform:uppercase}h1,h2{font-family:var(--font-display,Georgia,serif);font-weight:600;line-height:1.2}h1{max-width:650px;margin:.8rem 0 1.1rem;font-size:clamp(2.3rem,6vw,4.5rem);letter-spacing:-.04em}.guide-lede{max-width:590px;color:var(--ink-soft,#b9bce0);font-size:1.05rem}.guide-progress{max-width:470px;margin-top:2.2rem}.guide-progress-label{display:flex;justify-content:space-between;color:var(--ink-muted,#85889f);font-size:.76rem}.guide-progress-label strong{color:var(--ink-soft,#b9bce0);font:700 .7rem var(--font-mono,monospace)}.guide-progress-track{height:4px;margin-top:.55rem;background:var(--line,rgba(190,193,224,.14))}.guide-progress-track span{display:block;height:100%;background:var(--gold,#e8c76f);transition:width .35s ease}.guide-character-wrap{position:relative;display:grid;place-items:center;min-height:330px}.guide-character{position:relative;z-index:1;width:185px;height:220px}.character-hair{fill:#7777d2;stroke:#b7b6ff;stroke-width:2}.character-face{fill:#f1cfc8;stroke:#27264b;stroke-width:2}.character-eye{fill:#27264b}.character-smile,.character-arm{fill:none;stroke:#27264b;stroke-width:2;stroke-linecap:round}.character-body{fill:#d9d7ff;stroke:#7777d2;stroke-width:2}.character-collar{fill:none;stroke:#e8c76f;stroke-width:3}.character-star{fill:#e8c76f;stroke:#27264b;stroke-width:2}.guide-orbit{position:absolute;border:1px solid var(--cobalt-soft,rgba(153,153,255,.5));border-radius:50%;transform:rotate(-25deg)}.orbit-one{width:240px;height:95px}.orbit-two{width:205px;height:150px;transform:rotate(38deg)}.character-caption{position:absolute;bottom:-1rem;color:var(--ink-muted,#85889f);font-size:.7rem;line-height:1.5;text-align:center}.character-caption span{color:var(--ink-faint,#4d5070)}
+.guide-route{padding:3.8rem 0 2.7rem}.section-heading{margin-bottom:1.3rem}.section-heading h2{margin-top:.55rem;font-size:2rem}.route-switcher{display:grid;grid-template-columns:repeat(2,1fr);gap:1rem}.route-tab{display:flex;align-items:center;gap:.9rem;padding:1.1rem 1.2rem;color:var(--ink);text-align:left;background:var(--paper-raised,#0d0e1a);border:1px solid var(--line,rgba(190,193,224,.14));border-radius:var(--radius,3px);cursor:pointer;transition:border-color .2s ease,transform .2s ease}.route-tab:hover,.route-tab:focus-visible,.route-tab.selected{border-color:var(--gold-soft,rgba(232,199,111,.55))}.route-tab:hover{transform:translateY(-2px)}.route-tab.selected{background:var(--cobalt-wash,rgba(153,153,255,.08))}.route-icon{display:grid;place-items:center;width:2.4rem;height:2.4rem;color:var(--gold);border:1px solid var(--gold-soft);font-size:1.2rem}.route-tab strong,.route-tab small{display:block}.route-tab strong{font-size:1rem}.route-tab small{margin-top:.15rem;color:var(--ink-muted);font-size:.75rem}.route-arrow{margin-left:auto;color:var(--gold);font-size:1.2rem}.route-tip{margin-top:1rem;padding:.85rem 1rem;color:var(--ink-soft);border-left:2px solid var(--gold);background:rgba(232,199,111,.06);font-size:.85rem}.route-tip span{color:var(--gold);margin-right:.4rem}
+.guide-layout{display:grid;grid-template-columns:230px 1fr;gap:3rem;align-items:start}.guide-map{position:sticky;top:6rem}.guide-map h2{margin:.55rem 0 1.4rem;font-size:1.45rem}.guide-map nav{border-top:1px solid var(--line)}.guide-map button{display:grid;grid-template-columns:2rem 1fr 1rem;gap:.4rem;width:100%;padding:.8rem 0;color:var(--ink-muted);text-align:left;background:none;border:0;border-bottom:1px solid var(--line);cursor:pointer;font-size:.78rem}.guide-map button span{color:var(--ink-faint);font:.68rem var(--font-mono)}.guide-map button b{color:var(--ink-faint);font-weight:400}.guide-map button.current{color:var(--ink)}.guide-map button.current span,.guide-map button.done b{color:var(--gold)}.map-note{margin-top:1.2rem;color:var(--ink-faint);font-size:.72rem;line-height:1.6}.guide-stop{display:grid;grid-template-columns:3.2rem 1fr;gap:1rem;padding:2.3rem 0;border-top:1px solid var(--line);scroll-margin-top:6rem}.guide-stop:first-child{border-top:0;padding-top:0}.stop-number{color:var(--gold);font:1rem var(--font-mono)}.stop-content h2{margin:.55rem 0 .8rem;font-size:clamp(1.55rem,3vw,2.1rem)}.stop-intro{color:var(--ink-soft);margin-bottom:1rem}.stop-content ul{display:grid;gap:.65rem;padding:0;list-style:none}.stop-content li{display:grid;grid-template-columns:1rem 1fr;gap:.5rem;color:var(--ink-soft);font-size:.88rem}.stop-content li>span:first-child{color:var(--cobalt)}.stop-action{margin-top:1.2rem}.route-link{color:var(--gold);font-size:.8rem;text-decoration:none;border-bottom:1px solid var(--gold-soft)}.next-stop{margin-top:1.7rem;padding:.7rem 1rem;color:var(--ink);background:transparent;border:1px solid var(--line-strong);cursor:pointer;font:.78rem var(--font-mono)}.next-stop:hover,.next-stop:focus-visible{border-color:var(--gold)}.next-stop span{color:var(--gold);margin-left:.5rem}.finish-note{margin-top:1.7rem;color:var(--gold);font-size:.8rem}.guide-footer-note{display:flex;gap:1rem;margin-top:3rem;padding:1.2rem;color:var(--ink-muted);border:1px solid var(--line);font-size:.76rem}.guide-footer-note strong{color:var(--ink-soft);white-space:nowrap}
+@media(max-width:700px){.guide-page{padding:6rem 1rem 3rem}.guide-hero{grid-template-columns:1fr;min-height:auto;padding-bottom:2rem}.guide-character-wrap{min-height:245px;transform:scale(.82);margin:-1rem 0 -2rem}.route-switcher,.guide-layout{grid-template-columns:1fr}.guide-map{position:static}.guide-map nav{display:grid;grid-template-columns:repeat(2,1fr)}.guide-map button{padding-right:.6rem}.guide-stops{margin-top:1rem}.guide-footer-note{display:block}.guide-footer-note span{display:block;margin-top:.45rem}}@media(prefers-reduced-motion:reduce){.route-tab,.guide-progress-track span{transition:none}.route-tab:hover{transform:none}}
 </style>
