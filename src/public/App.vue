@@ -6,6 +6,7 @@
   </div>
   <AppFooter v-if="!fullBleed" />
   <ToastContainer />
+  <MysteryDinosaur />
 </template>
 
 <script setup>
@@ -15,6 +16,7 @@ import CosmicBackground from './components/CosmicBackground.vue';
 import NavBar from './components/NavBar.vue';
 import AppFooter from './components/AppFooter.vue';
 import ToastContainer from './components/ToastContainer.vue';
+import MysteryDinosaur from './components/MysteryDinosaur.vue';
 import { useSongs } from './composables/useSongs.js';
 
 const route = useRoute();

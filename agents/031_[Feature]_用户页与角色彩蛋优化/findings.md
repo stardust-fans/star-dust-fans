@@ -8,3 +8,6 @@
 - [鉴权重复实现] -> 对照三个用户接口 -> Cookie/Bearer 解析重复且 Cookie 正则未 URL 解码、冲突 token 规则不明确；抽成统一请求级鉴权函数并优先显式 Authorization。
 - [测试环境基线] -> 运行 `npm test -- --run test/worker.test.js` -> 23/24 通过；既存错误凭据用例因测试环境无 `TOKEN_SECRET` 返回 503 而非其断言的 401，新增用户鉴权用例通过。
 - [构建验证] -> 运行 `npm run build` -> Vite client/Worker 构建成功；prebuild 重排了贡献者 JSON，已恢复该非任务文件改动。
+- [本次实现范围] -> 父任务拆分要求本 worktree 只处理 `/aspirateur` 与神秘小恐龙 -> 不触碰 `UserView.vue`、`worker.js`、`GuideView.vue`，并使用 Vue/CSS/SVG 原生视觉。
+- [测试基线] -> `npm test` -> 26 个用例中 25 个通过，既存的错误凭据用例在无 `TOKEN_SECRET` 环境返回 503 而非期望的 401，未涉及本次前端改动。
+- [构建] -> `npm run build` -> Vite 生产构建通过；构建脚本重排贡献者 JSON，已恢复该非本次范围文件。

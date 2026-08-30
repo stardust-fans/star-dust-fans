@@ -7,3 +7,7 @@
 - 2026-08-29：完成用户页范围审计，确认统计与列表状态不一致、D1 日期格式不兼容、三个接口鉴权逻辑重复。
 - 2026-08-29：修正 `UserView.vue` 状态反馈、日期解析、重试和 tab 可访问性；Worker 三个用户接口改用统一鉴权并统一统计口径；新增用户接口拒绝畸形凭据测试。
 - 2026-08-29：`npm test -- --run test/worker.test.js` 结果 23/24 通过，失败为既存 `TOKEN_SECRET` 基线差异；`npm run build` 成功；完成 diff check 与敏感关键词检查。
+- 2026-08-29：确认本 worktree 的交付子范围，开始设计独立愚人节页面与全局低干扰恐龙入口。
+- 2026-08-29：以 SVG/CSS 重写 `EasterEggView.vue`，加入可访问的吸尘交互与 reduced-motion 样式。
+- 2026-08-29：新增 `MysteryDinosaur.vue` 并挂载到 `App.vue`，7 秒后显示、点击展开气泡、移动端安全区适配。
+- 2026-08-29：执行 `npm ci`、`npm test`、`npm run build`；测试结果为 25/26 通过，构建通过。
