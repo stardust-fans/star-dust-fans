@@ -16,8 +16,6 @@ async function token(payload) {
 
 beforeAll(async () => {
     env.TOKEN_SECRET = 'test-secret';
-    await env.DB.prepare('ALTER TABLE fanart ADD COLUMN user_id INTEGER').run().catch(() => {});
-    await env.DB.prepare('ALTER TABLE shop ADD COLUMN user_id INTEGER').run().catch(() => {});
     await env.DB.prepare("INSERT OR IGNORE INTO users (id, username, email, password_hash) VALUES (9001, 'test-user', 'test-user@example.com', 'unused')").run();
     await env.DB.prepare("INSERT OR IGNORE INTO admins (id, username, password_hash) VALUES (9002, 'test-admin', 'unused')").run();
 });

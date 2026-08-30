@@ -14,3 +14,4 @@
 - [角色混淆] -> 对照登录签发与全路由鉴权 -> 原 token 没有 role，普通用户可被 `isAdmin` 接受且 admin token 可访问用户接口；为新 token 增加互斥 `admin`/`user` role，所有相关路径统一按期望角色验证，旧 token 不再兼容。
 - [对抗测试] -> 使用测试环境签发两种带角色 HMAC token -> 验证 user token 拒绝 admin 路径、admin token 拒绝 user 路径，并验证双方合法路径均返回 200；全套 31 项测试通过。
 - [补强验证] -> `npm run build && npm test` -> 构建通过；测试仍为 25/26 通过，唯一失败仍是无 `TOKEN_SECRET` 时错误凭据用例的既存 503/401 基线差异。
+- [schema 漂移] -> 空库执行 `tool/schema.sql` 时发现 Worker 使用的投稿列缺失，且存在未使用的 `user_contributions` 表 -> 将 fanart/shop 的现行字段、外键和索引写入正式 schema，删除未使用表；新增 0004 仅创建可重复执行的索引，不对生产列做 ALTER。
