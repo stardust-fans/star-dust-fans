@@ -13,3 +13,4 @@
 - [构建] -> `npm run build` -> Vite 生产构建通过；构建脚本重排贡献者 JSON，已恢复该非本次范围文件。
 - [角色混淆] -> 对照登录签发与全路由鉴权 -> 原 token 没有 role，普通用户可被 `isAdmin` 接受且 admin token 可访问用户接口；为新 token 增加互斥 `admin`/`user` role，所有相关路径统一按期望角色验证，旧 token 不再兼容。
 - [对抗测试] -> 使用测试环境签发两种带角色 HMAC token -> 验证 user token 拒绝 admin 路径、admin token 拒绝 user 路径，并验证双方合法路径均返回 200；全套 31 项测试通过。
+- [补强验证] -> `npm run build && npm test` -> 构建通过；测试仍为 25/26 通过，唯一失败仍是无 `TOKEN_SECRET` 时错误凭据用例的既存 503/401 基线差异。
