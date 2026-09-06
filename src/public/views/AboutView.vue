@@ -35,7 +35,7 @@
       本站暂时是试运行，用户群群号是920160812，希望各位支持
     </p>
     <p>
-      代码在 <a href="https://github.com/stardust-fans/star-dust-fans" target="_blank" rel="noopener">GitHub 开源</a>，感兴趣的话可以去看看。
+      代码在 <a href="https://github.com/stardust-fans/star-dust-fans" target="_blank" rel="noopener">GitHub以AGPL开源</a>，感兴趣的话可以去看看。
     </p>
     <p>
       如果你觉得这里还不错，随手支持一下也行——哪怕一两块，对我们来说都很有意义。
@@ -45,6 +45,9 @@
       <img :src="imageUrl" alt="支持星尘粉丝站" class="sponsor-image" />
     </div>
 
+    <p>
+     同时，非常感谢 <a href="https://github.com/XingHui-8183/xiaotuzaina" target="_blank" rel="noopener">小土在哪</a> 对本站提供的启发与参考。
+    </p>
     <div class="sponsor-note">
       <p class="sponsor-small">非官方粉丝站 · 用爱发电</p>
     </div>
