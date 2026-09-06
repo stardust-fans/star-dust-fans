@@ -86,7 +86,7 @@ const userCityShort = ref("未知之地");
 const isFetchingLocation = ref(false);
 const lastTriggerTime = ref(0);
 
-// 获取IP归属地（使用 ip9.com.cn）
+// 获取IP归属地（通过 Worker 代理 /api/ip/get，自动携带用户真实 IP）
 const fetchLocation = async () => {
   if (isFetchingLocation.value) return;
   isFetchingLocation.value = true;
@@ -131,6 +131,7 @@ const loadLetter = async () => {
     };
   }
 };
+
 // 触发彩蛋（15%概率）
 const tryTriggerLetter = async () => {
   const now = Date.now();
