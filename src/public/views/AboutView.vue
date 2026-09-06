@@ -35,7 +35,7 @@
       本站暂时是试运行，用户群群号是920160812，希望各位支持
     </p>
     <p>
-      代码在 <a href="https://github.com/stardust-fans/star-dust-fans" target="_blank" rel="noopener">GitHub以AGPL开源</a>，感兴趣的话可以去看看。
+      代码在 <a href="https://github.com/stardust-fans/star-dust-fans" target="_blank" rel="noopener">GitHub</a>以AGPL协议开源，感兴趣的话可以去看看。
     </p>
     <p>
       如果你觉得这里还不错，随手支持一下也行——哪怕一两块，对我们来说都很有意义。
