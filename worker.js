@@ -28,12 +28,7 @@ export default {
             });
         }
 
-        const authHeader = request.headers.get('Authorization');
-        let isAdmin = false;
-        if (authHeader && authHeader.startsWith('Bearer ')) {
-            const token = authHeader.slice(7);
-            isAdmin = await verifyToken(token, env);
-        }
+        const isAdmin = await getAuthenticatedUser(request, env, 'admin');
 
         // ===== 1. GET /api/songs =====
         if (path === '/api/songs' && method === 'GET') {
@@ -146,7 +141,7 @@ export default {
                 const stmt = env.DB.prepare(`
                     SELECT id, title, description, price, image_url, bilibili_url, xianyu_url, status
                     FROM shop
-                    WHERE status = 'waiting' OR status = 'shipped'
+                    WHERE status IN ('waiting', 'shipped')
                     ORDER BY created_at DESC
                 `);
                 const result = await stmt.all();
@@ -179,6 +174,7 @@ export default {
                     const token = await signToken({
                         sub: row.id,
                         username: row.username,
+                        role: 'admin',
                         exp: Date.now() + 24 * 60 * 60 * 1000,
                     }, env);
                     ctx.waitUntil(logAuditEvent(env, {
@@ -343,6 +339,7 @@ export default {
                 const token = await signToken({
                     sub: user.id,
                     username: user.username,
+                    role: 'user',
                     exp: Date.now() + 7 * 24 * 60 * 60 * 1000,
                 }, env);
 
@@ -599,13 +596,7 @@ export default {
 
         // ===== 上传图片到 R2 =====
         if (path === '/api/upload' && method === 'POST') {
-            const cookieHeader = request.headers.get('Cookie') || '';
-            const tokenMatch = cookieHeader.match(/authToken=([^;]+)/);
-            let userId = null;
-            if (tokenMatch) {
-                const payload = await verifyToken(tokenMatch[1], env);
-                if (payload) userId = payload.sub;
-            }
+            const userId = await getAuthenticatedUserId(request, env);
             if (!userId) {
                 return jsonResponse({ error: '请先登录' }, 401);
             }
@@ -628,8 +619,8 @@ export default {
 
                 const ext = file.name.split('.').pop() || 'jpg';
                 const timestamp = Date.now();
-                const random = Math.random().toString(36).substring(2, 8);
-                const key = `uploads/${userId}/${timestamp}_${random}.${ext}`;
+                const uniqueId = crypto.randomUUID();
+                const key = `uploads/${userId}/${timestamp}_${uniqueId}.${ext}`;
 
                 await env.R2_BUCKET.put(key, file.stream(), {
                     httpMetadata: { contentType: file.type },
@@ -664,6 +655,72 @@ export default {
             }
         }
 
+        // ===== 用户信息 API =====
+        if (path === '/api/user/profile' && method === 'GET') {
+            const userId = await getAuthenticatedUserId(request, env);
+            if (!userId) {
+                return jsonResponse({ error: '未登录' }, 401);
+            }
+            
+            try {
+                const user = await env.DB.prepare(`
+                    SELECT id, username, email, created_at,
+                        (SELECT COUNT(*) FROM fanart WHERE user_id = users.id) as fanart_count,
+                        (SELECT COUNT(*) FROM shop WHERE user_id = users.id) as shop_count
+                    FROM users WHERE id = ?
+                `).bind(userId).first();
+                
+                if (!user) {
+                    return jsonResponse({ error: '用户不存在' }, 404);
+                }
+                
+                return jsonResponse(user);
+            } catch (error) {
+                console.error('❌ GET /api/user/profile 错误:', error.message);
+                return jsonResponse({ error: error.message }, 500);
+            }
+        }
+
+        // ===== 用户同人投稿列表 =====
+        if (path === '/api/user/fanart' && method === 'GET') {
+            const userId = await getAuthenticatedUserId(request, env);
+            if (!userId) {
+                return jsonResponse({ error: '未登录' }, 401);
+            }
+            
+            try {
+                const result = await env.DB.prepare(`
+                    SELECT id, title, author, description, image_url, bilibili_url, source_url, type, status, created_at
+                    FROM fanart WHERE user_id = ? ORDER BY created_at DESC
+                `).bind(userId).all();
+                
+                return jsonResponse(result.results || []);
+            } catch (error) {
+                console.error('❌ GET /api/user/fanart 错误:', error.message);
+                return jsonResponse({ error: error.message }, 500);
+            }
+        }
+
+        // ===== 用户量贩投稿列表 =====
+        if (path === '/api/user/shop' && method === 'GET') {
+            const userId = await getAuthenticatedUserId(request, env);
+            if (!userId) {
+                return jsonResponse({ error: '未登录' }, 401);
+            }
+            
+            try {
+                const result = await env.DB.prepare(`
+                    SELECT id, title, description, price, image_url, bilibili_url, xianyu_url, status, ship_time, created_at
+                    FROM shop WHERE user_id = ? ORDER BY created_at DESC
+                `).bind(userId).all();
+                
+                return jsonResponse(result.results || []);
+            } catch (error) {
+                console.error('❌ GET /api/user/shop 错误:', error.message);
+                return jsonResponse({ error: error.message }, 500);
+            }
+        }
+
         // ===== GET /api/shop/:id =====
         if (path.startsWith('/api/shop/') && method === 'GET') {
             const id = path.split('/').pop();
@@ -671,7 +728,7 @@ export default {
                 return jsonResponse({ error: 'Invalid ID' }, 400);
             }
             try {
-                const stmt = env.DB.prepare('SELECT * FROM shop WHERE id = ? AND status = "published"');
+                const stmt = env.DB.prepare("SELECT * FROM shop WHERE id = ? AND status IN ('waiting', 'shipped')");
                 const result = await stmt.bind(id).first();
                 if (!result) {
                     return jsonResponse({ error: 'Not Found' }, 404);
@@ -685,17 +742,10 @@ export default {
 
         // ===== 同人投稿（新版：使用 images 数组） =====
         if (path === '/api/contributions/fanart' && method === 'POST') {
-            const cookieHeader = request.headers.get('Cookie') || '';
-            const tokenMatch = cookieHeader.match(/authToken=([^;]+)/);
-            let userId = null;
+            const payload = await getAuthenticatedUser(request, env, 'user');
+            let userId = payload?.sub || null;
             let username = null;
-            if (tokenMatch) {
-                const payload = await verifyToken(tokenMatch[1], env);
-                if (payload) {
-                    userId = payload.sub;
-                    username = payload.username;
-                }
-            }
+            if (payload) username = payload.username;
             if (!userId) {
                 return jsonResponse({ error: '请先登录' }, 401);
             }
@@ -745,13 +795,7 @@ export default {
 
         // ===== 量贩投稿 =====
         if (path === '/api/contributions/shop' && method === 'POST') {
-            const cookieHeader = request.headers.get('Cookie') || '';
-            const tokenMatch = cookieHeader.match(/authToken=([^;]+)/);
-            let userId = null;
-            if (tokenMatch) {
-                const payload = await verifyToken(tokenMatch[1], env);
-                if (payload) userId = payload.sub;
-            }
+            const userId = await getAuthenticatedUserId(request, env);
             if (!userId) {
                 return jsonResponse({ error: '请先登录' }, 401);
             }
@@ -857,6 +901,7 @@ export default {
                 const type = approveMatch[1];
                 const id = approveMatch[2];
                 const table = type === 'fanart' ? 'fanart' : 'shop';
+                const approvedStatus = type === 'fanart' ? 'published' : 'waiting';
 
                 const item = await env.DB.prepare(`
                     SELECT t.title, t.user_id, u.email
@@ -869,8 +914,8 @@ export default {
                     return jsonResponse({ error: '记录不存在或已处理' }, 404);
                 }
 
-                const stmt = env.DB.prepare(`UPDATE ${table} SET status = 'published' WHERE id = ? AND status = 'pending'`);
-                const result = await stmt.bind(id).run();
+                const stmt = env.DB.prepare(`UPDATE ${table} SET status = ? WHERE id = ? AND status = 'pending'`);
+                const result = await stmt.bind(approvedStatus, id).run();
 
                 if (result.meta?.changes === 0) {
                     return jsonResponse({ error: '记录不存在或已处理' }, 404);
@@ -1116,8 +1161,8 @@ export default {
             try {
                 const { title, description, price, image_url, bilibili_url, xianyu_url, status } = await request.json();
                 const stmt = env.DB.prepare(`
-                    INSERT INTO shop (title, description, price, image_url, xianyu_url, bilibili_url, status, ship_time, images, user_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO shop (title, description, price, image_url, bilibili_url, xianyu_url, status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                 `);
                 const result = await stmt.bind(title, description || null, price || null, image_url || null, bilibili_url || null, xianyu_url || null, status || 'waiting').run();
                 ctx.waitUntil(logAuditEvent(env, {
@@ -1305,6 +1350,32 @@ async function signToken(payload, env) {
     const signatureBuf = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payloadPart));
     const signaturePart = base64UrlEncodeBytes(new Uint8Array(signatureBuf));
     return `${payloadPart}.${signaturePart}`;
+}
+
+async function getAuthenticatedUser(request, env, expectedRole) {
+    const authorization = request.headers.get('Authorization') || '';
+    let token = authorization.startsWith('Bearer ') ? authorization.slice(7).trim() : '';
+
+    if (!token) {
+        const cookie = request.headers.get('Cookie') || '';
+        const authCookie = cookie.split(';').map(part => part.trim()).find(part => part.startsWith('authToken='));
+        if (authCookie) {
+            try {
+                token = decodeURIComponent(authCookie.slice('authToken='.length));
+            } catch {
+                token = '';
+            }
+        }
+    }
+
+    if (!token) return null;
+    const payload = await verifyToken(token, env);
+    return payload?.role === expectedRole ? payload : null;
+}
+
+async function getAuthenticatedUserId(request, env) {
+    const payload = await getAuthenticatedUser(request, env, 'user');
+    return payload?.sub || null;
 }
 
 async function verifyToken(token, env) {
