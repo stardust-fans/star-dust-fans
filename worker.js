@@ -89,15 +89,34 @@ export default {
             }
         }
 
-        // ===== IP 归属地代理（转发到 ip9.com.cn）=====
-        // 放在所有 API 路由之前，避免被 /api/songs 等匹配
+        // ===== IP 归属地代理（转发到 ip9.com.cn，显式传递用户真实 IP）=====
         if (path.startsWith('/api/ip/')) {
             try {
-                // 去掉 /api/ip 前缀，拼接到 ip9.com.cn
-                const targetPath = path.replace('/api/ip', '');
-                const targetUrl = `https://ip9.com.cn${targetPath}${url.search}`;
+                // 1. 显式读取用户真实 IP（Cloudflare 提供的可信头）
+                const userIP = request.headers.get('CF-Connecting-IP') || '';
+                
+                // 2. 如果获取不到（比如本地开发），使用一个占位 IP 或直接返回错误
+                if (!userIP) {
+                    console.warn('⚠️ 无法获取 CF-Connecting-IP，可能运行在本地开发环境');
+                    // 本地开发时，可以返回一个默认测试数据，或者直接报错
+                    return jsonResponse({
+                        ret: 200,
+                        data: {
+                            ip: '127.0.0.1',
+                            country: '中国',
+                            prov: '黑龙江',
+                            city: '绥化',
+                            isp: '本地测试',
+                        }
+                    });
+                }
 
-                // 转发请求到 ip9.com.cn
+                // 3. 构建目标 URL，显式带上 ip 参数
+                const targetPath = path.replace('/api/ip', '');
+                const queryChar = targetPath.includes('?') ? '&' : '?';
+                const targetUrl = `https://ip9.com.cn${targetPath}${queryChar}ip=${encodeURIComponent(userIP)}`;
+
+                // 4. 转发请求到 ip9.com.cn
                 const response = await fetch(targetUrl, {
                     method: request.method,
                     headers: {
@@ -107,16 +126,26 @@ export default {
                     },
                 });
 
-                // 克隆响应并强制添加 CORS 头
-                const newResponse = new Response(response.body, {
+                // 5. 获取响应数据
+                const data = await response.json();
+
+                // 6. 如果 ip9.com.cn 返回的数据中 prov/city 为空（可能是 IPv6 不支持），
+                //    可以在这里做降级处理：保持原样返回，前端会显示“未知之地”
+                //    或者你可以在这里调用备用的 ip-api.com，但为了简洁，我们直接透传
+
+                // 7. 返回响应（添加 CORS 头）
+                const newResponse = new Response(JSON.stringify(data), {
                     status: response.status,
                     statusText: response.statusText,
-                    headers: response.headers,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*',
+                        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+                    },
                 });
-                newResponse.headers.set('Access-Control-Allow-Origin', '*');
-                newResponse.headers.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
 
                 return newResponse;
+
             } catch (error) {
                 console.error('❌ /api/ip/ 代理错误:', error.message);
                 return jsonResponse({ error: 'IP 查询服务暂时不可用' }, 500);
