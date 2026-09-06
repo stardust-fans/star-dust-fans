@@ -26,6 +26,7 @@
     --batch         每批提交的歌曲数量（默认 30）
     --yes           跳过确认提示，直接提交
     --test          测试模式：只更新 cover_url，不覆盖其他字段
+    --skip-filter  跳过交互式筛选（适用于收藏夹等纯净数据源）
 """
 import argparse
 import getpass
@@ -368,6 +369,96 @@ def build_add_payload(detail):
     return payload
 
 
+# ===== 新增：交互式候选列表筛选 =====
+
+def filter_candidates(todo_bvids, args):
+    """
+    对 todo_bvids 中的每个 bvid 获取详情，展示列表，让用户输入要排除的序号。
+    返回 (filtered_bvids, details_cache)
+    其中 details_cache 是 dict: bvid -> detail 对象，供后续复用。
+    """
+    if not todo_bvids:
+        return [], {}
+
+    print("\n📋 正在获取候选视频详情用于筛选...")
+    details_cache = {}
+    display_items = []
+
+    for idx, bvid in enumerate(todo_bvids, start=1):
+        print(f"  [{idx}/{len(todo_bvids)}] 获取 {bvid} ...", end=" ", flush=True)
+        try:
+            detail = fetch_video_detail(bvid, max_retries=args.max_retries, delay=args.delay)
+            details_cache[bvid] = detail
+            title_short = detail['title'][:40] + "..." if len(detail['title']) > 40 else detail['title']
+            duration_min = detail['duration'] // 60
+            display_items.append({
+                "idx": idx,
+                "bvid": bvid,
+                "title": title_short,
+                "owner": detail['owner_name'],
+                "duration": f"{duration_min}:{detail['duration'] % 60:02d}",
+            })
+            print(f"✅ {title_short}")
+        except Exception as e:
+            print(f"❌ 获取失败: {e}")
+            # 失败时仍保留占位，但标记为无法获取
+            display_items.append({
+                "idx": idx,
+                "bvid": bvid,
+                "title": "❌ 获取失败",
+                "owner": "?",
+                "duration": "?",
+            })
+
+    # 打印表格
+    print("\n" + "=" * 80)
+    print("候选视频列表（请检查是否均为星尘相关，排除无关项）")
+    print("-" * 80)
+    print(f"{'序号':<6} {'BVID':<14} {'标题':<42} {'UP主':<16} {'时长'}")
+    print("-" * 80)
+    for item in display_items:
+        print(f"{item['idx']:<6} {item['bvid']:<14} {item['title']:<42} {item['owner']:<16} {item['duration']}")
+    print("=" * 80)
+
+    # 交互输入
+    while True:
+        exclude_input = input("\n请输入要排除的序号（多个用空格/逗号分隔，空或0表示不排除）: ").strip()
+        if not exclude_input or exclude_input == "0":
+            return todo_bvids, details_cache
+
+        # 解析序号
+        exclude_indices = set()
+        valid = True
+        for part in exclude_input.replace(",", " ").split():
+            try:
+                num = int(part)
+                if 1 <= num <= len(display_items):
+                    exclude_indices.add(num)
+                else:
+                    print(f"⚠️ 序号 {num} 超出范围（1-{len(display_items)}），请重新输入")
+                    valid = False
+                    break
+            except ValueError:
+                print(f"⚠️ 无法识别 '{part}'，请输入数字序号")
+                valid = False
+                break
+
+        if not valid:
+            continue
+
+        if not exclude_indices:
+            return todo_bvids, details_cache
+
+        # 构建过滤后的列表
+        filtered = []
+        for item in display_items:
+            if item["idx"] not in exclude_indices:
+                filtered.append(item["bvid"])
+
+        print(f"✅ 已排除 {len(exclude_indices)} 个，剩余 {len(filtered)} 个")
+        return filtered, details_cache
+
+
 # ===== 命令 =====
 
 def cmd_add(args):
@@ -407,14 +498,25 @@ def cmd_add(args):
         print("没有新视频需要添加")
         return
 
+    # ===== 新增：交互式筛选 =====
+    print(f"\n📋 共 {len(todo)} 个新视频，将获取详细信息供你筛选...")
+    if args.skip_filter:
+        print("⏭️ 已跳过交互式筛选（--skip-filter），将直接提交所有候选")
+        detail_cache = {}  # 不预获取，提交时按需获取
+    else:
+        todo, detail_cache = filter_candidates(todo, args)
+        if not todo:
+                   print("已排除所有候选，取消添加")
+                   return
+    # 确认提交
     if not args.yes:
-        confirm = input(f"确认添加以上 {len(todo)} 首歌曲？[y/N] ").strip().lower()
+        confirm = input(f"\n确认添加以上 {len(todo)} 首歌曲？[y/N] ").strip().lower()
         if confirm != "y":
             print("已取消")
             return
 
+    # 提交（优先使用缓存中的 detail）
     added = failed = 0
-
     for batch_start in range(0, len(todo), args.batch):
         batch = todo[batch_start:batch_start + args.batch]
         print(f"\n📦 第 {batch_start//args.batch + 1} 批 ({len(batch)} 首)")
@@ -422,7 +524,10 @@ def cmd_add(args):
         for i, bvid in enumerate(batch, 1):
             print(f"[{i}/{len(batch)}] {bvid} ...", end=" ", flush=True)
             try:
-                detail = fetch_video_detail(bvid, max_retries=args.max_retries, delay=args.delay)
+                # 优先从缓存取，取不到再请求
+                detail = detail_cache.get(bvid)
+                if detail is None:
+                    detail = fetch_video_detail(bvid, max_retries=args.max_retries, delay=args.delay)
                 payload = build_add_payload(detail)
                 status, resp = client.create_song(payload)
                 if status == 409:
@@ -440,7 +545,6 @@ def cmd_add(args):
                 print(f"❌ 未知错误: {e}")
                 failed += 1
 
-        # 每批结束后休息 3 秒
         if batch_start + args.batch < len(todo):
             print(f"⏳ 休息 3 秒后继续下一批...")
             time.sleep(3)
@@ -598,6 +702,7 @@ def main():
     p_add.add_argument("--max-retries", type=int, default=3, help="单个视频请求失败时的最大重试次数（默认 3）")
     p_add.add_argument("--batch", type=int, default=30, help="每批提交的歌曲数量（默认 30）")
     p_add.add_argument("--yes", action="store_true", help="跳过确认提示，直接提交")
+    p_add.add_argument("--skip-filter", action="store_true", help="跳过交互式筛选（适用于收藏夹等纯净数据源）")
     p_add.set_defaults(func=cmd_add)
 
     p_update = sub.add_parser("update", help="刷新已有歌曲的播放数据（不传 --bvid 则刷新全部）")
