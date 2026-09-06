@@ -89,6 +89,40 @@ export default {
             }
         }
 
+        // ===== IP 归属地代理（转发到 ip9.com.cn）=====
+        // 放在所有 API 路由之前，避免被 /api/songs 等匹配
+        if (path.startsWith('/api/ip/')) {
+            try {
+                // 去掉 /api/ip 前缀，拼接到 ip9.com.cn
+                const targetPath = path.replace('/api/ip', '');
+                const targetUrl = `https://ip9.com.cn${targetPath}${url.search}`;
+
+                // 转发请求到 ip9.com.cn
+                const response = await fetch(targetUrl, {
+                    method: request.method,
+                    headers: {
+                        'User-Agent': request.headers.get('User-Agent') || 'Mozilla/5.0',
+                        'Referer': 'https://stardustinfinity.top',
+                        'Accept': 'application/json',
+                    },
+                });
+
+                // 克隆响应并强制添加 CORS 头
+                const newResponse = new Response(response.body, {
+                    status: response.status,
+                    statusText: response.statusText,
+                    headers: response.headers,
+                });
+                newResponse.headers.set('Access-Control-Allow-Origin', '*');
+                newResponse.headers.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+
+                return newResponse;
+            } catch (error) {
+                console.error('❌ /api/ip/ 代理错误:', error.message);
+                return jsonResponse({ error: 'IP 查询服务暂时不可用' }, 500);
+            }
+        }
+
         // ===== 1.1 GET /api/songs/count =====
         if (path === '/api/songs/count' && method === 'GET') {
             try {

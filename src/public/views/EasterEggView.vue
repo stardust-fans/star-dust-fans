@@ -56,22 +56,115 @@
       Made of stardust · Rien ne se perd, tout scintille.
     </footer>
   </main>
+
+  <!-- 小土的一封信 彩蛋模态框 -->
+  <Teleport to="body">
+    <div v-if="showLetter" class="letter-overlay" @click.self="closeLetter">
+      <div class="letter-card">
+        <button class="letter-close" @click="closeLetter">✕</button>
+        <h2>{{ letterContent?.title || '小土的一封信' }}</h2>
+        <div class="letter-body">
+          <pre>{{ letterContent?.content || '' }}</pre>
+        </div>
+        <p class="letter-geo">————来自以太之海的星小土</p>
+      </div>
+    </div>
+  </Teleport>
 </template>
 
 <script setup>
 import { computed, ref } from "vue";
+// 直接导入同目录下的 JSON 文件（Vite 支持）
+import letterData from "./letter-from-xiaotu.json?raw";
+
 const isRunning = ref(false);
 const cleaned = ref(0);
+const showLetter = ref(false);
+const letterContent = ref(null);
+const userCity = ref("未知之地");
+const userCityShort = ref("未知之地");
+const isFetchingLocation = ref(false);
+const lastTriggerTime = ref(0);
+
+// 获取IP归属地（使用 ip9.com.cn）
+const fetchLocation = async () => {
+  if (isFetchingLocation.value) return;
+  isFetchingLocation.value = true;
+  try {
+    const res = await fetch("/api/ip/get");
+    const data = await res.json();
+    if (data.ret === 200 && data.data) {
+      const d = data.data;
+      const city = d.city || "未知之地";
+      const prov = d.prov || "";
+      const isp = d.isp || "";
+      // 详细位置（显示在信纸底部）
+      const detail = prov ? `${city}（${prov}${isp ? `·${isp}` : ""}）` : city;
+      userCity.value = detail;
+      // 仅城市名（用于信的内容）
+      userCityShort.value = city;
+    }
+  } catch {
+    userCity.value = "远方";
+    userCityShort.value = "远方";
+  } finally {
+    isFetchingLocation.value = false;
+  }
+};
+
+// 加载小土的信（从同目录 JSON 文件，随机选取一封）
+const loadLetter = async () => {
+  try {
+    const data = JSON.parse(letterData);
+    // 如果 data 是数组，随机取一个
+    const selected = Array.isArray(data) 
+      ? data[Math.floor(Math.random() * data.length)] 
+      : data;
+    // 替换城市占位符
+    selected.content = selected.content.replace(/\{city\}/g, userCityShort.value);
+    letterContent.value = selected;
+  } catch {
+    // 降级方案：硬编码一封默认的信
+    letterContent.value = {
+      title: "小土的一封信",
+      content: `亲爱的吸尘器，\n\n当你在${userCityShort.value}按下这个按钮时，星尘正在宇宙的某个角落看着你。\n\n她说："谢谢你记得我。"\n\n—— 小土，于星尘历10年`,
+    };
+  }
+};
+// 触发彩蛋（15%概率）
+const tryTriggerLetter = async () => {
+  const now = Date.now();
+  // 防刷：10分钟内不再触发
+  if (now - lastTriggerTime.value < 10 * 60 * 1000) return;
+  if (showLetter.value) return;
+
+  if (Math.random() < 0.15) {
+    await fetchLocation();
+    await loadLetter();
+    showLetter.value = true;
+    lastTriggerTime.value = now;
+  }
+};
+
+const toggleCleaner = () => {
+  isRunning.value = !isRunning.value;
+  if (isRunning.value) {
+    cleaned.value += 7;
+    tryTriggerLetter();
+  }
+};
+
+const closeLetter = () => {
+  showLetter.value = false;
+  letterContent.value = null;
+};
+
 const status = computed(() => {
   if (isRunning.value) return "吸吸吸……星尘正在回到它该在的地方。";
   if (cleaned.value > 0)
     return `清洁完成！本次收集了 ${cleaned.value} 粒宇宙灰尘。`;
   return "按下按钮，看看会吸出什么。";
 });
-const toggleCleaner = () => {
-  isRunning.value = !isRunning.value;
-  if (isRunning.value) cleaned.value += 7;
-};
 </script>
 
 <style scoped>
@@ -280,6 +373,79 @@ h1 {
     monospace;
   letter-spacing: 0.08em;
 }
+
+/* ===== 小土的一封信 彩蛋样式 ===== */
+.letter-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(22, 19, 41, 0.85);
+  backdrop-filter: blur(4px);
+  animation: fadeIn 0.5s ease;
+}
+
+.letter-card {
+  position: relative;
+  max-width: 520px;
+  width: 90%;
+  padding: 2.5rem 2rem;
+  background: #f7f1ff;
+  color: #161329;
+  border-radius: 32px 12px 32px 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  font-family: Georgia, "Noto Serif SC", serif;
+  transform: scale(0.95);
+  animation: letterPop 0.4s ease forwards;
+}
+
+.letter-close {
+  position: absolute;
+  top: 12px;
+  right: 18px;
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: #7457a2;
+  opacity: 0.6;
+  transition: 0.2s;
+}
+.letter-close:hover {
+  opacity: 1;
+  transform: rotate(90deg);
+}
+
+.letter-card h2 {
+  margin: 0 0 1rem;
+  font-size: 1.8rem;
+  color: #211936;
+  border-bottom: 2px dashed #b5e8db;
+  padding-bottom: 0.5rem;
+}
+
+.letter-body pre {
+  white-space: pre-wrap;
+  font-family: inherit;
+  font-size: 1.05rem;
+  line-height: 1.9;
+  color: #2a1f3d;
+  margin: 0;
+}
+
+.letter-geo {
+  margin-top: 1.5rem;
+  text-align: right;
+  font-size: 0.85rem;
+  color: #7457a2;
+  opacity: 0.7;
+  border-top: 1px solid #d5cce6;
+  padding-top: 1rem;
+}
+
+/* ===== 动画 ===== */
 @keyframes sparkle {
   to {
     transform: translateY(-8px) rotate(12deg);
@@ -291,6 +457,26 @@ h1 {
     transform: translateX(1px) rotate(0.2deg);
   }
 }
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes letterPop {
+  from {
+    transform: scale(0.92) translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+}
+
+/* ===== 响应式 & 可访问性 ===== */
 @media (max-width: 600px) {
   .aspirateur__stamp {
     display: none;
@@ -301,7 +487,14 @@ h1 {
   .aspirateur__machine {
     margin-top: 2rem;
   }
+  .letter-card {
+    padding: 1.8rem 1.2rem;
+  }
+  .letter-card h2 {
+    font-size: 1.4rem;
+  }
 }
+
 @media (prefers-reduced-motion: reduce) {
   .is-running .aspirateur__spark,
   .is-running .aspirateur__svg {
@@ -309,6 +502,13 @@ h1 {
   }
   .aspirateur__button:hover {
     transform: none;
+  }
+  .letter-overlay {
+    animation: none;
+  }
+  .letter-card {
+    animation: none;
+    transform: scale(1);
   }
 }
 </style>
