@@ -45,9 +45,26 @@
       <img :src="imageUrl" alt="支持星尘粉丝站" class="sponsor-image" />
     </div>
 
-    <p>
-     同时，非常感谢 <a href="https://github.com/XingHui-8183/xiaotuzaina" target="_blank" rel="noopener">小土在哪</a> 对本站提供的启发与参考。
-    </p>
+    <!-- ===== 特别致谢（表格样式，和志愿者名单一致） ===== -->
+    <table class="credits">
+      <caption>特别致谢</caption>
+      <thead>
+        <tr>
+          <th scope="col">署名</th>
+          <th scope="col">致谢理由</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="item in specialThanks" :key="item.name">
+          <td>
+            <a v-if="item.url" :href="item.url" target="_blank" rel="noopener">{{ item.name }}</a>
+            <span v-else>{{ item.name }}</span>
+          </td>
+          <td>{{ item.reason }}</td>
+        </tr>
+      </tbody>
+    </table>
+
     <div class="sponsor-note">
       <p class="sponsor-small">非官方粉丝站 · 用爱发电</p>
     </div>
@@ -55,9 +72,25 @@
 </template>
 
 <script setup>
+import { ref, onMounted } from 'vue';
 // 名单由 tool/fetch_contributors.mjs 在构建期生成
 import contributors from '../../shared/contributors.json';
 
 const imageUrl = '/images/bayuep-support.png';
-</script>
 
+// 特别致谢数据
+const specialThanks = ref([]);
+
+onMounted(async () => {
+  try {
+    const res = await fetch('/special-thanks.json');
+    const data = await res.json();
+    specialThanks.value = data;
+  } catch {
+    // 降级：硬编码默认数据
+    specialThanks.value = [
+      { name: '小土在哪', url: 'https://github.com/XingHui-8183/xiaotuzaina', reason: '项目启发与参考' }
+    ];
+  }
+});
+</script>

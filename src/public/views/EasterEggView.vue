@@ -9,7 +9,7 @@
       <p class="aspirateur__eyebrow">un petit secret pour les curieux</p>
       <h1 id="aspirateur-title">星尘吸尘器</h1>
       <p class="aspirateur__lead">
-        Aspirateur，在法语里就是“吸尘器”。<br />今天，顺手把宇宙里的灰尘吸干净吧。
+        Aspirateur，在法语里就是"吸尘器"。<br />今天，顺手把宇宙里的灰尘吸干净吧。
       </p>
       <div class="aspirateur__machine" :class="{ 'is-running': isRunning }">
         <span class="aspirateur__spark aspirateur__spark--one">✦</span
@@ -84,7 +84,7 @@ const letterContent = ref(null);
 const userCity = ref("未知之地");
 const userCityShort = ref("未知之地");
 const isFetchingLocation = ref(false);
-const lastTriggerTime = ref(0);
+const hasTriggered = ref(false); // 🔒 锁死：只抽一次
 
 // 获取IP归属地（通过 Worker 代理 /api/ip/get，自动携带用户真实 IP）
 const fetchLocation = async () => {
@@ -115,15 +115,26 @@ const fetchLocation = async () => {
 // 加载小土的信（从同目录 JSON 文件，随机选取一封）
 const loadLetter = async () => {
   try {
+    console.log('🔥 loadLetter has been called，starting random...');
     const data = JSON.parse(letterData);
-    // 如果 data 是数组，随机取一个
-    const selected = Array.isArray(data) 
-      ? data[Math.floor(Math.random() * data.length)] 
-      : data;
-    // 替换城市占位符
-    selected.content = selected.content.replace(/\{city\}/g, userCityShort.value);
-    letterContent.value = selected;
-  } catch {
+    console.log('📦 data 的类型:', Array.isArray(data) ? '数组' : '对象');
+    console.log('📦 data 的长度:', Array.isArray(data) ? data.length : '不是数组');
+    console.log('📦 data 的内容:', data);
+    
+    // ✅ 先定义 randomIndex
+    const randomIndex = Math.floor(Math.random() * data.length);
+    console.log('🎲 随机索引:', randomIndex);
+    
+    const selected = Array.isArray(data) ? data[randomIndex] : data;
+    
+    // ✅ 创建新对象，不修改原始数据
+    letterContent.value = {
+      title: selected.title,
+      content: selected.content.replace(/\{city\}/g, userCityShort.value),
+    };
+    console.log('📩 选中的信件索引:', randomIndex);
+  } catch (error) {
+    console.error('⚠️ loadLetter 出错:', error);
     // 降级方案：硬编码一封默认的信
     letterContent.value = {
       title: "小土的一封信",
@@ -132,18 +143,23 @@ const loadLetter = async () => {
   }
 };
 
-// 触发彩蛋（15%概率）
+// 触发彩蛋（15%概率，🔒 锁死只抽一次）
 const tryTriggerLetter = async () => {
-  const now = Date.now();
-  // 防刷：10分钟内不再触发
-  if (now - lastTriggerTime.value < 10 * 60 * 1000) return;
+  // 🔒 如果已经抽过了，直接返回
+  if (hasTriggered.value) {
+    console.log('⛔ 你已经抽过奖了，想再抽？F5 重启吧');
+    return;
+  }
   if (showLetter.value) return;
 
   if (Math.random() < 0.15) {
+    console.log('✅ 中奖了！');
     await fetchLocation();
     await loadLetter();
     showLetter.value = true;
-    lastTriggerTime.value = now;
+    hasTriggered.value = true; // 🔒 锁定
+  } else {
+    console.log('❌ 没中奖，再试试吧');
   }
 };
 
@@ -157,11 +173,14 @@ const toggleCleaner = () => {
 
 const closeLetter = () => {
   showLetter.value = false;
-  letterContent.value = null;
+  // 注意：不清空 letterContent，保留信件内容
 };
 
 const status = computed(() => {
   if (isRunning.value) return "吸吸吸……星尘正在回到它该在的地方。";
+  if (hasTriggered.value && !showLetter.value) {
+    return "✨ 信件已收入囊中 · 刷新页面可再次拾取";
+  }
   if (cleaned.value > 0)
     return `清洁完成！本次收集了 ${cleaned.value} 粒宇宙灰尘。`;
   return "按下按钮，看看会吸出什么。";
