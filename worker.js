@@ -1284,6 +1284,26 @@ export default {
                 return jsonResponse({ error: error.message }, 500);
             }
         }
+        // ===== 静态 JSON 文件（特别致谢） =====
+        if (path === '/special-thanks.json' && method === 'GET') {
+            try {
+                const object = await env.R2_BUCKET.get('special-thanks.json');
+                if (!object) {
+                    return jsonResponse({ error: 'Not Found' }, 404);
+                }
+                const content = await object.text();
+                return new Response(content, {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*',
+                        'Cache-Control': 'public, max-age=3600',
+                    }
+                });
+            } catch (error) {
+                console.error('❌ 读取 special-thanks.json 失败:', error.message);
+                return jsonResponse({ error: 'Internal Server Error' }, 500);
+            }
+        }
 
         return jsonResponse({ error: 'Not Found' }, 404);
     }
