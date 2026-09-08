@@ -22,12 +22,20 @@ function handleEggClick() {
   clearTimeout(resetTimer);
 
   const remaining = CLICKS_TO_ENTER - clickCount;
-  if (remaining === 2) {
-    showToast('再点击两次进入管理登陆面板', 'info');
+  if (remaining === 6) {
+    showToast('喂！', 'info');
+  } else if (remaining === 5) {
+    showToast('别点我了！', 'info');
+  } else if (remaining === 4) {
+    showToast('欸嘿嘿嘿嘿~', 'info');
+  } else if (remaining === 3) {
+    showToast('杂鱼杂鱼，即便是发现彩蛋也进不去的杂鱼呢~', 'info');
+  } else if (remaining === 2) {
+    showToast('我不服输，哼！', 'info');
   } else if (remaining === 1) {
-    showToast('再点击一次进入管理登陆面板', 'info');
+    showToast('你赢了喵....', 'info');
   } else if (remaining <= 0) {
-    window.location.href = '/admin/';
+    window.location.href = '/aspirateur/';
     return;
   }
 

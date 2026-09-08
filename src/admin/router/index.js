@@ -22,6 +22,8 @@ const router = createRouter({
         { path: '/admins', name: 'admins', component: AdminsModule },
         { path: '/:pathMatch(.*)*', redirect: '/songs' },
         { path: '/pending', name: 'pending', component: PendingModule },
+        {path: '/thanks',name: 'thanks',component: () => import('../modules/ThanksModule.vue'),
+}
     ],
 });
 
