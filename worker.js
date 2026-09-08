@@ -1265,6 +1265,31 @@ export default {
             }
         }
 
+        // ===== 管理特别感谢（写入 R2） =====
+        if (path === '/api/admin/thanks' && method === 'PUT') {
+            if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+            try {
+                const body = await request.json();
+                const data = body.data;
+                if (!Array.isArray(data)) {
+                    return jsonResponse({ error: '数据格式错误，需要数组' }, 400);
+                }
+                for (const item of data) {
+                    if (!item.name || typeof item.name !== 'string') {
+                        return jsonResponse({ error: '每个致谢必须有 name 字段' }, 400);
+                    }
+                }
+                const content = JSON.stringify(data, null, 2);
+                await env.R2_BUCKET.put('special-thanks.json', content, {
+                    httpMetadata: { contentType: 'application/json' },
+                });
+                return jsonResponse({ success: true, message: '保存成功' });
+            } catch (error) {
+                console.error('❌ 保存特别感谢失败:', error.message);
+                return jsonResponse({ error: error.message }, 500);
+            }
+        }
+
         const shopDeleteMatch = path.match(/^\/api\/admin\/shop\/(\d+)$/);
         if (shopDeleteMatch && method === 'DELETE') {
             if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);

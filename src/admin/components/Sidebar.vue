@@ -47,6 +47,7 @@ const items = [
   { key: 'audit-log', label: '安全记录', icon: 'fa-shield-halved' },
   { key: 'admins', label: '管理员账户', icon: 'fa-user-gear' },
   { key: 'pending', label: '投稿审核', icon: 'fa-clock' },
+  { key: 'thanks', label: '特别感谢', icon: 'fa-heart' },
 ];
 
 function handleLogout() {
