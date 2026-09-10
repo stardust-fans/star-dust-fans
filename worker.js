@@ -1265,6 +1265,349 @@ export default {
             }
         }
 
+        // ============================================================
+        // 评论 API
+        // ============================================================
+
+        // GET /api/comments?target_type=shop&target_id=1
+        if (path === '/api/comments' && method === 'GET') {
+            try {
+                const targetType = url.searchParams.get('target_type');
+                const targetId = parseInt(url.searchParams.get('target_id') || '0');
+                if (!targetType || !targetId) {
+                    return jsonResponse({ error: '缺少 target_type 或 target_id' }, 400);
+                }
+
+                const stmt = env.DB.prepare(`
+                    SELECT c.id, c.user_id, c.parent_id, c.content, c.created_at, u.username
+                    FROM comments c
+                    JOIN users u ON c.user_id = u.id
+                    WHERE c.target_type = ? AND c.target_id = ? AND c.status = 'published'
+                    ORDER BY c.created_at ASC
+                `);
+                const result = await stmt.bind(targetType, targetId).all();
+                return jsonResponse(result.results || []);
+            } catch (error) {
+                console.error('❌ GET /api/comments 错误:', error.message);
+                return jsonResponse({ error: error.message }, 500);
+            }
+        }
+
+        // POST /api/comments
+        if (path === '/api/comments' && method === 'POST') {
+            const userId = await getAuthenticatedUserId(request, env);
+            if (!userId) return jsonResponse({ error: '请先登录' }, 401);
+
+            try {
+                const { target_type, target_id, content, parent_id } = await request.json();
+                if (!target_type || !target_id || !content || !content.trim()) {
+                    return jsonResponse({ error: '参数不完整' }, 400);
+                }
+                if (content.length > 2000) {
+                    return jsonResponse({ error: '评论内容过长' }, 400);
+                }
+
+                const stmt = env.DB.prepare(`
+                    INSERT INTO comments (user_id, target_type, target_id, parent_id, content)
+                    VALUES (?, ?, ?, ?, ?)
+                `);
+                const result = await stmt.bind(userId, target_type, target_id, parent_id || null, content.trim()).run();
+
+                return jsonResponse({
+                    success: true,
+                    id: result.meta?.last_row_id || null,
+                }, 201);
+            } catch (error) {
+                console.error('❌ POST /api/comments 错误:', error.message);
+                return jsonResponse({ error: error.message }, 500);
+            }
+        }
+
+        // DELETE /api/comments/:id
+        const commentDeleteMatch = path.match(/^\/api\/comments\/(\d+)$/);
+        if (commentDeleteMatch && method === 'DELETE') {
+            const userId = await getAuthenticatedUserId(request, env);
+            if (!userId) return jsonResponse({ error: '请先登录' }, 401);
+
+            try {
+                const id = commentDeleteMatch[1];
+                const comment = await env.DB.prepare('SELECT user_id FROM comments WHERE id = ?').bind(id).first();
+                if (!comment) return jsonResponse({ error: '评论不存在' }, 404);
+
+                const isAdminUser = await getAuthenticatedUser(request, env, 'admin');
+                if (comment.user_id !== userId && !isAdminUser) {
+                    return jsonResponse({ error: '无权删除' }, 403);
+                }
+
+                await env.DB.prepare('UPDATE comments SET status = ? WHERE id = ?').bind('deleted', id).run();
+                return jsonResponse({ success: true });
+            } catch (error) {
+                console.error('❌ DELETE /api/comments 错误:', error.message);
+                return jsonResponse({ error: error.message }, 500);
+            }
+        }
+
+        // ============================================================
+        // 点赞 API
+        // ============================================================
+
+        // GET /api/likes?target_type=shop&target_id=1
+        if (path === '/api/likes' && method === 'GET') {
+            try {
+                const targetType = url.searchParams.get('target_type');
+                const targetId = parseInt(url.searchParams.get('target_id') || '0');
+                if (!targetType || !targetId) {
+                    return jsonResponse({ error: '缺少参数' }, 400);
+                }
+
+                const countRow = await env.DB.prepare(`
+                    SELECT COUNT(*) as total FROM likes WHERE target_type = ? AND target_id = ?
+                `).bind(targetType, targetId).first();
+
+                let userLiked = false;
+                const userId = await getAuthenticatedUserId(request, env);
+                if (userId) {
+                    const likeRow = await env.DB.prepare(`
+                        SELECT id FROM likes WHERE user_id = ? AND target_type = ? AND target_id = ?
+                    `).bind(userId, targetType, targetId).first();
+                    userLiked = !!likeRow;
+                }
+
+                return jsonResponse({ count: countRow?.total || 0, userLiked });
+            } catch (error) {
+                console.error('❌ GET /api/likes 错误:', error.message);
+                return jsonResponse({ error: error.message }, 500);
+            }
+        }
+
+        // POST /api/likes
+        if (path === '/api/likes' && method === 'POST') {
+            const userId = await getAuthenticatedUserId(request, env);
+            if (!userId) return jsonResponse({ error: '请先登录' }, 401);
+
+            try {
+                const { target_type, target_id } = await request.json();
+                if (!target_type || !target_id) {
+                    return jsonResponse({ error: '参数不完整' }, 400);
+                }
+
+                await env.DB.prepare(`
+                    INSERT OR IGNORE INTO likes (user_id, target_type, target_id) VALUES (?, ?, ?)
+                `).bind(userId, target_type, target_id).run();
+
+                const countRow = await env.DB.prepare(`
+                    SELECT COUNT(*) as total FROM likes WHERE target_type = ? AND target_id = ?
+                `).bind(target_type, target_id).first();
+
+                return jsonResponse({ success: true, count: countRow?.total || 0 });
+            } catch (error) {
+                console.error('❌ POST /api/likes 错误:', error.message);
+                return jsonResponse({ error: error.message }, 500);
+            }
+        }
+
+        // DELETE /api/likes
+        if (path === '/api/likes' && method === 'DELETE') {
+            const userId = await getAuthenticatedUserId(request, env);
+            if (!userId) return jsonResponse({ error: '请先登录' }, 401);
+
+            try {
+                const { target_type, target_id } = await request.json();
+                if (!target_type || !target_id) {
+                    return jsonResponse({ error: '参数不完整' }, 400);
+                }
+
+                await env.DB.prepare(`
+                    DELETE FROM likes WHERE user_id = ? AND target_type = ? AND target_id = ?
+                `).bind(userId, target_type, target_id).run();
+
+                const countRow = await env.DB.prepare(`
+                    SELECT COUNT(*) as total FROM likes WHERE target_type = ? AND target_id = ?
+                `).bind(target_type, target_id).first();
+
+                return jsonResponse({ success: true, count: countRow?.total || 0 });
+            } catch (error) {
+                console.error('❌ DELETE /api/likes 错误:', error.message);
+                return jsonResponse({ error: error.message }, 500);
+            }
+        }
+
+        // ============================================================
+        // 论坛 API
+        // ============================================================
+
+        // GET /api/forum/boards
+        if (path === '/api/forum/boards' && method === 'GET') {
+            try {
+                const result = await env.DB.prepare(`
+                    SELECT b.id, b.name, b.slug, b.description, b.icon, b.sort_order,
+                           (SELECT COUNT(*) FROM forum_threads t WHERE t.board_id = b.id AND t.status = 'published') as thread_count,
+                           (SELECT COUNT(*) FROM forum_posts p JOIN forum_threads t2 ON p.thread_id = t2.id WHERE t2.board_id = b.id AND p.status = 'published') as post_count
+                    FROM forum_boards b
+                    WHERE b.status = 'active'
+                    ORDER BY b.sort_order ASC
+                `).all();
+                return jsonResponse(result.results || []);
+            } catch (error) {
+                console.error('❌ GET /api/forum/boards 错误:', error.message);
+                return jsonResponse({ error: error.message }, 500);
+            }
+        }
+
+        // GET /api/forum/threads?board_id=1&page=1&limit=20
+        if (path === '/api/forum/threads' && method === 'GET') {
+            try {
+                const boardId = parseInt(url.searchParams.get('board_id') || '0');
+                const page = Math.max(parseInt(url.searchParams.get('page') || '1'), 1);
+                const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') || '20'), 1), 50);
+                const offset = (page - 1) * limit;
+
+                let whereClause = "WHERE t.status = 'published'";
+                let params = [];
+                if (boardId) {
+                    whereClause += ' AND t.board_id = ?';
+                    params.push(boardId);
+                }
+
+                const stmt = env.DB.prepare(`
+                    SELECT t.id, t.board_id, t.title, t.is_pinned, t.is_locked,
+                           t.view_count, t.reply_count, t.like_count,
+                           t.created_at, t.last_reply_at,
+                           u.username,
+                           b.name as board_name, b.slug as board_slug
+                    FROM forum_threads t
+                    JOIN users u ON t.user_id = u.id
+                    JOIN forum_boards b ON t.board_id = b.id
+                    ${whereClause}
+                    ORDER BY t.is_pinned DESC, t.last_reply_at DESC, t.created_at DESC
+                    LIMIT ? OFFSET ?
+                `);
+                const result = await stmt.bind(...params, limit, offset).all();
+
+                const countStmt = env.DB.prepare(`
+                    SELECT COUNT(*) as total FROM forum_threads t ${whereClause}
+                `);
+                const countRow = await countStmt.bind(...params).first();
+
+                return jsonResponse({
+                    threads: result.results || [],
+                    total: countRow?.total || 0,
+                    page,
+                    limit,
+                });
+            } catch (error) {
+                console.error('❌ GET /api/forum/threads 错误:', error.message);
+                return jsonResponse({ error: error.message }, 500);
+            }
+        }
+
+        // GET /api/forum/threads/:id
+        const threadDetailMatch = path.match(/^\/api\/forum\/threads\/(\d+)$/);
+        if (threadDetailMatch && method === 'GET') {
+            try {
+                const id = threadDetailMatch[1];
+                const thread = await env.DB.prepare(`
+                    SELECT t.*, u.username, b.name as board_name, b.slug as board_slug
+                    FROM forum_threads t
+                    JOIN users u ON t.user_id = u.id
+                    JOIN forum_boards b ON t.board_id = b.id
+                    WHERE t.id = ? AND t.status = 'published'
+                `).bind(id).first();
+
+                if (!thread) return jsonResponse({ error: '主题不存在' }, 404);
+
+                await env.DB.prepare('UPDATE forum_threads SET view_count = view_count + 1 WHERE id = ?').bind(id).run();
+
+                const posts = await env.DB.prepare(`
+                    SELECT p.id, p.user_id, p.parent_id, p.content, p.floor_number, p.like_count, p.created_at, u.username
+                    FROM forum_posts p
+                    JOIN users u ON p.user_id = u.id
+                    WHERE p.thread_id = ? AND p.status = 'published'
+                    ORDER BY p.created_at ASC
+                `).bind(id).all();
+
+                return jsonResponse({
+                    thread,
+                    posts: posts.results || [],
+                });
+            } catch (error) {
+                console.error('❌ GET /api/forum/threads/:id 错误:', error.message);
+                return jsonResponse({ error: error.message }, 500);
+            }
+        }
+
+        // POST /api/forum/threads
+        if (path === '/api/forum/threads' && method === 'POST') {
+            const userId = await getAuthenticatedUserId(request, env);
+            if (!userId) return jsonResponse({ error: '请先登录' }, 401);
+
+            try {
+                const { board_id, title, content } = await request.json();
+                if (!board_id || !title || !title.trim() || !content || !content.trim()) {
+                    return jsonResponse({ error: '参数不完整' }, 400);
+                }
+                if (title.length > 200) {
+                    return jsonResponse({ error: '标题过长' }, 400);
+                }
+
+                const board = await env.DB.prepare('SELECT id FROM forum_boards WHERE id = ? AND status = ?').bind(board_id, 'active').first();
+                if (!board) return jsonResponse({ error: '版块不存在' }, 404);
+
+                const stmt = env.DB.prepare(`
+                    INSERT INTO forum_threads (board_id, user_id, title, content, last_reply_at, last_reply_user_id)
+                    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
+                `);
+                const result = await stmt.bind(board_id, userId, title.trim(), content.trim(), userId).run();
+
+                return jsonResponse({
+                    success: true,
+                    id: result.meta?.last_row_id || null,
+                }, 201);
+            } catch (error) {
+                console.error('❌ POST /api/forum/threads 错误:', error.message);
+                return jsonResponse({ error: error.message }, 500);
+            }
+        }
+
+        // POST /api/forum/posts
+        if (path === '/api/forum/posts' && method === 'POST') {
+            const userId = await getAuthenticatedUserId(request, env);
+            if (!userId) return jsonResponse({ error: '请先登录' }, 401);
+
+            try {
+                const { thread_id, content, parent_id } = await request.json();
+                if (!thread_id || !content || !content.trim()) {
+                    return jsonResponse({ error: '参数不完整' }, 400);
+                }
+
+                const thread = await env.DB.prepare('SELECT id, is_locked FROM forum_threads WHERE id = ? AND status = ?').bind(thread_id, 'published').first();
+                if (!thread) return jsonResponse({ error: '主题不存在' }, 404);
+                if (thread.is_locked) return jsonResponse({ error: '该主题已锁定' }, 403);
+
+                const floorRow = await env.DB.prepare('SELECT COUNT(*) as total FROM forum_posts WHERE thread_id = ?').bind(thread_id).first();
+                const floorNumber = (floorRow?.total || 0) + 1;
+
+                const stmt = env.DB.prepare(`
+                    INSERT INTO forum_posts (thread_id, user_id, parent_id, content, floor_number)
+                    VALUES (?, ?, ?, ?, ?)
+                `);
+                const result = await stmt.bind(thread_id, userId, parent_id || null, content.trim(), floorNumber).run();
+
+                await env.DB.prepare(`
+                    UPDATE forum_threads SET reply_count = reply_count + 1, last_reply_at = CURRENT_TIMESTAMP, last_reply_user_id = ? WHERE id = ?
+                `).bind(userId, thread_id).run();
+
+                return jsonResponse({
+                    success: true,
+                    id: result.meta?.last_row_id || null,
+                    floor_number: floorNumber,
+                }, 201);
+            } catch (error) {
+                console.error('❌ POST /api/forum/posts 错误:', error.message);
+                return jsonResponse({ error: error.message }, 500);
+            }
+        }
+
         // ===== 管理特别感谢（写入 R2） =====
         if (path === '/api/admin/thanks' && method === 'PUT') {
             if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
