@@ -35,10 +35,16 @@
       本站暂时是试运行，用户群群号是920160812，希望各位支持
     </p>
     <p>
-      代码在 <a href="https://github.com/stardust-fans/star-dust-fans" target="_blank" rel="noopener">GitHub</a>以AGPL协议开源，感兴趣的话可以去看看。
+      代码在 <a href="https://github.com/stardust-fans/star-dust-fans" target="_blank" rel="noopener">GitHub</a>以AGPL协议开源，感兴趣的话可以去看看并给我们点个Star。
     </p>
     <p>
       如果你觉得这里还不错，随手支持一下也行——哪怕一两块，对我们来说都很有意义。
+    </p>
+    <p>
+      如遇到侵权，违规信息，请发送邮件至 <a href="mailto:cooollawf_bg2gsx@qq.com" target="_blank" rel="noopener">cooollawf_bg2gsx@qq.com</a>，星尘同人站遵守侵权避风港（“通知后删除”规则）原则。
+    </p>
+    <p>
+      站长将在收到信息后大约一周（UTC+8北京标准时间）处理。不计算法定节假日
     </p>
 
     <div class="sponsor-image-wrapper">
