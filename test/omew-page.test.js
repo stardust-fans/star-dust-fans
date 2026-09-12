@@ -14,6 +14,7 @@ describe("OMEW public page contract", () => {
     expect(routerSource).toContain('component: OmewView');
     expect(routerSource).toContain("meta: { fullBleed: true }");
     expect(navSource).toContain('to="/omew"');
+    expect(navSource).toContain('>论坛</RouterLink>');
   });
 
   it("keeps the identity bridge on the site as standard OIDC instead of a child-window token exchange", () => {
@@ -29,7 +30,9 @@ describe("OMEW public page contract", () => {
   it("embeds the site OMEW instance with a usable fallback", () => {
     expect(constantsSource).toContain('OMEW_URL = "https://omew.stardustinfinity.top"');
     expect(viewSource).toContain(":src=" + "\"OMEW_URL\"");
-    expect(viewSource).toContain('target="_blank"');
+    expect(constantsSource).toContain('omew: "论坛 · 星尘粉丝站"');
+    expect(viewSource).toContain('title="星尘论坛"');
+    expect(viewSource).not.toContain('target="_blank"');
     expect(viewSource).toContain("clipboard-read");
     expect(viewSource).toContain("clipboard-write");
     expect(viewSource).toContain("publickey-credentials-get");

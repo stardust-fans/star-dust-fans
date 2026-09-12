@@ -41,7 +41,7 @@ export const PAGE_TITLE_MAP = {
   shop: "量贩 · 星尘粉丝站",
   daily: "吸尘器日报 · 星尘粉丝站",
   starmap: "星图 · 星尘粉丝站",
-  omew: "OMEW · 星尘粉丝站",
+  omew: "论坛 · 星尘粉丝站",
   about: "关于 · 星尘粉丝站",
   guide: "投稿指南 · 星尘粉丝站",
   user: "用户中心 · 星尘粉丝站",
