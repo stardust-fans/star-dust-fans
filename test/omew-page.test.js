@@ -43,6 +43,7 @@ describe("OMEW public page contract", () => {
   it("keeps direct history URLs on the public SPA entry", () => {
     expect(wranglerSource).toContain('"binding": "ASSETS"');
     expect(wranglerSource).toContain('"not_found_handling": "single-page-application"');
+    expect(wranglerSource).toContain('"run_worker_first": ["/api/*", "/.well-known/*", "/oauth/*", "/saml/*", "/scim/*"]');
     expect(workerSource).toContain("env.ASSETS.fetch(request)");
   });
 
