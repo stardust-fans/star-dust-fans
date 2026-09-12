@@ -33,6 +33,7 @@ export const MASTERPIECE_VIEW_THRESHOLD = 100000; // 殿堂曲：播放量 ≥ 1
 export const LEGEND_VIEW_THRESHOLD = 1000000; // 传说曲：播放量 ≥ 100万
 
 export const OMEW_URL = "https://omew.stardustinfinity.top";
+export const OMEW_SSO_URL = `${OMEW_URL}/api/auth/oidc/start?return_to=%2F`;
 
 export const PAGE_TITLE_MAP = {
   home: "星尘 · 永远闪耀",

@@ -11,3 +11,4 @@
 | 034 | [Feature] 嵌入 OMEW 自部署入口 | 更新站点代码，在公开站新增 OMEW 子页面并嵌入 Overture 自部署向导 | 初始需求的临时方案，后续被网站专属实例要求取代 | ❌ 已废弃 |
 | 035 | [Feature] 网站专属 OMEW 实例与共享用户设置 | 原方案通过 OMEW 专用短时 token 和 iframe 消息桥接星尘用户身份 | Rosmontis 改为要求身份桥接位于星尘站并使用通用 SSO，专用协议不再适用 | ❌ 已废弃 |
 | 036 | [Feature] 标准OIDC身份提供方 | 将星尘站现有 OMEW 专用 token 桥接替换为标准 OIDC Provider，供 OMEW、EdgeSonic 与后续网站共用 | 身份桥接应由星尘站拥有，消费端不应保留星尘专用协议 | ✅ 已完成 |
+| 037 | [Feature] OMEW 生产 SSO 接入 | 配置主站 OIDC issuer，并让主站 OMEW 入口通过标准授权流程自动登录专属实例 | 完成已实现协议的生产配置与真实入口闭环 | 🚧 进行中 |

@@ -42,7 +42,7 @@ const router = createRouter({
       path: "/omew",
       name: "omew",
       component: OmewView,
-      meta: { fullBleed: true },
+      meta: { fullBleed: true, requiresAuth: true },
     },
     { path: "/about", name: "about", component: AboutView },
     { path: "/login", name: "login", component: LoginView },
@@ -71,7 +71,7 @@ router.beforeEach((to) => {
   const hasToken = document.cookie
     .split(";")
     .some((part) => part.trim().startsWith("authToken="));
-  return hasToken ? true : { name: "login" };
+  return hasToken ? true : { name: "login", query: { return_to: to.fullPath } };
 });
 
 router.afterEach((to) => {

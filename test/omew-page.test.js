@@ -12,7 +12,8 @@ describe("OMEW public page contract", () => {
     expect(routerSource).toContain('path: "/omew"');
     expect(routerSource).toContain('name: "omew"');
     expect(routerSource).toContain('component: OmewView');
-    expect(routerSource).toContain("meta: { fullBleed: true }");
+    expect(routerSource).toContain("meta: { fullBleed: true, requiresAuth: true }");
+    expect(routerSource).toContain("query: { return_to: to.fullPath }");
     expect(navSource).toContain('to="/omew"');
   });
 
@@ -28,7 +29,9 @@ describe("OMEW public page contract", () => {
 
   it("embeds the site OMEW instance with a usable fallback", () => {
     expect(constantsSource).toContain('OMEW_URL = "https://omew.stardustinfinity.top"');
-    expect(viewSource).toContain(":src=" + "\"OMEW_URL\"");
+    expect(constantsSource).toContain("/api/auth/oidc/start?return_to=%2F");
+    expect(viewSource).toContain(":src=" + "\"OMEW_SSO_URL\"");
+    expect(viewSource).toContain(":href=" + "\"OMEW_SSO_URL\"");
     expect(viewSource).toContain('target="_blank"');
     expect(viewSource).toContain("clipboard-read");
     expect(viewSource).toContain("clipboard-write");
@@ -41,5 +44,11 @@ describe("OMEW public page contract", () => {
     expect(wranglerSource).toContain('"binding": "ASSETS"');
     expect(wranglerSource).toContain('"not_found_handling": "single-page-application"');
     expect(workerSource).toContain("env.ASSETS.fetch(request)");
+  });
+
+  it("declares the production OIDC issuer without placing client credentials in source", () => {
+    expect(wranglerSource).toContain('"OIDC_ISSUER": "https://stardustinfinity.top"');
+    expect(wranglerSource).not.toContain("OIDC_CLIENTS");
+    expect(wranglerSource).not.toContain("OIDC_SIGNING_JWKS");
   });
 });
