@@ -16,7 +16,7 @@
 
 | 路径 | 职责 |
 | :-- | :-- |
-| `src/public/` | 公开站页面、组件、样式与交互；`/omew` 嵌入网站专属 OMEW 实例 |
+| `src/public/` | 公开站页面、组件、样式与交互；`/omew` 嵌入网站专属 OMEW 的固定 `medium5` 实例 |
 | `src/admin/` | 管理后台 |
 | `src/shared/` | 前后台共享 API、常量与格式化函数 |
 | `worker.js` | Worker API、D1 数据访问与 Static Assets SPA 深链接回退 |
