@@ -2,7 +2,7 @@
   <div class="omew-stage" :style="{ top: `${navHeight}px` }">
     <iframe
       class="omew-frame"
-      :src="OMEW_URL"
+      :src="OMEW_SSO_URL"
       title="OMEW 社区"
       allow="autoplay; clipboard-read; clipboard-write; fullscreen; publickey-credentials-get *; publickey-credentials-create *"
       referrerpolicy="strict-origin-when-cross-origin"
@@ -18,12 +18,12 @@
         <strong>正在打开 OMEW 社区…</strong>
         <span>需要登录时，OMEW 会通过星尘站统一身份验证。</span>
       </template>
-      <a :href="OMEW_URL" target="_blank" rel="noopener noreferrer">新标签页打开 ↗</a>
+      <a :href="OMEW_SSO_URL" target="_blank" rel="noopener noreferrer">新标签页打开 ↗</a>
     </div>
 
     <a
       class="omew-open-link"
-      :href="OMEW_URL"
+      :href="OMEW_SSO_URL"
       target="_blank"
       rel="noopener noreferrer"
       aria-label="在新标签页打开 OMEW"
@@ -35,7 +35,7 @@
 
 <script setup>
 import { onBeforeUnmount, onMounted, ref } from "vue";
-import { OMEW_URL } from "../../shared/constants.js";
+import { OMEW_SSO_URL } from "../../shared/constants.js";
 
 const navHeight = ref(68);
 const loaded = ref(false);

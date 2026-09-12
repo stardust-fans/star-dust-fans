@@ -32,7 +32,9 @@
   ],
   "workers_dev": true,
   "preview_urls": true,
-  "vars": {},
+  "vars": {
+    "OIDC_ISSUER": "https://stardustinfinity.top"
+  },
   "observability": {
     "logs": {
       "enabled": true
