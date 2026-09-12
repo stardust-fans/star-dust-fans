@@ -35,19 +35,23 @@ npm run deploy         # wrangler deploy 部署 Worker
 
 数据库结构定义见 `tool/schema.sql`；增量迁移脚本在 `migrations/`，通过 `wrangler d1 migrations apply` 应用。
 
-## OpenID Connect
+## OpenID Connect、SAML 与 SCIM
 
-星尘站可作为标准 OIDC 身份提供方。客户端必须使用 Authorization Code + PKCE (`S256`)；redirect URI 采用精确匹配。
+星尘站是共享身份系统的协议提供方。OIDC 使用 Authorization Code + PKCE (`S256`) 和精确 redirect URI 匹配，并实际提供：Refresh Token 轮换与重放检测、RP-Initiated Logout、PAR、JAR/JARM、DPoP、Device Authorization、CIBA、Token Introspection、Revocation、动态客户端注册，以及 `private_key_jwt` 客户端认证。动态客户端的 PUT 更新支持公开 JWK 轮换。
 
-当前阶段只允许预注册的第一方客户端，不开放动态客户端注册，也不把无授权确认界面的配置用于第三方应用。
+SAML 2.0 入口提供 IdP 元数据、HTTP-Redirect/HTTP-POST SSO、带 XML Signature 的 assertion、Redirect binding 请求签名校验和 SLO。HTTP-POST AuthnRequest 只在对应服务提供方明确关闭“必须签名请求”时接受；需要签名请求的服务提供方应使用已登记 JWK 的 Redirect binding。SCIM 2.0 提供 Bearer 保护的 Users/Groups、过滤、分页、PATCH、ETag/If-Match、软删除和标准 discovery 端点。
 
 运行时需要提供以下值：
 
 - `OIDC_ISSUER`：固定 HTTPS issuer，例如 `https://stardustinfinity.top`；它可以作为非秘密部署变量。
-- `OIDC_CLIENTS`：客户端 JSON 数组，包含 `client_id`、`client_name`、`redirect_uris`、`token_endpoint_auth_method`，以及使用 confidential client 时的 `client_secret`；必须作为 Worker secret。
-- `OIDC_SIGNING_JWKS`：包含至少一个 RS256 私钥的 JWK Set；必须作为 Worker secret。第一把密钥用于签名，所有公钥通过 JWKS 端点发布。
+- `OIDC_CLIENTS`：客户端 JSON 数组，包含 `client_id`、`client_name`、`redirect_uris`、`post_logout_redirect_uris`、`token_endpoint_auth_method`、`grant_types`、`response_types`、`scope`、可选 `jwks`/`require_signed_request_object`，以及 confidential client 的 `client_secret`；必须作为 Worker secret。
+- `OIDC_SIGNING_JWKS`：至少一个 RS256 私钥的 JWK Set；必须作为 Worker secret。第一把密钥签发 ID Token/JARM，所有公钥通过 JWKS 端点发布，轮换时保留旧公钥直到现有令牌过期。
+- `OIDC_INITIAL_ACCESS_TOKEN`：启用动态注册时使用的初始 Bearer token；必须作为 Worker secret。不配置时注册端点不会出现在 discovery 文档中。
+- `SAML_ENTITY_ID`、`SAML_BASE_URL`、`SAML_SIGNING_JWK`、`SAML_SIGNING_CERT`、`SAML_SERVICE_PROVIDERS`：SAML IdP 的 entity ID、端点基址、RSA 私钥、证书和服务提供方 JSON；私钥/证书/服务提供方配置必须作为 Worker secret。
+- `SAML_ALLOW_UNSIGNED_REQUESTS`：仅在已知的内部服务提供方需要接受未签名请求时设置为 `true`；生产环境默认关闭。
+- `SCIM_BEARER_TOKEN`：SCIM 管理端点的专用 Bearer token；必须作为 Worker secret，不能复用 OIDC 或管理员 token。
 
-不要把这些值写入 `wrangler.jsonc`、源码或日志。发现文档位于 `/.well-known/openid-configuration`，公开密钥位于 `/.well-known/jwks.json`。
+不要把这些值写入 `wrangler.jsonc`、源码或日志。OIDC discovery 位于 `/.well-known/openid-configuration`，公开密钥位于 `/.well-known/jwks.json`，SAML 元数据位于 `/saml/metadata`，SCIM discovery 位于 `/scim/v2/ServiceProviderConfig`。
 
 ## 一些....小故事？
 

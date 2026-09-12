@@ -1,5 +1,7 @@
 // worker.js
 import { handleOidcRequest } from "./src/worker/oidc.js";
+import { handleSamlRequest } from "./src/worker/saml.js";
+import { handleScimRequest } from "./src/worker/scim.js";
 
 export default {
     async fetch(request, env, ctx) {
@@ -37,6 +39,17 @@ export default {
             () => getAuthenticatedUser(request, env, 'user')
         );
         if (oidcResponse) return oidcResponse;
+
+        const samlResponse = await handleSamlRequest(
+            request,
+            env,
+            ctx,
+            () => getAuthenticatedUser(request, env, 'user')
+        );
+        if (samlResponse) return samlResponse;
+
+        const scimResponse = await handleScimRequest(request, env, ctx);
+        if (scimResponse) return scimResponse;
 
         const isAdmin = await getAuthenticatedUser(request, env, 'admin');
 
@@ -400,7 +413,11 @@ export default {
                     'SELECT id, username, password_hash FROM users WHERE username = ?'
                 ).bind(username).first();
 
-                if (!user) {
+                const scimState = user
+                    ? await env.DB.prepare('SELECT active FROM scim_user_state WHERE user_id = ?').bind(user.id).first()
+                    : null;
+
+                if (!user || scimState?.active === 0) {
                     return jsonResponse({ error: '用户名或密码错误' }, 401);
                 }
 
@@ -1837,7 +1854,12 @@ async function getAuthenticatedUser(request, env, expectedRole) {
 
     if (!token) return null;
     const payload = await verifyToken(token, env);
-    return payload?.role === expectedRole ? payload : null;
+    if (payload?.role !== expectedRole) return null;
+    if (expectedRole === 'user') {
+        const scimState = await env.DB.prepare('SELECT active FROM scim_user_state WHERE user_id = ?').bind(payload.sub).first();
+        if (scimState?.active === 0) return null;
+    }
+    return payload;
 }
 
 async function getAuthenticatedUserId(request, env) {
