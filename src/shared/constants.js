@@ -32,7 +32,7 @@ export const AUDIT_TARGET_TABLE_LABELS = {
 export const MASTERPIECE_VIEW_THRESHOLD = 100000; // 殿堂曲：播放量 ≥ 10万
 export const LEGEND_VIEW_THRESHOLD = 1000000; // 传说曲：播放量 ≥ 100万
 
-export const OMEW_DEPLOY_URL = "https://overture.lsy-demo.workers.dev/?src=lsy-404%2FOMEW";
+export const OMEW_URL = "https://omew.stardustinfinity.top";
 
 export const PAGE_TITLE_MAP = {
   home: "星尘 · 永远闪耀",

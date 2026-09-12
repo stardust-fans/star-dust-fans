@@ -418,6 +418,29 @@ export default {
             }
         }
 
+        // Exchange the site session for a short-lived OMEW token without
+        // exposing the star-dust-fans session token to the child origin.
+        if (path === '/api/omew/session' && method === 'POST') {
+            if (!env.OMEW_SSO_SECRET) return jsonResponse({ error: 'SSO 未配置' }, 503);
+            const payload = await getAuthenticatedUser(request, env, 'user');
+            if (!payload) return jsonResponse({ error: '未登录' }, 401);
+            const user = await env.DB.prepare(
+                'SELECT id, username, email FROM users WHERE id = ?'
+            ).bind(payload.sub).first();
+            if (!user) return jsonResponse({ error: '用户不存在' }, 401);
+
+            const token = await signToken({
+                typ: 'star_dust_sso',
+                iss: 'stardustinfinity.top',
+                aud: 'omew.stardustinfinity.top',
+                sub: String(user.id),
+                username: user.username,
+                email: user.email || null,
+                exp: Math.floor(Date.now() / 1000) + 120,
+            }, env, env.OMEW_SSO_SECRET);
+            return jsonResponse({ token, user: { id: user.id, username: user.username } });
+        }
+
         // ===== 3.6 GET /api/admin/audit-logs =====
         if (path === '/api/admin/audit-logs' && method === 'GET') {
             if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
@@ -1791,19 +1814,19 @@ function validateCoverBase64(raw) {
     return { ok: true };
 }
 
-async function importHmacKey(env) {
+async function importHmacKey(env, secret = env.TOKEN_SECRET) {
     return crypto.subtle.importKey(
         'raw',
-        new TextEncoder().encode(env.TOKEN_SECRET),
+        new TextEncoder().encode(secret),
         { name: 'HMAC', hash: 'SHA-256' },
         false,
         ['sign', 'verify']
     );
 }
 
-async function signToken(payload, env) {
+async function signToken(payload, env, secret = env.TOKEN_SECRET) {
     const payloadPart = base64UrlEncodeString(JSON.stringify(payload));
-    const key = await importHmacKey(env);
+    const key = await importHmacKey(env, secret);
     const signatureBuf = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payloadPart));
     const signaturePart = base64UrlEncodeBytes(new Uint8Array(signatureBuf));
     return `${payloadPart}.${signaturePart}`;
