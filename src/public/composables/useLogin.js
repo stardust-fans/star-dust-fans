@@ -34,7 +34,6 @@ export function useLogin() {
       if (data.token) {
         setCookie("authToken", data.token, 7);
         setCookie("user", JSON.stringify(data.user), 7);
-        window.dispatchEvent(new Event("star-dust-auth-changed"));
       }
 
       return data;

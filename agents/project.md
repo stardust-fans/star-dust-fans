@@ -1,5 +1,5 @@
 # star-dust-fans 项目索引
-> 最后更新：2026-09-11
+> 最后更新：2026-09-12
 
 ## 项目目标
 
@@ -22,3 +22,7 @@
 | `worker.js` | Worker API、D1 数据访问与 Static Assets SPA 深链接回退 |
 | `test/` | 单元与 Worker 集成测试 |
 | `static/` | 公开静态资源 |
+
+## 当前任务
+
+- [标准 OIDC 身份提供方](036_[Feature]_标准OIDC身份提供方/)

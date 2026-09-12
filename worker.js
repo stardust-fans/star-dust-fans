@@ -1,4 +1,6 @@
 // worker.js
+import { handleOidcRequest } from "./src/worker/oidc.js";
+
 export default {
     async fetch(request, env, ctx) {
         const url = new URL(request.url);
@@ -27,6 +29,14 @@ export default {
                 }
             });
         }
+
+        const oidcResponse = await handleOidcRequest(
+            request,
+            env,
+            ctx,
+            () => getAuthenticatedUser(request, env, 'user')
+        );
+        if (oidcResponse) return oidcResponse;
 
         const isAdmin = await getAuthenticatedUser(request, env, 'admin');
 
@@ -416,29 +426,6 @@ export default {
                 console.error('❌ /api/login 错误:', error.message);
                 return jsonResponse({ error: error.message }, 500);
             }
-        }
-
-        // Exchange the site session for a short-lived OMEW token without
-        // exposing the star-dust-fans session token to the child origin.
-        if (path === '/api/omew/session' && method === 'POST') {
-            if (!env.OMEW_SSO_SECRET) return jsonResponse({ error: 'SSO 未配置' }, 503);
-            const payload = await getAuthenticatedUser(request, env, 'user');
-            if (!payload) return jsonResponse({ error: '未登录' }, 401);
-            const user = await env.DB.prepare(
-                'SELECT id, username, email FROM users WHERE id = ?'
-            ).bind(payload.sub).first();
-            if (!user) return jsonResponse({ error: '用户不存在' }, 401);
-
-            const token = await signToken({
-                typ: 'star_dust_sso',
-                iss: 'stardustinfinity.top',
-                aud: 'omew.stardustinfinity.top',
-                sub: String(user.id),
-                username: user.username,
-                email: user.email || null,
-                exp: Math.floor(Date.now() / 1000) + 120,
-            }, env, env.OMEW_SSO_SECRET);
-            return jsonResponse({ token, user: { id: user.id, username: user.username } });
         }
 
         // ===== 3.6 GET /api/admin/audit-logs =====
