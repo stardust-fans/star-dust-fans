@@ -1,7 +1,6 @@
 <template>
   <div class="omew-stage" :style="{ top: `${navHeight}px` }">
     <iframe
-      ref="omewFrame"
       class="omew-frame"
       :src="OMEW_URL"
       title="OMEW 社区"
@@ -17,7 +16,7 @@
       </template>
       <template v-else>
         <strong>正在打开 OMEW 社区…</strong>
-        <span>星尘站用户设置会自动同步，无需再次登录。</span>
+        <span>需要登录时，OMEW 会通过星尘站统一身份验证。</span>
       </template>
       <a :href="OMEW_URL" target="_blank" rel="noopener noreferrer">新标签页打开 ↗</a>
     </div>
@@ -38,42 +37,17 @@
 import { onBeforeUnmount, onMounted, ref } from "vue";
 import { OMEW_URL } from "../../shared/constants.js";
 
-const OMEW_ORIGIN = new URL(OMEW_URL).origin;
-const STAR_DUST_SESSION_EVENT = "star-dust-session";
 const navHeight = ref(68);
 const loaded = ref(false);
 const failed = ref(false);
-const omewFrame = ref(null);
 let observer = null;
 let loadTimeout = null;
-
-async function postStarDustSession() {
-  const target = omewFrame.value?.contentWindow;
-  if (!target) return;
-
-  try {
-    const response = await fetch("/api/omew/session", { method: "POST" });
-    if (!response.ok) return;
-    const token = (await response.json()).token;
-    if (typeof token === "string" && token) {
-      target.postMessage({ type: STAR_DUST_SESSION_EVENT, token }, OMEW_ORIGIN);
-    }
-  } catch {
-    // Anonymous visitors remain in OMEW guest mode when the site session is absent.
-  }
-}
-
-function handleMessage(event) {
-  if (event.origin !== OMEW_ORIGIN || event.source !== omewFrame.value?.contentWindow) return;
-  if (event.data?.type === "omew-ready") void postStarDustSession();
-}
 
 function handleLoad() {
   loaded.value = true;
   failed.value = false;
   if (loadTimeout) clearTimeout(loadTimeout);
   loadTimeout = null;
-  void postStarDustSession();
 }
 
 onMounted(() => {
@@ -87,9 +61,6 @@ onMounted(() => {
     observer.observe(nav);
   }
 
-  window.addEventListener("message", handleMessage);
-  window.addEventListener("star-dust-auth-changed", postStarDustSession);
-
   loadTimeout = setTimeout(() => {
     if (!loaded.value) failed.value = true;
   }, 12000);
@@ -98,8 +69,6 @@ onMounted(() => {
 onBeforeUnmount(() => {
   observer?.disconnect();
   observer = null;
-  window.removeEventListener("message", handleMessage);
-  window.removeEventListener("star-dust-auth-changed", postStarDustSession);
   if (loadTimeout) clearTimeout(loadTimeout);
   loadTimeout = null;
 });

@@ -47,11 +47,11 @@
 
 <script setup>
 import { ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute } from 'vue-router';
 import { useLogin } from '../composables/useLogin.js';
 import { useToast } from '../composables/useToast.js';
 
-const router = useRouter();
+const route = useRoute();
 const { login, isLoading } = useLogin();
 const { showToast } = useToast();
 
@@ -72,9 +72,11 @@ async function handleLogin() {
     });
 
     showToast('🎉 登录成功！欢迎回来', 'success');
-    // 登录成功后跳转到首页
-    router.push('/');
-    window.location.href = '/';
+    const requested = route.query.return_to;
+    const returnTo = typeof requested === 'string' && requested.startsWith('/') && !requested.startsWith('//') && !/[\\\u0000-\u001f#]/.test(requested)
+      ? requested
+      : '/';
+    window.location.assign(returnTo);
   } catch (err) {
     errorMessage.value = err.message || '登录失败，请稍后重试';
   }

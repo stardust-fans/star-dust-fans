@@ -26,6 +26,7 @@
     "wrangler": "^4.113.0"
   },
   "dependencies": {
+    "jose": "^6.2.12",
     "nvm": "^0.0.4"
   }
 }
