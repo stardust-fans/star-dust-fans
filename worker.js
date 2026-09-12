@@ -1673,6 +1673,12 @@ export default {
             }
         }
 
+        // Let the Workers Static Assets binding serve the SPA entry for direct
+        // history URLs such as /omew and /starmap.
+        if ((method === 'GET' || method === 'HEAD') && !path.startsWith('/api/')) {
+            return env.ASSETS.fetch(request);
+        }
+
         return jsonResponse({ error: 'Not Found' }, 404);
     }
 };
