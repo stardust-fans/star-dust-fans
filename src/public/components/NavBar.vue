@@ -19,7 +19,7 @@
         <li><RouterLink to="/shop" @click="closeMenu">量贩</RouterLink></li>
         <li><RouterLink to="/daily" @click="closeMenu">日报</RouterLink></li>
         <li><RouterLink to="/starmap" @click="closeMenu">星图</RouterLink></li>
-        <li><RouterLink to="/omew" @click="closeMenu">OMEW</RouterLink></li>
+        <li><RouterLink to="/omew" @click="closeMenu">论坛</RouterLink></li>
         <li><RouterLink to="/about" @click="closeMenu">关于</RouterLink></li>
         <li v-if="!user">
           <RouterLink to="/login" @click="closeMenu">登录</RouterLink>
