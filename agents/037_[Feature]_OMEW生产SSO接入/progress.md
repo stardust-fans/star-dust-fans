@@ -6,3 +6,4 @@
 - 2026-09-12：OIDC discovery、公开 JWKS、PAR、OMEW required 模式、主站登录回跳与 `medium5` 单据点线上探针通过；旧专用桥接 secret 已删除。
 - 2026-09-12：PR 合并并由生产工作流完成部署；Edge 未保存主站登录凭据，最终已登录回调留待现有用户会话复验。
 - 2026-09-12：IAB 真实导航发现 `/oauth/authorize` 被 Static Assets 当作 SPA 深链接；补充 `run_worker_first` 后重新验证，浏览器已正确进入带完整 `return_to` 的主站登录页。
+- 2026-09-12：Edge 使用现有主站会话完成授权、回调与一次性 completion，iframe 回到 OMEW `/` 并识别统一身份；刷新主站页面后会话与 `medium5` 单据点内容保持正常。
