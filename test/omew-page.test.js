@@ -15,14 +15,17 @@ describe("OMEW public page contract", () => {
     expect(navSource).toContain('to="/omew"');
   });
 
-  it("embeds the OMEW self-deployment wizard with a usable fallback", () => {
-    expect(constantsSource).toContain('OMEW_DEPLOY_URL = "https://overture.lsy-demo.workers.dev/?src=lsy-404%2FOMEW"');
-    expect(viewSource).toContain(":src=" + "\"OMEW_DEPLOY_URL\"");
+  it("embeds the site OMEW instance with a usable fallback and session handoff", () => {
+    expect(constantsSource).toContain('OMEW_URL = "https://omew.stardustinfinity.top"');
+    expect(viewSource).toContain(":src=" + "\"OMEW_URL\"");
     expect(viewSource).toContain('target="_blank"');
     expect(viewSource).toContain("clipboard-read");
     expect(viewSource).toContain("clipboard-write");
+    expect(viewSource).toContain("publickey-credentials-get");
     expect(viewSource).toContain("@load=\"handleLoad\"");
-    expect(viewSource).toContain("自己的 Cloudflare 账户");
+    expect(viewSource).toContain('fetch("/api/omew/session"');
+    expect(viewSource).toContain('type: STAR_DUST_SESSION_EVENT');
+    expect(viewSource).toContain('window.addEventListener("message"');
   });
 
   it("keeps direct history URLs on the public SPA entry", () => {

@@ -16,6 +16,7 @@ async function token(payload) {
 
 beforeAll(async () => {
     env.TOKEN_SECRET = 'test-secret';
+    env.OMEW_SSO_SECRET = 'omew-sso-test-secret';
     await env.DB.prepare("INSERT OR IGNORE INTO users (id, username, email, password_hash) VALUES (9001, 'test-user', 'test-user@example.com', 'unused')").run();
     await env.DB.prepare("INSERT OR IGNORE INTO admins (id, username, password_hash) VALUES (9002, 'test-admin', 'unused')").run();
 });
@@ -138,6 +139,25 @@ describe('User auth guard', () => {
         const userToken = await token({ sub: 9001, username: 'test-user', role: 'user' });
         expect((await req('/api/admin/admins', { headers: { Authorization: `Bearer ${userToken}` } })).status).toBe(401);
         expect((await req('/api/admin/admins', { headers: { Authorization: `Bearer ${adminToken}` } })).status).toBe(200);
+    });
+});
+
+describe('OMEW identity bridge', () => {
+    it('exchanges a valid star-dust-fans user session for a short-lived OMEW token', async () => {
+        const userToken = await token({ sub: 9001, username: 'test-user', role: 'user' });
+        const res = await req('/api/omew/session', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${userToken}` },
+        });
+        expect(res.status).toBe(200);
+        const data = await res.json();
+        expect(data.user).toEqual({ id: 9001, username: 'test-user' });
+        expect(data.token.split('.')).toHaveLength(2);
+    });
+
+    it('does not issue an OMEW token without a star-dust-fans session', async () => {
+        const res = await req('/api/omew/session', { method: 'POST' });
+        expect(res.status).toBe(401);
     });
 });
 
