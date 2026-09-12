@@ -6,6 +6,7 @@ import DailyView from "../views/DailyView.vue";
 import FanartView from "../views/FanartView.vue";
 import ShopView from "../views/ShopView.vue";
 import StarmapView from "../views/StarmapView.vue";
+import OmewView from "../views/OmewView.vue";
 import AboutView from "../views/AboutView.vue";
 import RegisterView from "../views/RegisterView.vue";
 import LoginView from "../views/LoginView.vue";
@@ -35,6 +36,12 @@ const router = createRouter({
       path: "/starmap",
       name: "starmap",
       component: StarmapView,
+      meta: { fullBleed: true },
+    },
+    {
+      path: "/omew",
+      name: "omew",
+      component: OmewView,
       meta: { fullBleed: true },
     },
     { path: "/about", name: "about", component: AboutView },
