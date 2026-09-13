@@ -15,3 +15,4 @@
 - 2026-09-12：更新项目索引当前任务链接，并确认 Star Dust 与 OMEW 远端 `main` 均未启用分支保护；OMEW 本地主线与远端一致，Star Dust 既有本地主线存在历史分叉，交付时将避免重写该 checkout。
 - 2026-09-12：审查 OMEW 子任务提交 `9d19532`，确认自动 OIDC、前后端登出门禁、session refresh alias 回填及所有管理/成员显示投影实现一致。
 - 2026-09-12：OMEW 全量测试 75 个文件、494 项通过，类型检查、构建、deploy dry-run 与 diff 检查通过；将提交快进合并到本地 `main` 并推送远端 `main`。
+- 2026-09-12：Star Dust 直接推送 `main` 被 GitHub ruleset 拒绝，确认必须通过 PR 且需要 `build-and-deploy`；切换到受保护主线交付路径。
