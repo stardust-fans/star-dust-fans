@@ -42,7 +42,7 @@ const router = createRouter({
       path: "/omew",
       name: "omew",
       component: OmewView,
-      meta: { fullBleed: true },
+      meta: { fullBleed: true, requiresAuth: true },
     },
     { path: "/about", name: "about", component: AboutView },
     { path: "/login", name: "login", component: LoginView },

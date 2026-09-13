@@ -12,7 +12,7 @@ describe("OMEW public page contract", () => {
     expect(routerSource).toContain('path: "/omew"');
     expect(routerSource).toContain('name: "omew"');
     expect(routerSource).toContain('component: OmewView');
-    expect(routerSource).toContain("meta: { fullBleed: true }");
+    expect(routerSource).toContain("meta: { fullBleed: true, requiresAuth: true }");
     expect(navSource).toContain('to="/omew"');
     expect(navSource).toContain('>论坛</RouterLink>');
   });
