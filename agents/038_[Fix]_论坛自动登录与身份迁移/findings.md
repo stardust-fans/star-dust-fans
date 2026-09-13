@@ -31,3 +31,10 @@
 - [新 worktree 首次测试无法找到 `vitest`] -> [尝试直接调用原工作目录的 Vitest] -> [配置依赖仍按新 worktree 解析而失败；在新 worktree 执行锁文件约束的 `npm ci` 后继续验证]
 - [本地页面加载歌曲接口报告 `no such table: songs`] -> [检查当前测试目标] -> [新 worktree 的本地 D1 尚未应用无关歌曲迁移；论坛路由 guard 已在浏览器中先于 iframe 正确跳到 `/login?return_to=/omew`，该空库错误不影响本次认证验收]
 - [GitHub branch protection API 返回未保护，但直接推送 `main` 被拒绝] -> [读取远端拒绝信息] -> [仓库使用 ruleset 强制 PR 与 `build-and-deploy` 状态检查，改为推送任务分支并创建 PR]
+
+## 生产验收
+
+- Star Dust PR 合并后的 `build-and-deploy` 完整执行构建、61 项测试、D1 restore point、迁移与 Worker 部署并成功结束。
+- 未登录的真实浏览器访问 `/omew` 会进入 `/login?return_to=/omew`，论坛不再暴露独立登录入口。
+- Edge 中已有 Star Dust 会话刷新 `/omew` 后自动完成 OIDC 并进入 `medium5`；论坛显示 `mxjw` 与 `@mxjw`，未出现 `sso-`。
+- 论坛用户菜单仅保留“个人设置”，无登出项；线上 `/api/auth/logout` 同时返回 `403 LOGOUT_DISABLED`。

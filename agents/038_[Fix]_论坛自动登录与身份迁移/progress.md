@@ -16,3 +16,6 @@
 - 2026-09-12：审查 OMEW 子任务提交 `9d19532`，确认自动 OIDC、前后端登出门禁、session refresh alias 回填及所有管理/成员显示投影实现一致。
 - 2026-09-12：OMEW 全量测试 75 个文件、494 项通过，类型检查、构建、deploy dry-run 与 diff 检查通过；将提交快进合并到本地 `main` 并推送远端 `main`。
 - 2026-09-12：Star Dust 直接推送 `main` 被 GitHub ruleset 拒绝，确认必须通过 PR 且需要 `build-and-deploy`；切换到受保护主线交付路径。
+- 2026-09-12：PR #70 的 required check 通过并完成 squash merge；`main` 生产工作流成功执行测试、迁移保护点与 Worker 部署。
+- 2026-09-12：未登录 IAB 验证 `/omew` 会跳转主站登录并保留 return path；已有主站会话的 Edge 验证自动 OIDC、`medium5` 入口、普通用户名和无登出菜单均通过。
+- 2026-09-12：线上 OMEW 配置、OIDC start、服务端登出门禁与 D1 用户名统计再次通过，任务完成。
