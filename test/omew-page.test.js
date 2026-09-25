@@ -43,7 +43,23 @@ describe("OMEW public page contract", () => {
   it("keeps direct history URLs on the public SPA entry", () => {
     expect(wranglerSource).toContain('"binding": "ASSETS"');
     expect(wranglerSource).toContain('"not_found_handling": "single-page-application"');
-    expect(wranglerSource).toContain('"run_worker_first": ["/api/*", "/.well-known/*", "/oauth/*", "/saml/*", "/scim/*"]');
+
+    // Worker 里有路由、但没写进 run_worker_first 的路径，会被 Static Assets 的
+    // SPA 回退改写成 index.html（/uploads/* 与 /special-thanks.json 都曾因此失效）。
+    // 逐条断言，避免新增路径时必须同步改这条字符串。
+    const runWorkerFirst = wranglerSource.match(/"run_worker_first":\s*\[([^\]]*)\]/)?.[1] ?? "";
+    for (const entry of [
+      "/api/*",
+      "/.well-known/*",
+      "/oauth/*",
+      "/saml/*",
+      "/scim/*",
+      "/uploads/*",
+      "/special-thanks.json",
+    ]) {
+      expect(runWorkerFirst).toContain(`"${entry}"`);
+    }
+
     expect(workerSource).toContain("env.ASSETS.fetch(request)");
   });
 
