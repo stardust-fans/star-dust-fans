@@ -35,6 +35,8 @@
         </div>
       </div>
     </div>
+
+    <CommentSection v-if="item" target-type="fanart" :target-id="item.id" />
   </div>
 </template>
 
@@ -43,6 +45,7 @@ import { ref, onMounted, computed } from 'vue';
 import { useRoute, RouterLink } from 'vue-router';
 import { fetchAPI } from '../../shared/api.js';
 import { FANART_TYPE_LABELS } from '../../shared/constants.js';
+import CommentSection from '../components/CommentSection.vue';
 
 const route = useRoute();
 const item = ref(null);

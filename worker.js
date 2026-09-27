@@ -225,7 +225,7 @@ export default {
         if (path === '/api/shop' && method === 'GET') {
             try {
                 const stmt = env.DB.prepare(`
-                    SELECT id, title, description, price, image_url, bilibili_url, xianyu_url, status
+                    SELECT id, title, description, price, image_url, bilibili_url, xianyu_url, other_url, status
                     FROM shop
                     WHERE status IN ('waiting', 'shipped')
                     ORDER BY created_at DESC
@@ -800,7 +800,7 @@ export default {
             
             try {
                 const result = await env.DB.prepare(`
-                    SELECT id, title, description, price, image_url, bilibili_url, xianyu_url, status, ship_time, created_at
+                    SELECT id, title, description, price, image_url, bilibili_url, xianyu_url, other_url, status, ship_time, created_at
                     FROM shop WHERE user_id = ? ORDER BY created_at DESC
                 `).bind(userId).all();
                 
@@ -892,7 +892,7 @@ export default {
 
             try {
                 const body = await request.json();
-                const { title, description, price, xianyu_url, bilibili_url, ship_time, images } = body;
+                const { title, description, price, xianyu_url, other_url, bilibili_url, ship_time, images } = body;
 
                 if (!title || !title.trim()) {
                     return jsonResponse({ error: '标题不能为空' }, 400);
@@ -903,8 +903,10 @@ export default {
                 if (!images || images.length === 0) {
                     return jsonResponse({ error: '图片不能为空' }, 400);
                 }
-                if (!xianyu_url || !xianyu_url.trim()) {
-                    return jsonResponse({ error: '闲鱼链接不能为空' }, 400);
+                const hasXianyu = !!(xianyu_url && xianyu_url.trim());
+                const hasOther = !!(other_url && other_url.trim());
+                if (!hasXianyu && !hasOther) {
+                    return jsonResponse({ error: '闲鱼链接和其他平台购买链接至少填写一个' }, 400);
                 }
                 if (!ship_time) {
                     return jsonResponse({ error: '发车时间不能为空' }, 400);
@@ -914,15 +916,16 @@ export default {
                 const imagesJson = JSON.stringify(images);
 
                 const stmt = env.DB.prepare(`
-                    INSERT INTO shop (title, description, price, image_url, xianyu_url, bilibili_url, status, ship_time, images, user_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO shop (title, description, price, image_url, xianyu_url, other_url, bilibili_url, status, ship_time, images, user_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `);
                 const result = await stmt.bind(
                     title.trim(),
                     description || null,
                     price.trim(),
                     firstImage,
-                    xianyu_url.trim(),
+                    hasXianyu ? xianyu_url.trim() : null,
+                    hasOther ? other_url.trim() : null,
                     bilibili_url || null,
                     'pending',
                     ship_time,
@@ -1249,12 +1252,12 @@ export default {
         if (path === '/api/admin/shop' && method === 'POST') {
             if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
             try {
-                const { title, description, price, image_url, bilibili_url, xianyu_url, status } = await request.json();
+                const { title, description, price, image_url, bilibili_url, xianyu_url, other_url, status } = await request.json();
                 const stmt = env.DB.prepare(`
-                    INSERT INTO shop (title, description, price, image_url, bilibili_url, xianyu_url, status)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO shop (title, description, price, image_url, bilibili_url, xianyu_url, other_url, status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 `);
-                const result = await stmt.bind(title, description || null, price || null, image_url || null, bilibili_url || null, xianyu_url || null, status || 'waiting').run();
+                const result = await stmt.bind(title, description || null, price || null, image_url || null, bilibili_url || null, xianyu_url || null, other_url || null, status || 'waiting').run();
                 ctx.waitUntil(logAuditEvent(env, {
                     eventType: 'create', actorAdminId: isAdmin.sub, actorUsername: isAdmin.username,
                     targetTable: 'shop', targetId: result.meta?.last_row_id,
@@ -1273,12 +1276,12 @@ export default {
             if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
             try {
                 const id = shopPutMatch[1];
-                const { title, description, price, image_url, bilibili_url, xianyu_url, status } = await request.json();
+                const { title, description, price, image_url, bilibili_url, xianyu_url, other_url, status } = await request.json();
                 const stmt = env.DB.prepare(`
-                    UPDATE shop SET title = ?, description = ?, price = ?, image_url = ?, bilibili_url = ?, xianyu_url = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+                    UPDATE shop SET title = ?, description = ?, price = ?, image_url = ?, bilibili_url = ?, xianyu_url = ?, other_url = ?, status = ?, updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
                 `);
-                await stmt.bind(title, description || null, price || null, image_url || null, bilibili_url || null, xianyu_url || null, status || 'waiting', id).run();
+                await stmt.bind(title, description || null, price || null, image_url || null, bilibili_url || null, xianyu_url || null, other_url || null, status || 'waiting', id).run();
                 ctx.waitUntil(logAuditEvent(env, {
                     eventType: 'update', actorAdminId: isAdmin.sub, actorUsername: isAdmin.username,
                     targetTable: 'shop', targetId: Number(id),

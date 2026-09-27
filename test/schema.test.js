@@ -15,7 +15,7 @@ describe('submission schema', () => {
     it('contains the columns used by submission APIs', async () => {
         for (const [table, expected] of Object.entries({
             fanart: ['images', 'user_id', 'flag_reason'],
-            shop: ['images', 'user_id', 'ship_time', 'flag_reason'],
+            shop: ['images', 'user_id', 'ship_time', 'flag_reason', 'other_url'],
         })) {
             const actual = await columns(table);
             for (const column of expected) expect(actual.has(column)).toBe(true);

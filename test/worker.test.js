@@ -203,6 +203,72 @@ describe('Shop status lifecycle', () => {
     });
 });
 
+describe('Shop purchase links', () => {
+    let userToken;
+    let adminToken;
+
+    beforeAll(async () => {
+        userToken = await token({ sub: 9001, username: 'test-user', role: 'user' });
+        adminToken = await token({ sub: 9002, username: 'test-admin', role: 'admin' });
+    });
+
+    const contribute = (body) => req('/api/contributions/shop', {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${userToken}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            title: '链接校验测试',
+            price: '¥1',
+            images: ['https://example.com/a.png'],
+            ship_time: '2026-12-01T00:00',
+            ...body,
+        }),
+    });
+
+    it('accepts a contribution that only fills the xianyu link', async () => {
+        const res = await contribute({ xianyu_url: 'https://www.goofish.com/item/1' });
+        expect(res.status).toBe(201);
+    });
+
+    it('accepts a contribution that only fills the other-platform link', async () => {
+        const res = await contribute({ other_url: 'https://item.taobao.com/item.htm?id=1' });
+        expect(res.status).toBe(201);
+
+        const { id } = await res.json();
+        const row = await env.DB.prepare('SELECT xianyu_url, other_url FROM shop WHERE id = ?').bind(id).first();
+        expect(row.xianyu_url).toBe(null);
+        expect(row.other_url).toBe('https://item.taobao.com/item.htm?id=1');
+    });
+
+    it('rejects a contribution that fills neither link', async () => {
+        const res = await contribute({});
+        expect(res.status).toBe(400);
+        expect((await res.json()).error).toContain('至少填写一个');
+    });
+
+    it('stores the other-platform link on admin-created entries', async () => {
+        const created = await req('/api/admin/shop', {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${adminToken}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                title: 'admin other link',
+                other_url: 'https://weidian.com/item.html?itemID=1',
+                status: 'waiting',
+            }),
+        });
+        expect(created.status).toBe(200);
+
+        const { id } = await created.json();
+        const row = await env.DB.prepare('SELECT other_url FROM shop WHERE id = ?').bind(id).first();
+        expect(row.other_url).toBe('https://weidian.com/item.html?itemID=1');
+    });
+});
+
 describe('Auth endpoint', () => {
     it('POST /api/admin/verify with wrong credentials returns 401', async () => {
         const res = await req('/api/admin/verify', {

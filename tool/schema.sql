@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS shop (
     image_url VARCHAR(500),
     bilibili_url VARCHAR(500),
     xianyu_url VARCHAR(500),
+    other_url VARCHAR(500),
     ship_time TIMESTAMP,
     images TEXT,
     flag_reason TEXT,

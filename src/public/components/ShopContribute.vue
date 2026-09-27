@@ -36,8 +36,21 @@
         </div>
 
         <div class="form-group">
-          <label>闲鱼链接 <span class="required">*</span></label>
-          <input v-model="form.xianyu_url" type="url" required />
+          <label>闲鱼链接</label>
+          <input
+            v-model="form.xianyu_url"
+            type="url"
+            placeholder="与下方「其他平台购买链接」至少填写一个"
+          />
+        </div>
+
+        <div class="form-group">
+          <label>其他平台购买链接</label>
+          <input
+            v-model="form.other_url"
+            type="url"
+            placeholder="淘宝 / 微店 / 拼多多等，与闲鱼链接至少填写一个"
+          />
         </div>
 
         <div class="form-group">
@@ -76,6 +89,7 @@ const form = reactive({
   price: '',
   images: [],
   xianyu_url: '',
+  other_url: '',
   bilibili_url: '',
   ship_time: '',
 });
@@ -136,6 +150,13 @@ async function handleFiles(e) {
 
 async function submit() {
   error.value = '';
+
+  // 闲鱼链接与其他平台购买链接二选一
+  if (!form.xianyu_url.trim() && !form.other_url.trim()) {
+    error.value = '闲鱼链接和其他平台购买链接至少填写一个';
+    return;
+  }
+
   loading.value = true;
 
   try {
