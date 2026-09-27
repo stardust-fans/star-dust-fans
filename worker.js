@@ -754,7 +754,7 @@ export default {
             
             try {
                 const user = await env.DB.prepare(`
-                    SELECT id, username, email, created_at,
+                    SELECT id, username, email, avatar_url, created_at,
                         (SELECT COUNT(*) FROM fanart WHERE user_id = users.id) as fanart_count,
                         (SELECT COUNT(*) FROM shop WHERE user_id = users.id) as shop_count
                     FROM users WHERE id = ?
@@ -767,6 +767,49 @@ export default {
                 return jsonResponse(user);
             } catch (error) {
                 console.error('❌ GET /api/user/profile 错误:', error.message);
+                return jsonResponse({ error: error.message }, 500);
+            }
+        }
+
+        // ===== 更新用户资料（当前仅头像）=====
+        if (path === '/api/user/profile' && method === 'PUT') {
+            const userId = await getAuthenticatedUserId(request, env);
+            if (!userId) {
+                return jsonResponse({ error: '未登录' }, 401);
+            }
+
+            try {
+                const body = await request.json().catch(() => ({}));
+                const raw = body?.avatar_url;
+                let avatarUrl = null;
+
+                // 传 null / 空串表示清除头像
+                if (raw !== null && raw !== undefined) {
+                    if (typeof raw !== 'string') {
+                        return jsonResponse({ error: '头像地址格式不正确' }, 400);
+                    }
+                    const trimmed = raw.trim();
+                    if (trimmed.length > 0) {
+                        if (trimmed.length > 500) {
+                            return jsonResponse({ error: '头像地址过长' }, 400);
+                        }
+                        // 只接受站内上传路径或 https 外链，避免 javascript: / data: 之类的注入
+                        const isOwnUpload = trimmed.startsWith('/uploads/');
+                        const isHttps = /^https:\/\/[^\s]+$/i.test(trimmed);
+                        if (!isOwnUpload && !isHttps) {
+                            return jsonResponse({ error: '头像地址必须以 /uploads/ 或 https:// 开头' }, 400);
+                        }
+                        avatarUrl = trimmed;
+                    }
+                }
+
+                await env.DB.prepare(
+                    'UPDATE users SET avatar_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+                ).bind(avatarUrl, userId).run();
+
+                return jsonResponse({ success: true, avatar_url: avatarUrl });
+            } catch (error) {
+                console.error('❌ PUT /api/user/profile 错误:', error.message);
                 return jsonResponse({ error: error.message }, 500);
             }
         }
@@ -1309,7 +1352,7 @@ export default {
                 }
 
                 const stmt = env.DB.prepare(`
-                    SELECT c.id, c.user_id, c.parent_id, c.content, c.created_at, u.username
+                    SELECT c.id, c.user_id, c.parent_id, c.content, c.created_at, u.username, u.avatar_url
                     FROM comments c
                     JOIN users u ON c.user_id = u.id
                     WHERE c.target_type = ? AND c.target_id = ? AND c.status = 'published'
