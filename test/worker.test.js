@@ -269,6 +269,63 @@ describe('Shop purchase links', () => {
     });
 });
 
+describe('User profile avatar', () => {
+    let userToken;
+
+    beforeAll(async () => {
+        userToken = await token({ sub: 9001, username: 'test-user', role: 'user' });
+        await env.DB.prepare('UPDATE users SET avatar_url = NULL WHERE id = 9001').run();
+    });
+
+    const putAvatar = (body, withAuth = true) => req('/api/user/profile', {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+            ...(withAuth ? { Authorization: `Bearer ${userToken}` } : {}),
+        },
+        body: JSON.stringify(body),
+    });
+
+    it('requires authentication', async () => {
+        const res = await putAvatar({ avatar_url: '/uploads/9001/a.webp' }, false);
+        expect(res.status).toBe(401);
+    });
+
+    it('accepts an own-upload path and exposes it on the profile', async () => {
+        const res = await putAvatar({ avatar_url: '/uploads/9001/123_abc.webp' });
+        expect(res.status).toBe(200);
+        expect((await res.json()).avatar_url).toBe('/uploads/9001/123_abc.webp');
+
+        const profile = await (await req('/api/user/profile', {
+            headers: { Authorization: `Bearer ${userToken}` },
+        })).json();
+        expect(profile.avatar_url).toBe('/uploads/9001/123_abc.webp');
+    });
+
+    it('accepts an https link', async () => {
+        expect((await putAvatar({ avatar_url: 'https://example.com/a.png' })).status).toBe(200);
+    });
+
+    it('rejects unsafe schemes', async () => {
+        const res = await putAvatar({ avatar_url: 'javascript:alert(1)' });
+        expect(res.status).toBe(400);
+    });
+
+    it('rejects a non-string value', async () => {
+        const res = await putAvatar({ avatar_url: 12345 });
+        expect(res.status).toBe(400);
+    });
+
+    it('clears the avatar when given null', async () => {
+        const res = await putAvatar({ avatar_url: null });
+        expect(res.status).toBe(200);
+        expect((await res.json()).avatar_url).toBe(null);
+
+        const row = await env.DB.prepare('SELECT avatar_url FROM users WHERE id = 9001').first();
+        expect(row.avatar_url).toBe(null);
+    });
+});
+
 describe('Auth endpoint', () => {
     it('POST /api/admin/verify with wrong credentials returns 401', async () => {
         const res = await req('/api/admin/verify', {

@@ -15,6 +15,13 @@
             :src="img"
             :alt="`${item.title} - ${idx + 1}`"
             loading="lazy"
+            class="zoomable"
+            role="button"
+            tabindex="0"
+            :aria-label="`放大查看第 ${idx + 1} 张图片`"
+            @click="openLightbox(idx)"
+            @keydown.enter.prevent="openLightbox(idx)"
+            @keydown.space.prevent="openLightbox(idx)"
           />
         </div>
       </div>
@@ -42,6 +49,14 @@
     </div>
 
     <CommentSection v-if="item" target-type="shop" :target-id="item.id" />
+
+    <ImageLightbox
+      v-if="lightboxOpen"
+      :images="images"
+      :start-index="lightboxIndex"
+      :alt="item?.title || ''"
+      @close="lightboxOpen = false"
+    />
   </div>
 </template>
 
@@ -50,6 +65,7 @@ import { ref, onMounted, computed } from 'vue';
 import { useRoute, RouterLink } from 'vue-router';
 import { fetchAPI } from '../../shared/api.js';
 import CommentSection from '../components/CommentSection.vue';
+import ImageLightbox from '../components/ImageLightbox.vue';
 
 const route = useRoute();
 const item = ref(null);
@@ -64,6 +80,15 @@ const images = computed(() => {
     return [item.value.image_url];
   }
 });
+
+// 图片放大预览
+const lightboxOpen = ref(false);
+const lightboxIndex = ref(0);
+
+function openLightbox(idx) {
+  lightboxIndex.value = idx;
+  lightboxOpen.value = true;
+}
 
 function formatDate(dateStr) {
   if (!dateStr) return '-';

@@ -45,6 +45,13 @@
       <ul v-else-if="comments.length > 0" class="comment-list">
         <li v-for="item in comments" :key="item.id" class="comment-item">
           <div class="comment-meta">
+            <img
+              v-if="item.avatar_url"
+              class="comment-avatar"
+              :src="item.avatar_url"
+              :alt="`${item.username || '匿名'}的头像`"
+              loading="lazy"
+            />
             <span class="comment-author">{{ item.username || '匿名' }}</span>
             <span class="comment-time">{{ relativeTime(item.created_at) }}</span>
             <button
