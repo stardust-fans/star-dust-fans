@@ -31,12 +31,17 @@
           <a v-if="item.xianyu_url" :href="item.xianyu_url" target="_blank" rel="noopener" class="btn-link">
             🛒 闲鱼链接
           </a>
+          <a v-if="item.other_url" :href="item.other_url" target="_blank" rel="noopener" class="btn-link">
+            🛍️ 其他平台购买
+          </a>
           <a v-if="item.bilibili_url" :href="item.bilibili_url" target="_blank" rel="noopener" class="btn-link">
             ▶ B站链接
           </a>
         </div>
       </div>
     </div>
+
+    <CommentSection v-if="item" target-type="shop" :target-id="item.id" />
   </div>
 </template>
 
@@ -44,6 +49,7 @@
 import { ref, onMounted, computed } from 'vue';
 import { useRoute, RouterLink } from 'vue-router';
 import { fetchAPI } from '../../shared/api.js';
+import CommentSection from '../components/CommentSection.vue';
 
 const route = useRoute();
 const item = ref(null);

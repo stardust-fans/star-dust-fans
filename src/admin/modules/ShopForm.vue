@@ -26,6 +26,10 @@
       <input type="text" v-model="xianyuUrl" placeholder="https://m.tb.cn/..." />
     </div>
     <div class="form-row">
+      <label>其他平台购买链接</label>
+      <input type="text" v-model="otherUrl" placeholder="淘宝 / 微店 / 拼多多等（与闲鱼链接至少填一个）" />
+    </div>
+    <div class="form-row">
       <label>状态</label>
       <select v-model="status">
         <option value="waiting">⏳ 等待发车</option>
@@ -60,6 +64,7 @@ const price = ref(props.editing?.price || '');
 const imageUrl = ref(props.editing?.image_url || '');
 const bilibiliUrl = ref(props.editing?.bilibili_url || '');
 const xianyuUrl = ref(props.editing?.xianyu_url || '');
+const otherUrl = ref(props.editing?.other_url || '');
 const status = ref(props.editing?.status || 'waiting');
 const saving = ref(false);
 
@@ -76,6 +81,7 @@ async function handleSave() {
     image_url: imageUrl.value.trim(),
     bilibili_url: bilibiliUrl.value.trim(),
     xianyu_url: xianyuUrl.value.trim(),
+    other_url: otherUrl.value.trim(),
     status: status.value,
   };
   saving.value = true;

@@ -2480,3 +2480,180 @@ a {
   font-size: 0.85rem;
   color: var(--ink-faint);
 }
+
+/* ===== 评论区块（同人 / 量贩详情页共用） ===== */
+.comment-section {
+  margin-top: 48px;
+  padding-top: 28px;
+  border-top: 1px solid var(--line);
+}
+
+.comment-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.comment-header h2 {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.comment-count {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--ink-muted);
+}
+
+.comment-section .error-state {
+  padding: 16px 0;
+  font-size: 0.9rem;
+  text-align: left;
+}
+
+/* 发表框 */
+.comment-form textarea {
+  width: 100%;
+  padding: 14px 16px;
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  line-height: 1.7;
+  resize: vertical;
+  transition: border-color 0.2s var(--ease);
+}
+
+.comment-form textarea:focus {
+  outline: none;
+  border-color: var(--cobalt-soft);
+}
+
+.comment-form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.comment-hint {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--ink-faint);
+}
+
+.comment-form-actions .btn-hero-primary {
+  padding: 10px 26px;
+  font-size: 0.9rem;
+}
+
+.comment-form-actions .btn-hero-primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* 未登录引导 */
+.comment-login-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 16px 18px;
+  background: var(--cobalt-wash);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink-soft);
+  font-size: 0.92rem;
+}
+
+.comment-login-hint .btn-hero-secondary {
+  padding: 8px 20px;
+  font-size: 0.88rem;
+}
+
+/* 评论列表 */
+.comment-empty {
+  padding: 32px 20px;
+}
+
+.comment-list {
+  list-style: none;
+  margin: 24px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.comment-item {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.comment-meta {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.comment-author {
+  color: var(--cobalt);
+  font-weight: 500;
+  font-size: 0.92rem;
+}
+
+.comment-time {
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  color: var(--ink-faint);
+}
+
+.comment-delete {
+  margin-left: auto;
+  padding: 2px 8px;
+  background: none;
+  border: none;
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  cursor: pointer;
+  transition: color 0.2s var(--ease);
+}
+
+.comment-delete:hover:not(:disabled) {
+  color: #ff6b6b;
+}
+
+.comment-delete:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.comment-content {
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+@media (max-width: 768px) {
+  .comment-section {
+    margin-top: 32px;
+    padding-top: 22px;
+  }
+
+  .comment-login-hint {
+    flex-direction: column;
+    align-items: stretch;
+    text-align: center;
+  }
+}
