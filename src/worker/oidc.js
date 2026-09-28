@@ -396,7 +396,7 @@ async function userInfo(request, env, config) {
   const credential = tokenCredential(request);
   if (!credential) throw new OidcError("invalid_token", "An access token is required", 401);
   const dpopJkt = credential.scheme === "DPoP" ? await optionalDpopProof(request, request.method, `${config.issuer}/oauth/userinfo`, null, env) : null;
-  const row = await env.DB.prepare(`SELECT t.scope, t.token_type, t.dpop_jkt, u.id, u.username, u.email FROM oidc_access_tokens t JOIN users u ON u.id = t.user_id WHERE t.token_hash = ? AND t.expires_at > ? AND t.revoked_at IS NULL`).bind(await sha256Base64Url(credential.token), now()).first();
+  const row = await env.DB.prepare(`SELECT t.scope, t.token_type, t.dpop_jkt, u.id, u.username, u.display_name, u.email FROM oidc_access_tokens t JOIN users u ON u.id = t.user_id WHERE t.token_hash = ? AND t.expires_at > ? AND t.revoked_at IS NULL`).bind(await sha256Base64Url(credential.token), now()).first();
   if (!row || row.token_type !== (credential.scheme === "DPoP" ? "DPoP" : "Bearer") || (row.dpop_jkt && row.dpop_jkt !== dpopJkt)) throw new OidcError("invalid_token", "Access token is invalid", 401);
   return oidcJson({ sub: String(row.id), ...profileClaims(row, row.scope) });
 }
@@ -794,12 +794,12 @@ function profileClaims(user, scope, nonce) {
   const scopes = new Set(String(scope).split(/\s+/));
   const claims = {};
   if (nonce) claims.nonce = nonce;
-  if (scopes.has("profile")) { claims.name = user.username; claims.preferred_username = user.username; }
+  if (scopes.has("profile")) { claims.name = user.display_name || user.username; claims.preferred_username = user.username; }
   if (scopes.has("email")) { claims.email = user.email; claims.email_verified = false; }
   return claims;
 }
 
-async function loadUser(env, id) { return env.DB.prepare("SELECT id, username, email FROM users WHERE id = ?").bind(id).first(); }
+async function loadUser(env, id) { return env.DB.prepare("SELECT id, username, display_name, email FROM users WHERE id = ?").bind(id).first(); }
 
 async function uniqueUserCode(env) {
   for (let attempt = 0; attempt < 5; attempt += 1) {

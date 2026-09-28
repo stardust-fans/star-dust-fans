@@ -139,6 +139,14 @@ describe('User auth guard', () => {
         expect((await req('/api/admin/admins', { headers: { Authorization: `Bearer ${userToken}` } })).status).toBe(401);
         expect((await req('/api/admin/admins', { headers: { Authorization: `Bearer ${adminToken}` } })).status).toBe(200);
     });
+
+    it('keeps an existing session valid after the login name changes', async () => {
+        await env.DB.prepare("INSERT OR IGNORE INTO users (id, username, display_name, email, password_hash) VALUES (9902, 'user_9902', '原公开称呼', 'renamed@example.test', 'unused')").run();
+        const oldToken = await token({ sub: 9902, username: '旧用户名', role: 'user' });
+        const response = await req('/api/user/profile', { headers: { Authorization: `Bearer ${oldToken}` } });
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({ username: 'user_9902', display_name: '原公开称呼' });
+    });
 });
 
 describe('Shop status lifecycle', () => {

@@ -26,7 +26,7 @@
         </li>
         <li v-else>
           <RouterLink to="/user" class="nav-user" @click="closeMenu">
-            {{ user.username }}
+            {{ user.display_name || user.username }}
           </RouterLink>
         </li>
       </ul>
@@ -42,15 +42,20 @@
 </template>
 
 <script setup>
-import { ref, watch, computed } from "vue";
+import { ref, watch, onMounted } from "vue";
 import { useRoute } from "vue-router";
 import { useLogin } from "../composables/useLogin.js";
 
 const route = useRoute();
 const menuOpen = ref(false);
-const { getUser } = useLogin();
+const { getUser, refreshUser } = useLogin();
 
-const user = computed(() => getUser());
+const user = ref(getUser());
+
+onMounted(async () => {
+  const current = await refreshUser().catch(() => null);
+  if (current) user.value = current;
+});
 
 function closeMenu() {
   menuOpen.value = false;

@@ -32,12 +32,13 @@
           <img
             v-if="userInfo.avatar_url"
             :src="userInfo.avatar_url"
-            :alt="`${userInfo.username || '用户'}的头像`"
+            :alt="`${userInfo.display_name || userInfo.username || '用户'}的头像`"
           />
           <span v-else>{{ userInitial }}</span>
         </div>
         <div class="user-info">
-          <h2 id="profile-title">{{ userInfo.username || "用户" }}</h2>
+          <h2 id="profile-title">{{ userInfo.display_name || userInfo.username || "用户" }}</h2>
+          <p v-if="userInfo.username" class="user-email">@{{ userInfo.username }}</p>
           <p v-if="userInfo.email" class="user-email">{{ userInfo.email }}</p>
           <p class="user-register-date">
             <span class="label">注册时间</span>
@@ -231,7 +232,7 @@ const isAprilFoolsDay = computed(() => {
 });
 
 const userInitial = computed(() => {
-  return (userInfo.value.username || "?")[0].toUpperCase();
+  return (userInfo.value.display_name || userInfo.value.username || "?")[0].toUpperCase();
 });
 
 // ---------- 头像 ----------

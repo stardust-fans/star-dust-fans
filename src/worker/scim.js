@@ -1,3 +1,5 @@
+import { isValidDisplayName, isValidUsername, normalizeDisplayName, normalizeUsername } from "../shared/username.js";
+
 const encoder = new TextEncoder();
 const SCIM_PATH_PREFIX = "/scim/v2/";
 const SCIM_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0";
@@ -122,6 +124,7 @@ function schemas() {
         description: "User account provisioned by the identity service",
         attributes: [
           { name: "userName", type: "string", multiValued: false, required: true, caseExact: false, mutability: "readWrite", returned: "default", uniqueness: "server" },
+          { name: "displayName", type: "string", multiValued: false, required: false, caseExact: false, mutability: "readWrite", returned: "default" },
           { name: "active", type: "boolean", multiValued: false, required: false, caseExact: false, mutability: "readWrite", returned: "default" },
           { name: "emails", type: "complex", multiValued: true, required: false, mutability: "readWrite", returned: "default" },
         ],
@@ -145,7 +148,7 @@ async function listUsers(request, env, url) {
   const sortDescending = url.searchParams.get("sortOrder")?.toLowerCase() === "descending";
   const sortBy = url.searchParams.get("sortBy") === "email.value" ? "email" : "username";
   const rows = await env.DB.prepare(`
-    SELECT u.id, u.username, u.email, u.created_at, u.updated_at,
+    SELECT u.id, u.username, u.display_name, u.email, u.created_at, u.updated_at,
            COALESCE(s.external_id, '') AS external_id,
            COALESCE(s.active, 1) AS active, COALESCE(s.version, 1) AS version,
            COALESCE(s.updated_at, strftime('%s', u.updated_at)) AS scim_updated_at
@@ -168,15 +171,16 @@ async function getUser(request, env, url, id) {
 
 async function createUser(request, env, url) {
   const body = await readJson(request);
-  const username = boundedString(body.userName, 256, "userName");
+  const username = scimUsername(body.userName);
+  const displayName = body.displayName === undefined ? null : nullableDisplayName(body.displayName);
   const email = firstEmail(body) || `scim-${randomToken()}@invalid.local`;
   const now = Math.floor(Date.now() / 1000);
   const placeholderPassword = `scim-managed$${randomToken()}`;
   let result;
   try {
     result = await env.DB.prepare(
-      "INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)",
-    ).bind(username, email, placeholderPassword).run();
+      "INSERT INTO users (username, display_name, email, password_hash) VALUES (?, ?, ?, ?)",
+    ).bind(username, displayName, email, placeholderPassword).run();
   } catch {
     throw new ScimError(409, "A user with the same userName or email already exists", "uniqueness");
   }
@@ -195,11 +199,12 @@ async function putUser(request, env, url, id) {
   const current = await loadUser(env, id);
   if (!current) throw new ScimError(404, "SCIM user was not found");
   enforceIfMatch(request, current.version);
-  const username = boundedString(body.userName, 256, "userName");
+  const username = scimUsername(body.userName);
+  const displayName = body.displayName === undefined ? current.display_name : nullableDisplayName(body.displayName);
   const email = firstEmail(body) || current.email;
   const active = body.active === undefined ? current.active : Boolean(body.active);
   const externalId = body.externalId === undefined ? current.external_id : optionalString(body.externalId, 256);
-  const next = await updateUser(env, current, { username, email, active, externalId });
+  const next = await updateUser(env, current, { username, displayName, email, active, externalId });
   return scimJson(userResource(next, url, url.searchParams), 200, etagFor(next.version));
 }
 
@@ -209,7 +214,7 @@ async function patchUser(request, env, url, id) {
   if (!current) throw new ScimError(404, "SCIM user was not found");
   enforceIfMatch(request, current.version);
   if (!Array.isArray(body.Operations) || body.Operations.length > 32) throw new ScimError(400, "Operations must be an array");
-  const nextInput = { username: current.username, email: current.email, active: current.active, externalId: current.external_id };
+  const nextInput = { username: current.username, displayName: current.display_name, email: current.email, active: current.active, externalId: current.external_id };
   for (const operation of body.Operations) applyUserOperation(nextInput, operation);
   const next = await updateUser(env, current, nextInput);
   return scimJson(userResource(next, url, url.searchParams), 200, etagFor(next.version));
@@ -319,7 +324,7 @@ async function loadUser(env, id) {
   const numericId = String(id).match(/^\d+$/)?.[0];
   if (!numericId) return null;
   return env.DB.prepare(`
-    SELECT u.id, u.username, u.email, u.created_at, u.updated_at,
+    SELECT u.id, u.username, u.display_name, u.email, u.created_at, u.updated_at,
            COALESCE(s.external_id, '') AS external_id,
            COALESCE(s.active, 1) AS active, COALESCE(s.version, 1) AS version,
            COALESCE(s.updated_at, strftime('%s', u.updated_at)) AS scim_updated_at
@@ -338,8 +343,8 @@ async function updateUser(env, current, input) {
   const now = Math.floor(Date.now() / 1000);
   try {
     const result = await env.DB.prepare(
-      "UPDATE users SET username = ?, email = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-    ).bind(input.username, input.email, current.id).run();
+      "UPDATE users SET username = ?, display_name = ?, email = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+    ).bind(input.username, input.displayName, input.email, current.id).run();
     if (result.meta?.changes !== 1) throw new ScimError(404, "SCIM user was not found");
     const state = await env.DB.prepare(
       `INSERT INTO scim_user_state (user_id, external_id, active, version, updated_at)
@@ -379,7 +384,11 @@ function applyUserOperation(target, operation) {
   }
   if (path === "username") {
     if (op === "remove") throw new ScimError(400, "userName cannot be removed", "mutability");
-    target.username = boundedString(operation.value, 256, "userName");
+    target.username = scimUsername(operation.value);
+    return;
+  }
+  if (path === "displayname") {
+    target.displayName = op === "remove" ? null : nullableDisplayName(operation.value);
     return;
   }
   if (path === "emails" || path === "emails.value" || !path) {
@@ -428,14 +437,14 @@ async function assertUsersExist(env, ids) {
 
 async function groupResource(env, row, url) {
   const members = await env.DB.prepare(
-    "SELECT m.user_id, u.username FROM scim_group_members m JOIN users u ON u.id = m.user_id WHERE m.group_id = ? ORDER BY m.user_id ASC",
+    "SELECT m.user_id, u.username, u.display_name FROM scim_group_members m JOIN users u ON u.id = m.user_id WHERE m.group_id = ? ORDER BY m.user_id ASC",
   ).bind(row.id).all();
   return {
     schemas: [SCIM_GROUP_SCHEMA],
     id: row.id,
     externalId: row.external_id || undefined,
     displayName: row.display_name,
-    members: (members.results || []).map((member) => ({ value: String(member.user_id), display: member.username, type: "User", $ref: new URL(`/scim/v2/Users/${member.user_id}`, url).toString() })),
+    members: (members.results || []).map((member) => ({ value: String(member.user_id), display: member.display_name || member.username, type: "User", $ref: new URL(`/scim/v2/Users/${member.user_id}`, url).toString() })),
     meta: resourceMeta("Group", row.id, row.created_at, row.updated_at, row.version, url),
   };
 }
@@ -446,7 +455,7 @@ function userResource(row, url, params) {
     id: String(row.id),
     externalId: row.external_id || undefined,
     userName: row.username,
-    displayName: row.username,
+    displayName: row.display_name || row.username,
     active: Boolean(row.active),
     emails: row.email ? [{ value: row.email, primary: true, type: "work" }] : [],
     meta: resourceMeta("User", row.id, row.created_at, row.updated_at, row.version, url),
@@ -529,6 +538,19 @@ function firstEmail(body) {
 function boundedString(value, maxLength, name) {
   if (typeof value !== "string" || !value.trim() || value.length > maxLength) throw new ScimError(400, `${name} is invalid`, "invalidValue");
   return value.trim();
+}
+
+function scimUsername(value) {
+  const username = normalizeUsername(boundedString(value, 256, "userName"));
+  if (!isValidUsername(username)) throw new ScimError(400, "userName is invalid", "invalidValue");
+  return username;
+}
+
+function nullableDisplayName(value) {
+  if (value === null || value === "") return null;
+  const name = normalizeDisplayName(value);
+  if (!isValidDisplayName(name)) throw new ScimError(400, "displayName is invalid", "invalidValue");
+  return name;
 }
 
 function optionalString(value, maxLength) {

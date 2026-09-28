@@ -3,19 +3,20 @@
   <div class="page-header">
     <span class="eyebrow page-eyebrow">✦ 登录</span>
     <h1 class="page-title">登录</h1>
-    <p class="page-subtitle">登录后即可投稿同人作品或通贩商品</p>
+    <p class="page-subtitle">登录后即可投稿同人作品或通贩商品。原用户名含特殊字符时，可用注册邮箱登录。</p>
   </div>
 
   <div class="register-content">
     <form @submit.prevent="handleLogin" class="register-form">
       <div class="form-group">
-        <label for="username">用户名</label>
+        <label for="username">用户名或注册邮箱</label>
         <input
           id="username"
           v-model="form.username"
           type="text"
-          placeholder="请输入用户名"
+          placeholder="请输入用户名或注册邮箱"
           required
+          autocomplete="username"
           :disabled="isLoading"
         />
       </div>
