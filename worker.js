@@ -2,7 +2,7 @@
 import { handleOidcRequest } from "./src/worker/oidc.js";
 import { handleSamlRequest } from "./src/worker/saml.js";
 import { handleScimRequest } from "./src/worker/scim.js";
-import { isValidDisplayName, isValidUsername, normalizeDisplayName, normalizeUsername } from "./src/shared/username.js";
+import { isValidDisplayName, isValidUsername, normalizeDisplayName, normalizeUsername, usernameCandidate } from "./src/shared/username.js";
 
 export default {
     async fetch(request, env, ctx) {
@@ -391,7 +391,7 @@ export default {
                 }
 
                 const existing = await env.DB.prepare(
-                    'SELECT id FROM users WHERE username = ? OR email = ?'
+                    'SELECT id FROM users WHERE username = ? COLLATE NOCASE OR email = ? COLLATE NOCASE'
                 ).bind(username, email).first();
 
                 if (existing) {
@@ -427,11 +427,10 @@ export default {
                     return jsonResponse({ error: '用户名或邮箱及密码不能为空' }, 400);
                 }
 
-                const byEmail = identifier.includes('@');
                 const matches = await env.DB.prepare(
                     `SELECT id, username, COALESCE(display_name, username) AS display_name, password_hash
-                     FROM users WHERE ${byEmail ? 'email' : 'username'} = ? COLLATE NOCASE LIMIT 2`
-                ).bind(identifier).all();
+                     FROM users WHERE username = ? COLLATE NOCASE OR email = ? COLLATE NOCASE LIMIT 2`
+                ).bind(identifier, identifier).all();
                 const user = matches.results?.length === 1 ? matches.results[0] : null;
 
                 const scimState = user
@@ -457,7 +456,8 @@ export default {
                 return jsonResponse({
                     success: true,
                     token,
-                    user: { id: user.id, username: user.username, display_name: user.display_name }
+                    user: { id: user.id, username: user.username, display_name: user.display_name },
+                    username_change_required: !isValidUsername(user.username),
                 });
 
             } catch (error) {
@@ -785,10 +785,49 @@ export default {
                     return jsonResponse({ error: '用户不存在' }, 404);
                 }
                 
-                return jsonResponse(user);
+                const usernameChangeRequired = !isValidUsername(user.username);
+                return jsonResponse({
+                    ...user,
+                    username_change_required: usernameChangeRequired,
+                    suggested_username: usernameChangeRequired ? await suggestAvailableUsername(env.DB, user) : null,
+                });
             } catch (error) {
                 console.error('❌ GET /api/user/profile 错误:', error.message);
                 return jsonResponse({ error: error.message }, 500);
+            }
+        }
+
+        if (path === '/api/user/username' && method === 'PUT') {
+            const userId = await getAuthenticatedUserId(request, env);
+            if (!userId) return jsonResponse({ error: '未登录' }, 401);
+
+            const body = await request.json().catch(() => ({}));
+            const username = normalizeUsername(body?.username);
+            if (!isValidUsername(username)) {
+                return jsonResponse({ error: '用户名需为 2–32 位字母、数字、下划线或短横线' }, 400);
+            }
+
+            try {
+                const user = await env.DB.prepare('SELECT id, username, display_name FROM users WHERE id = ?').bind(userId).first();
+                if (!user) return jsonResponse({ error: '用户不存在' }, 404);
+                if (isValidUsername(user.username)) return jsonResponse({ error: '当前用户名无需修改' }, 409);
+
+                const existing = await env.DB.prepare('SELECT id FROM users WHERE username = ? COLLATE NOCASE AND id <> ?').bind(username, userId).first();
+                if (existing) return jsonResponse({ error: '用户名已被占用' }, 409);
+
+                const result = await env.DB.prepare(`
+                    UPDATE users
+                    SET username = ?, display_name = CASE WHEN display_name IS NULL AND instr(username, '@') = 0 THEN username ELSE display_name END,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ? AND username = ?
+                `).bind(username, userId, user.username).run();
+                if (result.meta?.changes !== 1) return jsonResponse({ error: '用户名已发生变化，请刷新后重试' }, 409);
+
+                return jsonResponse({ success: true, username, display_name: user.display_name || (user.username.includes('@') ? username : user.username) });
+            } catch (error) {
+                if (String(error?.message).includes('UNIQUE constraint failed')) return jsonResponse({ error: '用户名已被占用' }, 409);
+                console.error('❌ PUT /api/user/username 错误:', error.message);
+                return jsonResponse({ error: '修改用户名失败' }, 500);
             }
         }
 
@@ -1939,6 +1978,18 @@ async function getAuthenticatedUser(request, env, expectedRole) {
 async function getAuthenticatedUserId(request, env) {
     const payload = await getAuthenticatedUser(request, env, 'user');
     return payload?.sub || null;
+}
+
+async function suggestAvailableUsername(db, user) {
+    const preferred = usernameCandidate(user.username, user.id);
+    const fallback = `user_${user.id}`;
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+        const candidate = attempt === 0 ? preferred : attempt === 1 ? fallback : `${fallback}_${attempt}`;
+        if (!isValidUsername(candidate)) continue;
+        const existing = await db.prepare('SELECT id FROM users WHERE username = ? COLLATE NOCASE AND id <> ?').bind(candidate, user.id).first();
+        if (!existing) return candidate;
+    }
+    throw new Error('无法生成可用用户名');
 }
 
 async function verifyToken(token, env) {

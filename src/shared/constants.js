@@ -49,4 +49,5 @@ export const PAGE_TITLE_MAP = {
   aspirateur: "Aspirateur · 星尘粉丝站",
   register: "注册 · 星尘粉丝站",
   login: "登录 · 星尘粉丝站",
+  "change-username": "更新用户名 · 星尘粉丝站",
 };

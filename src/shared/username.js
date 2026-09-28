@@ -8,6 +8,11 @@ export function isValidUsername(value) {
   return USERNAME_RE.test(value);
 }
 
+export function usernameCandidate(value, userId) {
+  const stripped = normalizeUsername(value).replace(/[^a-z0-9_-]/g, "").slice(0, 32);
+  return isValidUsername(stripped) ? stripped : `user_${userId}`;
+}
+
 export function normalizeDisplayName(value) {
   return typeof value === "string" ? value.trim() : "";
 }

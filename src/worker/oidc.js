@@ -7,6 +7,7 @@ import {
   importJWK,
   jwtVerify,
 } from "jose";
+import { isValidUsername } from "../shared/username.js";
 
 const encoder = new TextEncoder();
 const AUTHORIZATION_CODE_TTL_SECONDS = 300;
@@ -149,11 +150,18 @@ async function authorize(request, env, ctx, config, authenticateUser) {
       if (prompt === "none") return authorizationResponse(config, client, redirectUri, responseMode, { error: "login_required", error_description: "Authentication is required", state });
       const loginUrl = new URL("/login", config.issuer);
       const returnUrl = new URL(request.url);
-      loginUrl.searchParams.set("return_to", `${returnUrl.pathname}${returnUrl.search}`);
+      loginUrl.searchParams.set("return_to", client.clientId === "stardust-omew" ? "/omew" : `${returnUrl.pathname}${returnUrl.search}`);
       return Response.redirect(loginUrl.toString(), 302);
     }
     const user = await loadUser(env, session.sub);
     if (!user) return authorizationResponse(config, client, redirectUri, responseMode, { error: "access_denied", error_description: "User account is unavailable", state });
+    if (!isValidUsername(user.username)) {
+      if (prompt === "none") return authorizationResponse(config, client, redirectUri, responseMode, { error: "interaction_required", error_description: "Username update is required", state });
+      const changeUrl = new URL("/change-username", config.issuer);
+      const returnUrl = new URL(request.url);
+      changeUrl.searchParams.set("return_to", client.clientId === "stardust-omew" ? "/omew" : `${returnUrl.pathname}${returnUrl.search}`);
+      return Response.redirect(changeUrl.toString(), 302);
+    }
 
     const dpopJkt = optionalParameter(params, "dpop_jkt", 128);
     if (dpopJkt && !/^[A-Za-z0-9_-]{43,128}$/.test(dpopJkt)) throw new OidcError("invalid_request", "Invalid DPoP key thumbprint");

@@ -4,6 +4,7 @@ import navSource from "../src/public/components/NavBar.vue?raw";
 import routerSource from "../src/public/router/index.js?raw";
 import viewSource from "../src/public/views/OmewView.vue?raw";
 import loginSource from "../src/public/views/LoginView.vue?raw";
+import changeUsernameSource from "../src/public/views/ChangeUsernameView.vue?raw";
 import wranglerSource from "../wrangler.jsonc?raw";
 import workerSource from "../worker.js?raw";
 
@@ -24,7 +25,8 @@ describe("OMEW public page contract", () => {
     expect(workerSource).toContain("handleOidcRequest");
     expect(loginSource).toContain("requested.startsWith('/')");
     expect(loginSource).toContain("!requested.startsWith('//')");
-    expect(loginSource).toContain("window.location.assign(returnTo)");
+    expect(loginSource).toContain("window.location.assign(data.username_change_required ?");
+    expect(changeUsernameSource).toContain("window.location.assign(returnTo)");
   });
 
   it("embeds the site OMEW instance with a usable fallback", () => {

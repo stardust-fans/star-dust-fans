@@ -1,7 +1,7 @@
 import { env, createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import worker from "../worker.js";
-import { isValidDisplayName, isValidUsername, normalizeDisplayName, normalizeUsername } from "../src/shared/username.js";
+import { isValidDisplayName, isValidUsername, normalizeDisplayName, normalizeUsername, usernameCandidate } from "../src/shared/username.js";
 
 async function request(path, options = {}) {
   const ctx = createExecutionContext();
@@ -27,6 +27,9 @@ describe("shared username policy", () => {
     expect(normalizeDisplayName("  星尘·同好  ")).toBe("星尘·同好");
     expect(isValidDisplayName("星尘·同好")).toBe(true);
     expect(isValidDisplayName("bad\nname")).toBe(false);
+    expect(usernameCandidate("  Fan.Name@Site  ", 7)).toBe("fannamesite");
+    expect(usernameCandidate("纯中文", 7)).toBe("user_7");
+    expect(usernameCandidate("A", 7)).toBe("user_7");
   });
 
   it("rejects a special-character login name before Turnstile verification", async () => {
@@ -39,7 +42,7 @@ describe("shared username policy", () => {
   });
 
   it("registers a lowercase handle and Chinese display name, then signs in by email", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ success: true }));
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => Response.json({ success: true }));
     const registration = await request("/api/register", {
       method: "POST",
       body: JSON.stringify({
@@ -72,14 +75,88 @@ describe("shared username policy", () => {
       body: JSON.stringify({ username: "旧名_ron", password: "password123" }),
     });
     expect(legacyLogin.status).toBe(200);
-
-    const migratedHandle = `user_${session.user.id}`;
-    await env.DB.prepare("UPDATE users SET username = ? WHERE id = ?").bind(migratedHandle, session.user.id).run();
-    const migratedLogin = await request("/api/login", {
-      method: "POST",
-      body: JSON.stringify({ username: "policy-user@example.test", password: "password123" }),
+    const legacySession = await legacyLogin.json();
+    expect(legacySession.username_change_required).toBe(true);
+    const legacyProfile = await request("/api/user/profile", {
+      headers: { Authorization: `Bearer ${session.token}` },
     });
-    expect(migratedLogin.status).toBe(200);
-    expect((await migratedLogin.json()).user).toMatchObject({ username: migratedHandle, display_name: "星尘·同好" });
+    expect(await legacyProfile.json()).toMatchObject({ username: "旧名_Ron", suggested_username: "_ron", username_change_required: true });
+
+    const invalidUpdate = await request("/api/user/username", {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${session.token}` },
+      body: JSON.stringify({ username: "bad.name" }),
+    });
+    expect(invalidUpdate.status).toBe(400);
+
+    const rename = await request("/api/user/username", {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${session.token}` },
+      body: JSON.stringify({ username: "_Ron" }),
+    });
+    expect(rename.status).toBe(200);
+    expect(await rename.json()).toMatchObject({ username: "_ron", display_name: "星尘·同好" });
+    const renamedProfile = await request("/api/user/profile", {
+      headers: { Authorization: `Bearer ${session.token}` },
+    });
+    expect(await renamedProfile.json()).toMatchObject({ username: "_ron", username_change_required: false });
+
+    const renamedLogin = await request("/api/login", {
+      method: "POST",
+      body: JSON.stringify({ username: "_ron", password: "password123" }),
+    });
+    expect(renamedLogin.status).toBe(200);
+    expect((await renamedLogin.json()).username_change_required).toBe(false);
+    expect((await request("/api/login", { method: "POST", body: JSON.stringify({ username: "旧名_Ron", password: "password123" }) })).status).toBe(401);
+  });
+
+  it("suggests a free fallback when stripping characters collides with another handle", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => Response.json({ success: true }));
+    for (const [username, email] of [["takenone", "taken@example.test"], ["legacyone", "legacy@example.test"]]) {
+      expect((await request("/api/register", {
+        method: "POST",
+        body: JSON.stringify({ username, email, password: "password123", "cf-turnstile-response": "test" }),
+      })).status).toBe(201);
+    }
+    const login = await request("/api/login", { method: "POST", body: JSON.stringify({ username: "legacyone", password: "password123" }) });
+    const session = await login.json();
+    await env.DB.prepare("UPDATE users SET username = ? WHERE id = ?").bind("taken.one", session.user.id).run();
+    const profile = await request("/api/user/profile", { headers: { Authorization: `Bearer ${session.token}` } });
+    expect((await profile.json()).suggested_username).toBe(`user_${session.user.id}`);
+    const conflict = await request("/api/user/username", {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${session.token}` },
+      body: JSON.stringify({ username: "takenone" }),
+    });
+    expect(conflict.status).toBe(409);
+    const rename = await request("/api/user/username", {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${session.token}` },
+      body: JSON.stringify({ username: `user_${session.user.id}` }),
+    });
+    expect(rename.status).toBe(200);
+    expect((await rename.json()).display_name).toBe("taken.one");
+  });
+
+  it("accepts an email-shaped legacy username and does not publish it after rename", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => Response.json({ success: true }));
+    const registration = await request("/api/register", {
+      method: "POST",
+      body: JSON.stringify({ username: "legacy_mail", email: "registered@example.test", password: "password123", "cf-turnstile-response": "test" }),
+    });
+    expect(registration.status).toBe(201);
+    const original = await request("/api/login", { method: "POST", body: JSON.stringify({ username: "legacy_mail", password: "password123" }) });
+    const session = await original.json();
+    await env.DB.prepare("UPDATE users SET username = ? WHERE id = ?").bind("Alias.Name@site.test", session.user.id).run();
+    const legacyLogin = await request("/api/login", { method: "POST", body: JSON.stringify({ username: "Alias.Name@site.test", password: "password123" }) });
+    expect((await legacyLogin.json()).username_change_required).toBe(true);
+    const profile = await request("/api/user/profile", { headers: { Authorization: `Bearer ${session.token}` } });
+    expect((await profile.json()).suggested_username).toBe("aliasnamesitetest");
+    const rename = await request("/api/user/username", {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${session.token}` },
+      body: JSON.stringify({ username: "aliasnamesitetest" }),
+    });
+    expect(await rename.json()).toMatchObject({ username: "aliasnamesitetest", display_name: "aliasnamesitetest" });
   });
 });

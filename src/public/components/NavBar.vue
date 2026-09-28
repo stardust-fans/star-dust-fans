@@ -43,10 +43,11 @@
 
 <script setup>
 import { ref, watch, onMounted } from "vue";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { useLogin } from "../composables/useLogin.js";
 
 const route = useRoute();
+const router = useRouter();
 const menuOpen = ref(false);
 const { getUser, refreshUser } = useLogin();
 
@@ -54,7 +55,12 @@ const user = ref(getUser());
 
 onMounted(async () => {
   const current = await refreshUser().catch(() => null);
-  if (current) user.value = current;
+  if (current) {
+    user.value = current;
+    if (current.username_change_required && !["login", "register", "change-username"].includes(route.name)) {
+      router.replace({ name: "change-username", query: { return_to: route.fullPath } });
+    }
+  }
 });
 
 function closeMenu() {

@@ -77,13 +77,13 @@ async function exchange(code, overrides = {}) {
 beforeAll(async () => {
   env.TOKEN_SECRET = "oidc-provider-test-session-secret";
   env.OIDC_ISSUER = ISSUER;
-  env.OIDC_CLIENTS = JSON.stringify([{
-    client_id: CLIENT_ID,
+  env.OIDC_CLIENTS = JSON.stringify([CLIENT_ID, "stardust-omew"].map((clientId) => ({
+    client_id: clientId,
     client_name: "OMEW Test",
     client_secret: CLIENT_SECRET,
     token_endpoint_auth_method: "client_secret_basic",
     redirect_uris: [REDIRECT_URI],
-  }]);
+  })));
 
   const { privateKey, publicKey } = await generateKeyPair("RS256", { modulusLength: 2048, extractable: true });
   const privateJwk = { ...(await exportJWK(privateKey)), alg: "RS256", use: "sig", kid: "test-key" };
@@ -122,6 +122,11 @@ describe("OpenID Provider", () => {
     const location = new URL(response.headers.get("Location"));
     expect(location.pathname).toBe("/login");
     expect(location.searchParams.get("return_to")).toContain("/oauth/authorize?");
+
+    const forum = await authorize({ client_id: "stardust-omew" }, false);
+    const forumLogin = new URL(forum.headers.get("Location"));
+    expect(forumLogin.pathname).toBe("/login");
+    expect(forumLogin.searchParams.get("return_to")).toBe("/omew");
   });
 
   it("returns login_required to the registered callback for prompt=none", async () => {
@@ -140,6 +145,30 @@ describe("OpenID Provider", () => {
     expect(location.origin + location.pathname).toBe(REDIRECT_URI);
     expect(location.searchParams.get("error")).toBe("login_required");
     expect(location.searchParams.get("state")).toBe("state-value");
+  });
+
+  it("requires an existing account to update an invalid username before authorization", async () => {
+    await env.DB.prepare("UPDATE users SET username = ? WHERE id = ?").bind("old.name", 9801).run();
+    try {
+      const response = await authorize();
+      expect(response.status).toBe(302);
+      const location = new URL(response.headers.get("Location"));
+      expect(location.pathname).toBe("/change-username");
+      expect(location.searchParams.get("return_to")).toContain("/oauth/authorize?");
+
+      const forum = await authorize({ client_id: "stardust-omew" });
+      const forumLocation = new URL(forum.headers.get("Location"));
+      expect(forumLocation.pathname).toBe("/change-username");
+      expect(forumLocation.searchParams.get("return_to")).toBe("/omew");
+
+      const silent = await authorize({ prompt: "none" });
+      expect(silent.status).toBe(302);
+      const callback = new URL(silent.headers.get("Location"));
+      expect(callback.origin + callback.pathname).toBe(REDIRECT_URI);
+      expect(callback.searchParams.get("error")).toBe("interaction_required");
+    } finally {
+      await env.DB.prepare("UPDATE users SET username = ? WHERE id = ?").bind("oidc-user", 9801).run();
+    }
   });
 
   it("issues a one-use code, ID token, and UserInfo access token", async () => {
