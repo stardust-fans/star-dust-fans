@@ -103,7 +103,8 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 -- 普通用户表
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username VARCHAR(50) NOT NULL UNIQUE,
+    username VARCHAR(32) NOT NULL UNIQUE,
+    display_name TEXT,
     email VARCHAR(100) NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     avatar_url VARCHAR(500),

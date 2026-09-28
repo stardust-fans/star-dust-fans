@@ -90,8 +90,8 @@ beforeAll(async () => {
   publicJwk = { ...(await exportJWK(publicKey)), alg: "RS256", use: "sig", kid: "test-key" };
   env.OIDC_SIGNING_JWKS = JSON.stringify({ keys: [privateJwk] });
   await env.DB.prepare(
-    "INSERT OR IGNORE INTO users (id, username, email, password_hash) VALUES (?, ?, ?, ?)",
-  ).bind(9801, "oidc-user", "oidc-user@example.com", "unused").run();
+    "INSERT OR IGNORE INTO users (id, username, display_name, email, password_hash) VALUES (?, ?, ?, ?, ?)",
+  ).bind(9801, "oidc-user", "原公开称呼", "oidc-user@example.com", "unused").run();
 });
 
 describe("OpenID Provider", () => {
@@ -161,6 +161,7 @@ describe("OpenID Provider", () => {
     expect(verified.payload).toMatchObject({
       sub: "9801",
       nonce: "nonce-value",
+      name: "原公开称呼",
       preferred_username: "oidc-user",
       email: "oidc-user@example.com",
       email_verified: false,
@@ -170,7 +171,7 @@ describe("OpenID Provider", () => {
       headers: { Authorization: `Bearer ${tokens.access_token}` },
     });
     expect(info.status).toBe(200);
-    expect(await info.json()).toMatchObject({ sub: "9801", preferred_username: "oidc-user" });
+    expect(await info.json()).toMatchObject({ sub: "9801", name: "原公开称呼", preferred_username: "oidc-user" });
 
     const replay = await exchange(code);
     expect(replay.status).toBe(400);

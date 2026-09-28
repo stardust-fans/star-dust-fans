@@ -1,5 +1,5 @@
 import { ref } from "vue";
-import { fetchAPI } from "../../shared/api.js";
+import { API_BASE, fetchAPI } from "../../shared/api.js";
 
 export function useLogin() {
   const isLoading = ref(false);
@@ -66,6 +66,19 @@ export function useLogin() {
     return getCookie("authToken");
   }
 
+  async function refreshUser() {
+    const token = getToken();
+    if (!token) return null;
+    const response = await fetch(`${API_BASE}/user/profile`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) return null;
+    const profile = await response.json();
+    const user = { id: profile.id, username: profile.username, display_name: profile.display_name };
+    setCookie("user", JSON.stringify(user), 7);
+    return user;
+  }
+
   function isAuthenticated() {
     return !!getToken();
   }
@@ -75,6 +88,7 @@ export function useLogin() {
     logout,
     getUser,
     getToken,
+    refreshUser,
     isAuthenticated,
     isLoading,
     error,

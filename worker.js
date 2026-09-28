@@ -2,6 +2,7 @@
 import { handleOidcRequest } from "./src/worker/oidc.js";
 import { handleSamlRequest } from "./src/worker/saml.js";
 import { handleScimRequest } from "./src/worker/scim.js";
+import { isValidDisplayName, isValidUsername, normalizeDisplayName, normalizeUsername } from "./src/shared/username.js";
 
 export default {
     async fetch(request, env, ctx) {
@@ -362,7 +363,23 @@ export default {
         if (path === '/api/register' && method === 'POST') {
             try {
                 const body = await request.json();
-                const { username, email, password, 'cf-turnstile-response': turnstileToken } = body;
+                const { password, 'cf-turnstile-response': turnstileToken } = body;
+                const username = normalizeUsername(body.username);
+                const email = typeof body.email === 'string' ? body.email.trim() : '';
+                const displayName = normalizeDisplayName(body.display_name);
+
+                if (!isValidUsername(username)) {
+                    return jsonResponse({ error: '用户名需为 2–32 位字母、数字、下划线或短横线' }, 400);
+                }
+                if (!email) {
+                    return jsonResponse({ error: '邮箱不能为空' }, 400);
+                }
+                if (body.display_name != null && typeof body.display_name !== 'string') {
+                    return jsonResponse({ error: '显示名格式不正确' }, 400);
+                }
+                if (displayName && !isValidDisplayName(displayName)) {
+                    return jsonResponse({ error: '显示名需为 1–32 个字符且不能包含控制字符' }, 400);
+                }
 
                 if (!turnstileToken) {
                     return jsonResponse({ error: '请完成人机验证' }, 400);
@@ -384,8 +401,8 @@ export default {
                 const passwordHash = await hashPassword(password);
 
                 const result = await env.DB.prepare(
-                    'INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)'
-                ).bind(username, email, passwordHash).run();
+                    'INSERT INTO users (username, display_name, email, password_hash) VALUES (?, ?, ?, ?)'
+                ).bind(username, displayName || null, email, passwordHash).run();
 
                 return jsonResponse({
                     success: true,
@@ -404,14 +421,18 @@ export default {
             try {
                 const body = await request.json();
                 const { username, password } = body;
+                const identifier = typeof username === 'string' ? username.trim() : '';
 
-                if (!username || !password) {
-                    return jsonResponse({ error: '用户名和密码不能为空' }, 400);
+                if (!identifier || !password) {
+                    return jsonResponse({ error: '用户名或邮箱及密码不能为空' }, 400);
                 }
 
-                const user = await env.DB.prepare(
-                    'SELECT id, username, password_hash FROM users WHERE username = ?'
-                ).bind(username).first();
+                const byEmail = identifier.includes('@');
+                const matches = await env.DB.prepare(
+                    `SELECT id, username, COALESCE(display_name, username) AS display_name, password_hash
+                     FROM users WHERE ${byEmail ? 'email' : 'username'} = ? COLLATE NOCASE LIMIT 2`
+                ).bind(identifier).all();
+                const user = matches.results?.length === 1 ? matches.results[0] : null;
 
                 const scimState = user
                     ? await env.DB.prepare('SELECT active FROM scim_user_state WHERE user_id = ?').bind(user.id).first()
@@ -436,7 +457,7 @@ export default {
                 return jsonResponse({
                     success: true,
                     token,
-                    user: { id: user.id, username: user.username }
+                    user: { id: user.id, username: user.username, display_name: user.display_name }
                 });
 
             } catch (error) {
@@ -754,7 +775,7 @@ export default {
             
             try {
                 const user = await env.DB.prepare(`
-                    SELECT id, username, email, avatar_url, created_at,
+                    SELECT id, username, COALESCE(display_name, username) AS display_name, email, avatar_url, created_at,
                         (SELECT COUNT(*) FROM fanart WHERE user_id = users.id) as fanart_count,
                         (SELECT COUNT(*) FROM shop WHERE user_id = users.id) as shop_count
                     FROM users WHERE id = ?
@@ -878,7 +899,7 @@ export default {
             const payload = await getAuthenticatedUser(request, env, 'user');
             let userId = payload?.sub || null;
             let username = null;
-            if (payload) username = payload.username;
+            if (payload) username = payload.display_name;
             if (!userId) {
                 return jsonResponse({ error: '请先登录' }, 401);
             }
@@ -1352,7 +1373,8 @@ export default {
                 }
 
                 const stmt = env.DB.prepare(`
-                    SELECT c.id, c.user_id, c.parent_id, c.content, c.created_at, u.username, u.avatar_url
+                    SELECT c.id, c.user_id, c.parent_id, c.content, c.created_at,
+                           COALESCE(u.display_name, u.username) AS username, u.avatar_url
                     FROM comments c
                     JOIN users u ON c.user_id = u.id
                     WHERE c.target_type = ? AND c.target_id = ? AND c.status = 'published'
@@ -1546,7 +1568,7 @@ export default {
                     SELECT t.id, t.board_id, t.title, t.is_pinned, t.is_locked,
                            t.view_count, t.reply_count, t.like_count,
                            t.created_at, t.last_reply_at,
-                           u.username,
+                           COALESCE(u.display_name, u.username) AS username,
                            b.name as board_name, b.slug as board_slug
                     FROM forum_threads t
                     JOIN users u ON t.user_id = u.id
@@ -1580,7 +1602,8 @@ export default {
             try {
                 const id = threadDetailMatch[1];
                 const thread = await env.DB.prepare(`
-                    SELECT t.*, u.username, b.name as board_name, b.slug as board_slug
+                    SELECT t.*, COALESCE(u.display_name, u.username) AS username,
+                           b.name as board_name, b.slug as board_slug
                     FROM forum_threads t
                     JOIN users u ON t.user_id = u.id
                     JOIN forum_boards b ON t.board_id = b.id
@@ -1592,7 +1615,8 @@ export default {
                 await env.DB.prepare('UPDATE forum_threads SET view_count = view_count + 1 WHERE id = ?').bind(id).run();
 
                 const posts = await env.DB.prepare(`
-                    SELECT p.id, p.user_id, p.parent_id, p.content, p.floor_number, p.like_count, p.created_at, u.username
+                    SELECT p.id, p.user_id, p.parent_id, p.content, p.floor_number, p.like_count,
+                           p.created_at, COALESCE(u.display_name, u.username) AS username
                     FROM forum_posts p
                     JOIN users u ON p.user_id = u.id
                     WHERE p.thread_id = ? AND p.status = 'published'
@@ -1902,8 +1926,12 @@ async function getAuthenticatedUser(request, env, expectedRole) {
     const payload = await verifyToken(token, env);
     if (payload?.role !== expectedRole) return null;
     if (expectedRole === 'user') {
-        const scimState = await env.DB.prepare('SELECT active FROM scim_user_state WHERE user_id = ?').bind(payload.sub).first();
-        if (scimState?.active === 0) return null;
+        const user = await env.DB.prepare(`
+            SELECT u.username, COALESCE(u.display_name, u.username) AS display_name, s.active
+            FROM users u LEFT JOIN scim_user_state s ON s.user_id = u.id WHERE u.id = ?
+        `).bind(payload.sub).first();
+        if (!user || user.active === 0) return null;
+        return { ...payload, username: user.username, display_name: user.display_name };
     }
     return payload;
 }

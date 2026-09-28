@@ -14,8 +14,25 @@
           id="username"
           v-model="form.username"
           type="text"
-          placeholder="请输入用户名"
+          placeholder="2–32 位字母、数字、下划线或短横线"
           required
+          minlength="2"
+          maxlength="32"
+          pattern="[A-Za-z0-9_-]{2,32}"
+          autocomplete="username"
+          :disabled="isLoading"
+        />
+      </div>
+
+      <div class="form-group">
+        <label for="display-name">显示名（可选）</label>
+        <input
+          id="display-name"
+          v-model="form.display_name"
+          type="text"
+          placeholder="公开显示的称呼，可使用中文"
+          maxlength="32"
+          autocomplete="nickname"
           :disabled="isLoading"
         />
       </div>
@@ -72,6 +89,7 @@ import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useRegister } from '../composables/useRegister.js';
 import { useToast } from '../composables/useToast.js';
+import { isValidDisplayName, isValidUsername, normalizeDisplayName, normalizeUsername } from '../../shared/username.js';
 
 const siteKey = '0x4AAAAAAEU2b5YYBVephRaH';
 
@@ -81,6 +99,7 @@ const { showToast } = useToast();
 
 const form = ref({
   username: '',
+  display_name: '',
   email: '',
   password: '',
 });
@@ -108,6 +127,16 @@ window.onTurnstileExpired = function () {
 };
 
 async function handleRegister() {
+  const username = normalizeUsername(form.value.username);
+  const displayName = normalizeDisplayName(form.value.display_name);
+  if (!isValidUsername(username)) {
+    errorMessage.value = '用户名需为 2–32 位字母、数字、下划线或短横线';
+    return;
+  }
+  if (displayName && !isValidDisplayName(displayName)) {
+    errorMessage.value = '显示名需为 1–32 个字符且不能包含控制字符';
+    return;
+  }
   if (!isTurnstileVerified.value) {
     errorMessage.value = '请完成人机验证';
     return;
@@ -115,7 +144,8 @@ async function handleRegister() {
 
   try {
     const userData = {
-      username: form.value.username,
+      username,
+      display_name: displayName || undefined,
       email: form.value.email,
       password: form.value.password,
       'cf-turnstile-response': turnstileToken.value,

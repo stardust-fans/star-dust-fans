@@ -47,15 +47,16 @@ beforeAll(async () => {
   env.SAML_SIGNING_CERT = "A".repeat(256);
   env.SAML_ALLOW_UNSIGNED_REQUESTS = "true";
   env.SAML_SERVICE_PROVIDERS = JSON.stringify([{ entity_id: SAML_SP, acs_urls: [SAML_ACS], slo_urls: ["https://example.test/saml/slo"], want_authn_requests_signed: false }]);
-  await env.DB.prepare("INSERT OR REPLACE INTO users (id, username, email, password_hash) VALUES (?, ?, ?, ?)").bind(SCIM_USER_ID, "scim-user", "scim-user@example.com", "unused").run();
+  await env.DB.prepare("INSERT OR REPLACE INTO users (id, username, display_name, email, password_hash) VALUES (?, ?, ?, ?, ?)").bind(SCIM_USER_ID, "scim-user", "SCIM 显示名", "scim-user@example.com", "unused").run();
 });
 
 describe("SCIM 2.0 provisioning", () => {
   it("lists, provisions, updates, and soft-deletes users with ETags", async () => {
-    const created = await request("/scim/v2/Users", { method: "POST", headers: { Authorization: `Bearer ${SCIM_TOKEN}`, "Content-Type": "application/scim+json" }, body: JSON.stringify({ externalId: "external-scim-user", userName: "provisioned-user", active: true, emails: [{ value: "provisioned@example.com" }] }) });
+    const created = await request("/scim/v2/Users", { method: "POST", headers: { Authorization: `Bearer ${SCIM_TOKEN}`, "Content-Type": "application/scim+json" }, body: JSON.stringify({ externalId: "external-scim-user", userName: "Provisioned-User", displayName: "新用户称呼", active: true, emails: [{ value: "provisioned@example.com" }] }) });
     expect(created.status).toBe(201);
     const resource = await created.json();
     expect(resource.userName).toBe("provisioned-user");
+    expect(resource.displayName).toBe("新用户称呼");
     expect(created.headers.get("ETag")).toBe('W/"1"');
 
     const listed = await request("/scim/v2/Users?filter=userName%20eq%20%22provisioned-user%22", { headers: { Authorization: `Bearer ${SCIM_TOKEN}` } });
@@ -86,6 +87,16 @@ describe("SCIM 2.0 provisioning", () => {
     const fetched = await request(`/scim/v2/Groups/${resource.id}`, { headers: { Authorization: `Bearer ${SCIM_TOKEN}` } });
     expect(fetched.headers.get("ETag")).toBe('W/"1"');
   });
+
+  it("rejects a SCIM userName outside the shared handle rule", async () => {
+    const response = await request("/scim/v2/Users", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${SCIM_TOKEN}`, "Content-Type": "application/scim+json" },
+      body: JSON.stringify({ userName: "bad.name", emails: [{ value: "bad-name@example.com" }] }),
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ scimType: "invalidValue" });
+  });
 });
 
 describe("SAML 2.0 identity provider", () => {
@@ -105,6 +116,8 @@ describe("SAML 2.0 identity provider", () => {
     const responseXml = new TextDecoder().decode(Uint8Array.from(atob(encoded), (char) => char.charCodeAt(0)));
     expect(responseXml).toContain("<ds:Signature");
     expect(responseXml).toContain(`InResponseTo="_saml-request-12345678"`);
+    expect(responseXml).toContain('<saml:Attribute Name="displayName">');
+    expect(responseXml).toContain("SCIM 显示名");
     expect(html).toContain("relay-value");
     expect(sso.headers.get("Content-Security-Policy")).toContain("form-action https://example.test");
   });

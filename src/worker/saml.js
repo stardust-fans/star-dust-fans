@@ -103,7 +103,7 @@ async function singleSignOn(request, env, ctx, config, authenticateUser) {
     loginUrl.searchParams.set("return_to", `${returnTo.pathname}${returnTo.search}`);
     return Response.redirect(loginUrl.toString(), 302);
   }
-  const user = await env.DB.prepare("SELECT id, username, email FROM users WHERE id = ?").bind(session.sub).first();
+  const user = await env.DB.prepare("SELECT id, username, display_name, email FROM users WHERE id = ?").bind(session.sub).first();
   if (!user) throw new SamlError("User account is unavailable", 403);
   const responseXml = await createSamlResponse(config, provider, parsed, user);
   return await samlResponseToAcs(parsed, responseXml);
@@ -201,7 +201,9 @@ async function createSamlResponse(config, provider, request, user) {
     `<saml:Subject><saml:NameID Format="${xmlEscape(provider.nameIdFormat)}">${xmlEscape(nameId)}</saml:NameID><saml:SubjectConfirmation Method="urn:oasis:names:tc:SAML:2.0:cm:bearer"><saml:SubjectConfirmationData InResponseTo="${xmlEscape(request.id)}" Recipient="${xmlEscape(request.acsUrl)}" NotOnOrAfter="${notOnOrAfter}"/></saml:SubjectConfirmation></saml:Subject>` +
     `<saml:Conditions NotBefore="${notBefore}" NotOnOrAfter="${notOnOrAfter}"><saml:AudienceRestriction><saml:Audience>${xmlEscape(provider.entityId)}</saml:Audience></saml:AudienceRestriction></saml:Conditions>` +
     `<saml:AuthnStatement AuthnInstant="${issuedAt}" SessionIndex="${sessionIndex}"><saml:AuthnContext><saml:AuthnContextClassRef>urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport</saml:AuthnContextClassRef></saml:AuthnContext></saml:AuthnStatement>` +
-    `<saml:AttributeStatement><saml:Attribute Name="username"><saml:AttributeValue xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xs="http://www.w3.org/2001/XMLSchema" xsi:type="xs:string">${xmlEscape(user.username)}</saml:AttributeValue></saml:Attribute><saml:Attribute Name="email"><saml:AttributeValue xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xs="http://www.w3.org/2001/XMLSchema" xsi:type="xs:string">${xmlEscape(user.email || "")}</saml:AttributeValue></saml:Attribute></saml:AttributeStatement>` +
+    `<saml:AttributeStatement><saml:Attribute Name="username"><saml:AttributeValue xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xs="http://www.w3.org/2001/XMLSchema" xsi:type="xs:string">${xmlEscape(user.username)}</saml:AttributeValue></saml:Attribute>` +
+    `<saml:Attribute Name="displayName"><saml:AttributeValue xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xs="http://www.w3.org/2001/XMLSchema" xsi:type="xs:string">${xmlEscape(user.display_name || user.username)}</saml:AttributeValue></saml:Attribute>` +
+    `<saml:Attribute Name="email"><saml:AttributeValue xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xs="http://www.w3.org/2001/XMLSchema" xsi:type="xs:string">${xmlEscape(user.email || "")}</saml:AttributeValue></saml:Attribute></saml:AttributeStatement>` +
     `</saml:Assertion>`;
   const signedAssertion = await signAssertion(assertionCore, assertionId, config);
   const responseCore = `<samlp:Response xmlns:samlp="${SAML_PROTOCOL}" xmlns:saml="${SAML_ASSERTION}" ID="${responseId}" Version="2.0" IssueInstant="${issuedAt}" Destination="${xmlEscape(request.acsUrl)}" InResponseTo="${xmlEscape(request.id)}">` +
