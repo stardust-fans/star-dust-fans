@@ -3,7 +3,9 @@
 - 2026-09-28：Rosmontis 确认主站收紧到 OMEW ASCII 用户名规则，并处理现有 26 个不符账号。已从最新 `origin/main@455d5c6` 建立隔离 worktree 和 `codex/sso-username-policy` 分支。
 - 2026-09-28：只读查询生产 D1：34 个用户、26 个名字不符；`user_<id>` 候选无碰撞。检索主站注册、JWT cookie、SCIM、OIDC、SAML 与公开资料使用点；尚未修改生产账号。
 - 2026-09-28：另确认 5 个有效 ASCII 名字仅含大写，小写后无碰撞；OMEW 现有两个身份均不涉及此次 26 个名字。确定 nullable `display_name` 与邮箱登录路径，保留公开称呼并避免继续公开邮箱式旧用户名。
-- 2026-09-28：新增 `migrations/0010_standardize_usernames.sql`、共享用户名校验和测试库 schema；主站注册/登录、资料/导航、SCIM、OIDC、SAML 均接入登录名与显示名契约。
+- 2026-09-28：新增 `migrations/0010_add_display_name.sql`、共享用户名校验和测试库 schema；主站注册/登录、资料/导航、SCIM、OIDC、SAML 均接入登录名与显示名契约。
 - 2026-09-28：新增/更新根目录测试覆盖注册校验、中文显示名、邮箱登录、旧会话、OIDC claims、SCIM userName/displayName、SAML 属性；全量 `npm test` 76/76 通过，`npm run build` 通过。构建预脚本改动 `contributors.json`，已恢复该无关生成文件。
 - 2026-09-28：空本地 D1 整套历史迁移因首迁移缺基础 `songs` 表而停止；隔离本地 D1 单独执行新迁移及四条样本断言成功。生产 34 条用户名只读模拟迁移成功，31 个登录名更新且零碰撞。
 - 2026-09-28：因受保护主线自动交付会先迁移再部署，将新迁移拆为仅新增列和后续账号更名两个提交。先部署可同时处理旧名、邮箱登录和显示名的 Worker，再迁移数据；定向测试覆盖过渡期混合大小写旧名，改动后全量 76/76 通过。两段 SQL 在隔离本地 D1 顺序执行和断言通过。
+- 2026-09-28：第一阶段 PR #75 的构建与 76 项测试通过，自动交付完成 D1 恢复点、`0010` 迁移、Worker 部署并合入主线。线上 Worker 版本 `01a4deff-59e6-4960-81ae-6c50b750d174` 已 100% 生效；注册接口返回新用户名规则提示。部署后生产库仍为 34 个用户、26 个特殊字符旧名，证实未提前更名。未使用用户凭据测试真实登录。
+- 2026-09-28：从更新后的 `origin/main@930302c` 建立第二阶段分支 `codex/standardize-existing-usernames`，新增 `migrations/0011_standardize_usernames.sql`。再次只读检查生产库：34 个用户、26 个特殊字符旧名、5 个仅需大小写规范化，`user_<id>` 候选无冲突；OMEW 尚无近期受影响 ID 33/34 的身份记录。
