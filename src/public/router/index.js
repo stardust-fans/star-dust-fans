@@ -10,11 +10,13 @@ import OmewView from "../views/OmewView.vue";
 import AboutView from "../views/AboutView.vue";
 import RegisterView from "../views/RegisterView.vue";
 import LoginView from "../views/LoginView.vue";
+import ChangeUsernameView from "../views/ChangeUsernameView.vue";
 import FanartDetail from "../views/FanartDetail.vue";
 import ShopDetail from "../views/ShopDetail.vue";
 import GuideView from "../views/GuideView.vue";
 import UserView from "../views/UserView.vue";
 import EasterEggView from "../views/EasterEggView.vue";
+import { API_BASE } from "../../shared/api.js";
 
 const router = createRouter({
   history: createWebHistory(),
@@ -46,6 +48,7 @@ const router = createRouter({
     },
     { path: "/about", name: "about", component: AboutView },
     { path: "/login", name: "login", component: LoginView },
+    { path: "/change-username", name: "change-username", component: ChangeUsernameView, meta: { requiresAuth: true } },
     { path: "/register", name: "register", component: RegisterView },
     { path: "/fanart/:id", name: "fanart-detail", component: FanartDetail },
     { path: "/shop/:id", name: "shop-detail", component: ShopDetail },
@@ -66,12 +69,29 @@ const router = createRouter({
   ],
 });
 
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   if (!to.meta.requiresAuth) return true;
-  const hasToken = document.cookie
+  const authCookie = document.cookie
     .split(";")
-    .some((part) => part.trim().startsWith("authToken="));
-  return hasToken ? true : { name: "login", query: { return_to: to.fullPath } };
+    .map((part) => part.trim())
+    .find((part) => part.startsWith("authToken="));
+  if (!authCookie) return { name: "login", query: { return_to: to.fullPath } };
+  let token;
+  try {
+    token = decodeURIComponent(authCookie.slice("authToken=".length));
+  } catch {
+    return { name: "login", query: { return_to: to.fullPath } };
+  }
+  try {
+    const response = await fetch(`${API_BASE}/user/profile`, { headers: { Authorization: `Bearer ${token}` } });
+    if (response.status === 401) return { name: "login", query: { return_to: to.fullPath } };
+    if (response.ok && (await response.json()).username_change_required && to.name !== "change-username") {
+      return { name: "change-username", query: { return_to: to.fullPath } };
+    }
+  } catch {
+    return true;
+  }
+  return true;
 });
 
 router.afterEach((to) => {

@@ -72,12 +72,12 @@ async function handleLogin() {
       password: form.value.password,
     });
 
-    showToast('🎉 登录成功！欢迎回来', 'success');
+    showToast(data.username_change_required ? '请先更新用户名' : '🎉 登录成功！欢迎回来', data.username_change_required ? 'info' : 'success');
     const requested = route.query.return_to;
     const returnTo = typeof requested === 'string' && requested.startsWith('/') && !requested.startsWith('//') && !/[\\\u0000-\u001f#]/.test(requested)
       ? requested
       : '/';
-    window.location.assign(returnTo);
+    window.location.assign(data.username_change_required ? `/change-username?return_to=${encodeURIComponent(returnTo)}` : returnTo);
   } catch (err) {
     errorMessage.value = err.message || '登录失败，请稍后重试';
   }

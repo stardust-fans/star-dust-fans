@@ -74,7 +74,7 @@ export function useLogin() {
     });
     if (!response.ok) return null;
     const profile = await response.json();
-    const user = { id: profile.id, username: profile.username, display_name: profile.display_name };
+    const user = { id: profile.id, username: profile.username, display_name: profile.display_name, username_change_required: profile.username_change_required };
     setCookie("user", JSON.stringify(user), 7);
     return user;
   }
