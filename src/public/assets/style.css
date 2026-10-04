@@ -2806,18 +2806,8 @@ a {
   cursor: not-allowed;
 }
 
-.user-avatar-remove {
-  color: var(--ink-muted);
-}
-
 .user-avatar-input {
   display: none;
-}
-
-.user-avatar-message {
-  margin-top: 6px;
-  font-size: 0.82rem;
-  color: var(--cobalt);
 }
 
 .comment-avatar {
