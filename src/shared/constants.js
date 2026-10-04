@@ -46,6 +46,7 @@ export const PAGE_TITLE_MAP = {
   about: "关于 · 星尘粉丝站",
   guide: "投稿指南 · 星尘粉丝站",
   user: "用户中心 · 星尘粉丝站",
+  settings: "设置 · 星尘粉丝站",
   aspirateur: "Aspirateur · 星尘粉丝站",
   register: "注册 · 星尘粉丝站",
   login: "登录 · 星尘粉丝站",
