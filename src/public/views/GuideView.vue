@@ -28,40 +28,13 @@
       <div class="guide-character-wrap">
         <div class="guide-orbit orbit-one"></div>
         <div class="guide-orbit orbit-two"></div>
-        <svg
+
+        <img
           class="guide-character"
-          viewBox="0 0 180 210"
-          role="img"
-          aria-label="戴着星形发饰的星尘引导娘插画"
-        >
-          <title>星尘引导娘</title>
-          <path
-            class="character-hair"
-            d="M49 93c-17-25-3-61 31-68 39-8 67 21 54 64l-14 50-63-2z"
-          />
-          <path
-            class="character-face"
-            d="M63 70c0-22 13-34 30-34s30 12 30 34v25c0 21-14 35-30 35S63 116 63 95z"
-          />
-          <path
-            class="character-hair"
-            d="M64 67c6-27 41-35 59-11l-10-30-16-8-37 22-10 27z"
-          />
-          <circle class="character-eye" cx="82" cy="88" r="3" />
-          <circle class="character-eye" cx="105" cy="88" r="3" />
-          <path class="character-smile" d="M86 104c5 4 10 4 15 0" />
-          <path
-            class="character-body"
-            d="M58 193c2-35 12-51 35-51s34 16 36 51"
-          />
-          <path class="character-collar" d="M82 143l11 17 11-17" />
-          <path
-            class="character-star"
-            d="m125 39 3 8 9 1-7 6 2 9-7-5-8 5 3-9-7-6 9-1z"
-          />
-          <path class="character-arm" d="M127 158l29-25" />
-          <path class="character-arm" d="M56 161l-22-17" />
-        </svg>
+          :src="guideImage"
+          alt="尘尘可爱可爱"
+        />
+
         <p class="character-caption">
           非官方站点引导角色<br /><span>只负责带路，不代表官方立场</span>
         </p>
@@ -192,6 +165,8 @@
 
 <script setup>
 import { computed, nextTick, ref } from "vue";
+import guideImage from "../assets/guide-stardust.png";
+
 const activeRoute = ref("creator");
 const activeSection = ref("creator-scope");
 const readSections = ref(new Set());
@@ -412,41 +387,7 @@ h1 {
   z-index: 1;
   width: 185px;
   height: 220px;
-}
-.character-hair {
-  fill: #7777d2;
-  stroke: #b7b6ff;
-  stroke-width: 2;
-}
-.character-face {
-  fill: #f1cfc8;
-  stroke: #27264b;
-  stroke-width: 2;
-}
-.character-eye {
-  fill: #27264b;
-}
-.character-smile,
-.character-arm {
-  fill: none;
-  stroke: #27264b;
-  stroke-width: 2;
-  stroke-linecap: round;
-}
-.character-body {
-  fill: #d9d7ff;
-  stroke: #7777d2;
-  stroke-width: 2;
-}
-.character-collar {
-  fill: none;
-  stroke: #e8c76f;
-  stroke-width: 3;
-}
-.character-star {
-  fill: #e8c76f;
-  stroke: #27264b;
-  stroke-width: 2;
+  object-fit: contain;
 }
 .guide-orbit {
   position: absolute;
@@ -730,7 +671,7 @@ h1 {
 }
 @media (prefers-reduced-motion: reduce) {
   .route-tab,
-  .guide-progress-track span {
+  .guide-progress-track {
     transition: none;
   }
   .route-tab:hover {
