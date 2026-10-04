@@ -15,6 +15,7 @@ import FanartDetail from "../views/FanartDetail.vue";
 import ShopDetail from "../views/ShopDetail.vue";
 import GuideView from "../views/GuideView.vue";
 import UserView from "../views/UserView.vue";
+import SettingsView from "../views/SettingsView.vue";
 import EasterEggView from "../views/EasterEggView.vue";
 import { API_BASE } from "../../shared/api.js";
 import FallbackView from "../views/FallbackView.vue";
@@ -58,6 +59,12 @@ const router = createRouter({
       path: "/user",
       name: "user",
       component: UserView,
+      meta: { requiresAuth: true },
+    },
+    {
+      path: "/settings",
+      name: "settings",
+      component: SettingsView,
       meta: { requiresAuth: true },
     },
     {
