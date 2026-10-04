@@ -17,6 +17,7 @@ import GuideView from "../views/GuideView.vue";
 import UserView from "../views/UserView.vue";
 import EasterEggView from "../views/EasterEggView.vue";
 import { API_BASE } from "../../shared/api.js";
+import FallbackView from "../views/FallbackView.vue";
 
 const router = createRouter({
   history: createWebHistory(),
@@ -58,6 +59,12 @@ const router = createRouter({
       name: "user",
       component: UserView,
       meta: { requiresAuth: true },
+    },
+    {
+    path: "/fallback",
+    name: "Fallback",
+    component: FallbackView,
+    meta: { title: "无法访问", fullBleed: true, hideChrome: true },
     },
     {
       path: "/aspirateur",
