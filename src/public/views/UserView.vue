@@ -48,43 +48,12 @@
             >
           </p>
           <p v-if="userInfo.bio" class="user-bio">{{ userInfo.bio }}</p>
-          <p v-if="avatarMessage" class="user-avatar-message">{{ avatarMessage }}</p>
         </div>
         <div class="user-profile-actions">
           <RouterLink to="/settings" class="user-settings-link">账号设置</RouterLink>
-          <button
-            type="button"
-            class="user-avatar-action"
-            :disabled="isUploading"
-            @click="pickAvatar"
-          >
-            {{
-              isUploading
-                ? "上传中…"
-                : userInfo.avatar_url
-                  ? "更换头像"
-                  : "设置头像"
-            }}
-          </button>
-          <button
-            v-if="userInfo.avatar_url"
-            type="button"
-            class="user-avatar-action user-avatar-remove"
-            :disabled="isUploading"
-            @click="clearAvatar"
-          >
-            移除
-          </button>
           <button type="button" class="user-logout" @click="logout">
             退出登录
           </button>
-          <input
-            ref="avatarInput"
-            type="file"
-            accept="image/*"
-            class="user-avatar-input"
-            @change="onAvatarChange"
-          />
         </div>
         <RouterLink
           v-if="isAprilFoolsDay"
@@ -214,7 +183,6 @@
 import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { useLogin } from "../composables/useLogin.js";
-import { useAvatarUpload } from "../composables/useAvatarUpload.js";
 import { formatDate } from "../../shared/format.js";
 import { API_BASE } from "../../shared/api.js";
 
@@ -237,54 +205,7 @@ const userInitial = computed(() => {
   return (userInfo.value.display_name || userInfo.value.username || "?")[0].toUpperCase();
 });
 
-// ---------- 头像 ----------
-const { uploadAvatar, isUploading } = useAvatarUpload();
-const avatarInput = ref(null);
-const avatarMessage = ref("");
-
-function pickAvatar() {
-  avatarInput.value?.click();
-}
-
-async function saveAvatar(url) {
-  const token = getToken();
-  const response = await fetch(`${API_BASE}/user/profile`, {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ avatar_url: url }),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || "保存失败");
-  userInfo.value = { ...userInfo.value, avatar_url: data.avatar_url ?? null };
-}
-
-async function onAvatarChange(event) {
-  const file = event.target.files?.[0];
-  event.target.value = ""; // 允许再次选择同一个文件
-  if (!file) return;
-
-  avatarMessage.value = "";
-  try {
-    const url = await uploadAvatar(file, getToken());
-    await saveAvatar(url);
-    avatarMessage.value = "头像已更新";
-  } catch (error) {
-    avatarMessage.value = error.message || "头像更新失败";
-  }
-}
-
-async function clearAvatar() {
-  avatarMessage.value = "";
-  try {
-    await saveAvatar(null);
-    avatarMessage.value = "头像已移除";
-  } catch (error) {
-    avatarMessage.value = error.message || "操作失败";
-  }
-}
+// ---------- 头像设置已移至 /settings 页面 ----------
 
 const registerDays = computed(() => {
   if (!userInfo.value.created_at) return null;
