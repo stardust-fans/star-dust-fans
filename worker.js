@@ -451,7 +451,8 @@ async function handleRequest(request, env, ctx) {
 
             const matches = await env.DB.prepare(
                 `SELECT id, username, COALESCE(display_name, username) AS display_name, password_hash
-                 FROM users WHERE username = ? COLLATE NOCASE OR email = ? COLLATE NOCASE LIMIT 2`
+                 FROM users WHERE (username = ? COLLATE NOCASE OR email = ? COLLATE NOCASE)
+                   AND deleted_at IS NULL LIMIT 2`
             ).bind(identifier, identifier).all();
             const user = matches.results?.length === 1 ? matches.results[0] : null;
 
@@ -797,7 +798,7 @@ async function handleRequest(request, env, ctx) {
 
         try {
             const user = await env.DB.prepare(`
-                SELECT id, username, COALESCE(display_name, username) AS display_name, email, avatar_url, created_at,
+                SELECT id, username, COALESCE(display_name, username) AS display_name, email, avatar_url, bio, created_at,
                     (SELECT COUNT(*) FROM fanart WHERE user_id = users.id) as fanart_count,
                     (SELECT COUNT(*) FROM shop WHERE user_id = users.id) as shop_count
                 FROM users WHERE id = ?
@@ -832,7 +833,9 @@ async function handleRequest(request, env, ctx) {
         try {
             const user = await env.DB.prepare('SELECT id, username, display_name FROM users WHERE id = ?').bind(userId).first();
             if (!user) return jsonResponse({ error: '用户不存在' }, 404);
-            if (isValidUsername(user.username)) return jsonResponse({ error: '当前用户名无需修改' }, 409);
+            if (username.toLowerCase() === String(user.username).toLowerCase()) {
+                return jsonResponse({ error: '新用户名与当前用户名相同' }, 400);
+            }
 
             const existing = await env.DB.prepare('SELECT id FROM users WHERE username = ? COLLATE NOCASE AND id <> ?').bind(username, userId).first();
             if (existing) return jsonResponse({ error: '用户名已被占用' }, 409);
@@ -862,35 +865,156 @@ async function handleRequest(request, env, ctx) {
 
         try {
             const body = await request.json().catch(() => ({}));
-            const raw = body?.avatar_url;
-            let avatarUrl = null;
+            const updates = {};
+            const errors = [];
 
-            if (raw !== null && raw !== undefined) {
-                if (typeof raw !== 'string') {
-                    return jsonResponse({ error: '头像地址格式不正确' }, 400);
-                }
-                const trimmed = raw.trim();
-                if (trimmed.length > 0) {
-                    if (trimmed.length > 500) {
-                        return jsonResponse({ error: '头像地址过长' }, 400);
-                    }
+            // 头像：null / 空串表示清除
+            if ('avatar_url' in body) {
+                const raw = body.avatar_url;
+                if (raw === null || raw === undefined || (typeof raw === 'string' && !raw.trim())) {
+                    updates.avatar_url = null;
+                } else if (typeof raw !== 'string') {
+                    errors.push('头像地址格式不正确');
+                } else {
+                    const trimmed = raw.trim();
                     const isOwnUpload = trimmed.startsWith('/uploads/');
                     const isHttps = /^https:\/\/[^\s]+$/i.test(trimmed);
-                    if (!isOwnUpload && !isHttps) {
-                        return jsonResponse({ error: '头像地址必须以 /uploads/ 或 https:// 开头' }, 400);
-                    }
-                    avatarUrl = trimmed;
+                    if (trimmed.length > 500) errors.push('头像地址过长');
+                    else if (!isOwnUpload && !isHttps) errors.push('头像地址必须以 /uploads/ 或 https:// 开头');
+                    else updates.avatar_url = trimmed;
                 }
             }
 
-            await env.DB.prepare(
-                'UPDATE users SET avatar_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-            ).bind(avatarUrl, userId).run();
+            // 简介：null / 空串表示清空，上限 200 字
+            if ('bio' in body) {
+                const raw = body.bio;
+                if (raw === null || raw === undefined) {
+                    updates.bio = null;
+                } else if (typeof raw !== 'string') {
+                    errors.push('简介格式不正确');
+                } else {
+                    const trimmed = raw.trim();
+                    if (trimmed.length > 200) errors.push('简介不能超过 200 字');
+                    else updates.bio = trimmed || null;
+                }
+            }
 
-            return jsonResponse({ success: true, avatar_url: avatarUrl });
+            // 显示名：null / 空串表示回退为用户名
+            if ('display_name' in body) {
+                const raw = body.display_name;
+                if (raw === null || raw === undefined || (typeof raw === 'string' && !raw.trim())) {
+                    updates.display_name = null;
+                } else if (typeof raw !== 'string') {
+                    errors.push('显示名格式不正确');
+                } else {
+                    const normalized = normalizeDisplayName(raw);
+                    if (!normalized || !isValidDisplayName(normalized)) {
+                        errors.push('显示名需为 1–32 个字符且不能包含控制字符');
+                    } else {
+                        updates.display_name = normalized;
+                    }
+                }
+            }
+
+            if (errors.length > 0) return jsonResponse({ error: errors[0] }, 400);
+            if (Object.keys(updates).length === 0) return jsonResponse({ error: '没有需要更新的内容' }, 400);
+
+            const assignments = Object.keys(updates).map(key => `${key} = ?`).join(', ');
+            await env.DB.prepare(
+                `UPDATE users SET ${assignments}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+            ).bind(...Object.values(updates), userId).run();
+
+            const saved = await env.DB.prepare(
+                'SELECT avatar_url, bio, COALESCE(display_name, username) AS display_name FROM users WHERE id = ?'
+            ).bind(userId).first();
+
+            return jsonResponse({ success: true, ...saved });
         } catch (error) {
             console.error('❌ PUT /api/user/profile 错误:', error.message);
             return jsonResponse({ error: error.message }, 500);
+        }
+    }
+
+    // ===== 修改密码 =====
+    if (path === '/api/user/password' && method === 'PUT') {
+        const userId = await getAuthenticatedUserId(request, env);
+        if (!userId) return jsonResponse({ error: '未登录' }, 401);
+
+        const body = await request.json().catch(() => ({}));
+        const currentPassword = typeof body?.current_password === 'string' ? body.current_password : '';
+        const newPassword = typeof body?.new_password === 'string' ? body.new_password : '';
+
+        if (!currentPassword || !newPassword) {
+            return jsonResponse({ error: '当前密码和新密码都不能为空' }, 400);
+        }
+        if (newPassword.length < 6) {
+            return jsonResponse({ error: '新密码至少 6 位' }, 400);
+        }
+        if (newPassword.length > 128) {
+            return jsonResponse({ error: '新密码过长' }, 400);
+        }
+        if (newPassword === currentPassword) {
+            return jsonResponse({ error: '新密码不能与当前密码相同' }, 400);
+        }
+
+        try {
+            const user = await env.DB.prepare('SELECT id, password_hash FROM users WHERE id = ?').bind(userId).first();
+            if (!user) return jsonResponse({ error: '用户不存在' }, 404);
+
+            const passwordOk = await verifyPassword(currentPassword, user.password_hash);
+            if (!passwordOk) return jsonResponse({ error: '当前密码不正确' }, 401);
+
+            const passwordHash = await hashPassword(newPassword);
+            await env.DB.prepare(
+                'UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+            ).bind(passwordHash, userId).run();
+
+            return jsonResponse({ success: true, message: '密码已更新' });
+        } catch (error) {
+            console.error('❌ PUT /api/user/password 错误:', error.message);
+            return jsonResponse({ error: '修改密码失败' }, 500);
+        }
+    }
+
+    // ===== 注销账号（匿名化：释放用户名与邮箱，保留投稿/评论的归属占位）=====
+    if (path === '/api/user/account' && method === 'DELETE') {
+        const userId = await getAuthenticatedUserId(request, env);
+        if (!userId) return jsonResponse({ error: '未登录' }, 401);
+
+        const body = await request.json().catch(() => ({}));
+        const password = typeof body?.password === 'string' ? body.password : '';
+        if (!password) {
+            return jsonResponse({ error: '请输入当前密码以确认注销' }, 400);
+        }
+
+        try {
+            const user = await env.DB.prepare(
+                'SELECT id, password_hash, deleted_at FROM users WHERE id = ?'
+            ).bind(userId).first();
+            if (!user) return jsonResponse({ error: '用户不存在' }, 404);
+            if (user.deleted_at) return jsonResponse({ error: '账号已注销' }, 409);
+
+            const passwordOk = await verifyPassword(password, user.password_hash);
+            if (!passwordOk) return jsonResponse({ error: '密码不正确' }, 401);
+
+            await env.DB.prepare(`
+                UPDATE users
+                SET username = ?, display_name = ?, email = ?, password_hash = ?,
+                    avatar_url = NULL, bio = NULL, deleted_at = CURRENT_TIMESTAMP,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            `).bind(
+                `deleted_${userId}`,
+                '已注销用户',
+                `deleted_${userId}@deleted.invalid`,
+                'deleted',
+                userId
+            ).run();
+
+            return jsonResponse({ success: true, message: '账号已注销' });
+        } catch (error) {
+            console.error('❌ DELETE /api/user/account 错误:', error.message);
+            return jsonResponse({ error: '注销失败' }, 500);
         }
     }
 
@@ -1973,10 +2097,10 @@ async function getAuthenticatedUser(request, env, expectedRole) {
     if (payload?.role !== expectedRole) return null;
     if (expectedRole === 'user') {
         const user = await env.DB.prepare(`
-            SELECT u.username, COALESCE(u.display_name, u.username) AS display_name, s.active
+            SELECT u.username, COALESCE(u.display_name, u.username) AS display_name, s.active, u.deleted_at
             FROM users u LEFT JOIN scim_user_state s ON s.user_id = u.id WHERE u.id = ?
         `).bind(payload.sub).first();
-        if (!user || user.active === 0) return null;
+        if (!user || user.active === 0 || user.deleted_at) return null;
         return { ...payload, username: user.username, display_name: user.display_name };
     }
     return payload;
