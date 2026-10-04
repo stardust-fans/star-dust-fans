@@ -47,9 +47,11 @@
               >已注册 {{ registerDays }} 天</span
             >
           </p>
+          <p v-if="userInfo.bio" class="user-bio">{{ userInfo.bio }}</p>
           <p v-if="avatarMessage" class="user-avatar-message">{{ avatarMessage }}</p>
         </div>
         <div class="user-profile-actions">
+          <RouterLink to="/settings" class="user-settings-link">账号设置</RouterLink>
           <button
             type="button"
             class="user-avatar-action"
