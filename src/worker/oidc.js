@@ -106,7 +106,7 @@ function metadataResponse(config) {
     introspection_endpoint_auth_methods_supported: ["client_secret_basic", "client_secret_post", "private_key_jwt"],
     revocation_endpoint_auth_methods_supported: ["client_secret_basic", "client_secret_post", "private_key_jwt", "none"],
     scopes_supported: ["openid", "profile", "email", "offline_access"],
-    claims_supported: ["iss", "sub", "aud", "exp", "iat", "auth_time", "nonce", "at_hash", "name", "preferred_username", "email", "email_verified"],
+    claims_supported: ["iss", "sub", "aud", "exp", "iat", "auth_time", "nonce", "at_hash", "name", "nickname", "preferred_username", "email", "email_verified"],
     code_challenge_methods_supported: ["S256"],
     authorization_response_iss_parameter_supported: true,
     request_parameter_supported: true,
@@ -802,7 +802,11 @@ function profileClaims(user, scope, nonce) {
   const scopes = new Set(String(scope).split(/\s+/));
   const claims = {};
   if (nonce) claims.nonce = nonce;
-  if (scopes.has("profile")) { claims.name = user.display_name || user.username; claims.preferred_username = user.username; }
+  if (scopes.has("profile")) {
+    claims.name = user.display_name || user.username;
+    claims.nickname = claims.name;
+    claims.preferred_username = user.username;
+  }
   if (scopes.has("email")) { claims.email = user.email; claims.email_verified = false; }
   return claims;
 }
