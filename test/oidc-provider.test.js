@@ -105,6 +105,7 @@ describe("OpenID Provider", () => {
       userinfo_endpoint: `${ISSUER}/oauth/userinfo`,
       response_types_supported: ["code"],
       code_challenge_methods_supported: ["S256"],
+      claims_supported: expect.arrayContaining(["name", "nickname", "preferred_username"]),
     });
 
     const jwks = await request("/.well-known/jwks.json");
@@ -191,6 +192,7 @@ describe("OpenID Provider", () => {
       sub: "9801",
       nonce: "nonce-value",
       name: "原公开称呼",
+      nickname: "原公开称呼",
       preferred_username: "oidc-user",
       email: "oidc-user@example.com",
       email_verified: false,
@@ -200,11 +202,91 @@ describe("OpenID Provider", () => {
       headers: { Authorization: `Bearer ${tokens.access_token}` },
     });
     expect(info.status).toBe(200);
-    expect(await info.json()).toMatchObject({ sub: "9801", name: "原公开称呼", preferred_username: "oidc-user" });
+    expect(await info.json()).toMatchObject({ sub: "9801", name: "原公开称呼", nickname: "原公开称呼", preferred_username: "oidc-user" });
 
     const replay = await exchange(code);
     expect(replay.status).toBe(400);
     expect(await replay.json()).toMatchObject({ error: "invalid_grant" });
+  });
+
+  it("uses the updated site nickname in UserInfo and refreshed ID tokens", async () => {
+    const authorization = await authorize({ scope: "openid profile offline_access" });
+    const code = new URL(authorization.headers.get("Location")).searchParams.get("code");
+    const tokens = await (await exchange(code)).json();
+    const nickname = "星尘·新昵称 ✨";
+
+    try {
+      const saved = await request("/api/user/profile", {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${await siteSession({ sub: 9801, username: "oidc-user", role: "user" })}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ display_name: `  ${nickname}  ` }),
+      });
+      expect(saved.status).toBe(200);
+      expect(await saved.json()).toMatchObject({ display_name: nickname });
+
+      const info = await request("/oauth/userinfo", {
+        headers: { Authorization: `Bearer ${tokens.access_token}` },
+      });
+      expect(info.status).toBe(200);
+      expect(await info.json()).toMatchObject({ sub: "9801", name: nickname, nickname, preferred_username: "oidc-user" });
+
+      const refreshed = await request("/oauth/token", {
+        method: "POST",
+        headers: { Authorization: `Basic ${btoa(`${CLIENT_ID}:${CLIENT_SECRET}`)}`, "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: tokens.refresh_token }),
+      });
+      expect(refreshed.status).toBe(200);
+      const next = await refreshed.json();
+      const key = await importJWK(publicJwk, "RS256");
+      const verified = await jwtVerify(next.id_token, key, { issuer: ISSUER, audience: CLIENT_ID });
+      expect(verified.payload).toMatchObject({ sub: "9801", name: nickname, nickname, preferred_username: "oidc-user" });
+    } finally {
+      await env.DB.prepare("UPDATE users SET display_name = ? WHERE id = ?").bind("原公开称呼", 9801).run();
+    }
+  });
+
+  it.each([null, "   "])("uses the username when the site nickname is cleared with %j", async (displayName) => {
+    try {
+      const saved = await request("/api/user/profile", {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${await siteSession({ sub: 9801, username: "oidc-user", role: "user" })}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ display_name: displayName }),
+      });
+      expect(saved.status).toBe(200);
+      const authorization = await authorize();
+      const code = new URL(authorization.headers.get("Location")).searchParams.get("code");
+      const tokens = await (await exchange(code)).json();
+      const key = await importJWK(publicJwk, "RS256");
+      const verified = await jwtVerify(tokens.id_token, key, { issuer: ISSUER, audience: CLIENT_ID });
+      expect(verified.payload).toMatchObject({ name: "oidc-user", nickname: "oidc-user", preferred_username: "oidc-user" });
+
+      const info = await request("/oauth/userinfo", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${tokens.access_token}` },
+      });
+      expect(info.status).toBe(200);
+      expect(await info.json()).toMatchObject({ sub: "9801", name: "oidc-user", nickname: "oidc-user", preferred_username: "oidc-user" });
+    } finally {
+      await env.DB.prepare("UPDATE users SET display_name = ? WHERE id = ?").bind("原公开称呼", 9801).run();
+    }
+  });
+
+  it.each(["openid", "openid email"])("omits nickname without profile scope (%s)", async (scope) => {
+    const authorization = await authorize({ scope });
+    const code = new URL(authorization.headers.get("Location")).searchParams.get("code");
+    const tokens = await (await exchange(code)).json();
+    const key = await importJWK(publicJwk, "RS256");
+    const verified = await jwtVerify(tokens.id_token, key, { issuer: ISSUER, audience: CLIENT_ID });
+    const info = await request("/oauth/userinfo", {
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    });
+    expect(info.status).toBe(200);
+    for (const claims of [verified.payload, await info.json()]) {
+      expect(claims.sub).toBe("9801");
+      for (const field of ["name", "nickname", "preferred_username"]) expect(claims).not.toHaveProperty(field);
+      if (scope.includes("email")) expect(claims.email).toBe("oidc-user@example.com");
+      else expect(claims).not.toHaveProperty("email");
+    }
   });
 
   it("never redirects an unregistered redirect URI", async () => {
