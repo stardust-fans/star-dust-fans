@@ -1,0 +1,18 @@
+{
+  "Version": 3,
+  "FileReferences": {
+    "Moc": "豆丁星尘.moc3",
+    "Textures": [
+      "豆丁星尘.2048/texture_00.png",
+      "豆丁星尘.2048/texture_01.png"
+    ],
+    "Physics": "豆丁星尘.physics3.json",
+    "Expressions": [
+      { "Name": "哭哭", "File": "expressions/哭哭.exp3.json" },
+      { "Name": "嘴", "File": "expressions/嘴.exp3.json" },
+      { "Name": "脸红", "File": "expressions/脸红.exp3.json" },
+      { "Name": "脸黑", "File": "expressions/脸黑.exp3.json" }
+    ],
+    "DisplayInfo": "豆丁星尘.cdi3.json"
+  }
+}

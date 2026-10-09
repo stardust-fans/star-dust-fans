@@ -18,10 +18,12 @@ export default defineConfig({
             },
         },
     },
-    // ===== 新增：本地开发服务器代理 =====
+    // ===== 只保留这个 =====
+    optimizeDeps: {
+        include: ['oh-my-live2d'],
+    },
     server: {
         proxy: {
-            // 代理 ip9.com.cn 请求，绕过 CORS
             '/api/ip': {
                 target: 'https://ip9.com.cn',
                 changeOrigin: true,
