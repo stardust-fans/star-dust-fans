@@ -19,6 +19,7 @@ import SettingsView from "../views/SettingsView.vue";
 import EasterEggView from "../views/EasterEggView.vue";
 import { API_BASE } from "../../shared/api.js";
 import FallbackView from "../views/FallbackView.vue";
+import UserPublicView from "../views/UserPublicView.vue";
 
 const router = createRouter({
   history: createWebHistory(),
@@ -78,6 +79,11 @@ const router = createRouter({
       name: "aspirateur",
       component: EasterEggView,
       meta: { fullBleed: true, hideChrome: true },
+    },
+        {
+      path: "/user/:id",
+      name: "user-public",
+      component: UserPublicView,
     },
     { path: "/:pathMatch(.*)*", redirect: "/" },
   ],

@@ -45,14 +45,21 @@
       <ul v-else-if="comments.length > 0" class="comment-list">
         <li v-for="item in comments" :key="item.id" class="comment-item">
           <div class="comment-meta">
-            <img
-              v-if="item.avatar_url"
-              class="comment-avatar"
-              :src="item.avatar_url"
-              :alt="`${item.username || '匿名'}的头像`"
-              loading="lazy"
-            />
-            <span class="comment-author">{{ item.username || '匿名' }}</span>
+            <RouterLink :to="`/user/${item.user_id}`" class="comment-avatar-link">
+              <img
+                v-if="item.avatar_url"
+                class="comment-avatar"
+                :src="item.avatar_url"
+                :alt="`${item.username || '匿名'}的头像`"
+                loading="lazy"
+              />
+              <span v-else class="comment-avatar comment-avatar-placeholder">
+                {{ (item.username || '?')[0].toUpperCase() }}
+              </span>
+            </RouterLink>
+            <RouterLink :to="`/user/${item.user_id}`" class="comment-author">
+              {{ item.username || '匿名' }}
+            </RouterLink>
             <span class="comment-time">{{ relativeTime(item.created_at) }}</span>
             <button
               v-if="isMine(item)"
@@ -78,7 +85,6 @@ import { fetchAPI } from '../../shared/api.js';
 import { useLogin } from '../composables/useLogin.js';
 
 const props = defineProps({
-  // 评论目标类型，与 Worker 的 target_type 对应：'fanart' | 'shop'
   targetType: { type: String, required: true },
   targetId: { type: [Number, String], required: true },
 });
@@ -97,14 +103,11 @@ const isLoggedIn = ref(false);
 
 const me = computed(() => getUser());
 
-// 登录页回跳地址：登录后回到当前详情页
 const loginTarget = computed(() => ({
   name: 'login',
   query: { return_to: route.fullPath },
 }));
 
-// 公开站的登录态存在 authToken cookie 里，这里显式带上 Bearer 双保险
-// （Worker 的 getAuthenticatedUser 同时接受 header 与 cookie）
 function authHeaders() {
   const token = getToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -115,7 +118,6 @@ function isMine(item) {
   return !!user && item.user_id === user.id;
 }
 
-// D1 的 CURRENT_TIMESTAMP 是 UTC 且不带时区标记，补 Z 再解析，避免被当成本地时间
 function parseServerTime(value) {
   if (!value) return 0;
   const text = String(value);
@@ -199,7 +201,6 @@ onMounted(() => {
   load();
 });
 
-// 详情页之间跳转时（同一组件复用）重新拉取
 watch(
   () => [props.targetType, props.targetId],
   () => {
