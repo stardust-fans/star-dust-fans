@@ -1,4 +1,4 @@
-// worker.js
+﻿// worker.js
 import { handleOidcRequest } from "./src/worker/oidc.js";
 import { handleSamlRequest } from "./src/worker/saml.js";
 import { handleScimRequest } from "./src/worker/scim.js";
@@ -788,6 +788,47 @@ async function handleRequest(request, env, ctx) {
             return jsonResponse({ error: error.message }, 500);
         }
     }
+
+    // ===== 公开用户资料 =====
+    const publicUserMatch = path.match(/^\/api\/users\/(\d+)$/);
+    if (publicUserMatch && method === 'GET') {
+        const id = publicUserMatch[1];
+        try {
+            const user = await env.DB.prepare(`
+                SELECT id, username, COALESCE(display_name, username) AS display_name,
+                       avatar_url, bio, created_at
+                FROM users
+                WHERE id = ? AND deleted_at IS NULL
+            `).bind(id).first();
+
+            if (!user) return jsonResponse({ error: '用户不存在或已注销' }, 404);
+
+            const [fanart, shop] = await Promise.all([
+                env.DB.prepare(`
+                    SELECT id, title, image_url, type, created_at
+                    FROM fanart
+                    WHERE user_id = ? AND status = 'published'
+                    ORDER BY created_at DESC
+                `).bind(id).all(),
+                env.DB.prepare(`
+                    SELECT id, title, image_url, price, created_at
+                    FROM shop
+                    WHERE user_id = ? AND status IN ('waiting', 'shipped')
+                    ORDER BY created_at DESC
+                `).bind(id).all(),
+            ]);
+
+            return jsonResponse({
+                ...user,
+                fanart: fanart.results || [],
+                shop: shop.results || [],
+            });
+        } catch (error) {
+            console.error('❌ GET /api/users/:id 错误:', error.message);
+            return jsonResponse({ error: error.message }, 500);
+        }
+    }
+
 
     // ===== 用户信息 API =====
     if (path === '/api/user/profile' && method === 'GET') {

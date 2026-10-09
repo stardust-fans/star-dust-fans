@@ -39,6 +39,7 @@
         <div class="user-info">
           <h2 id="profile-title">{{ userInfo.display_name || userInfo.username || "用户" }}</h2>
           <p v-if="userInfo.username" class="user-email">@{{ userInfo.username }}</p>
+          <p v-if="userInfo.id" class="user-email">UID: {{ userInfo.id }}</p>
           <p v-if="userInfo.email" class="user-email">{{ userInfo.email }}</p>
           <p class="user-register-date">
             <span class="label">注册时间</span>
