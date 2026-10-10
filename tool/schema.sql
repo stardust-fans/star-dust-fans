@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS fanart (
     status VARCHAR(20) DEFAULT 'published',
     flag_reason TEXT,
     images TEXT,
+    tags TEXT DEFAULT NULL,
     user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -113,6 +114,22 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 标签库（管理员维护）
+CREATE TABLE IF NOT EXISTS tags (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name VARCHAR(32) NOT NULL UNIQUE,
+    sort_order INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT OR IGNORE INTO tags (name, sort_order) VALUES
+    ('表情包', 1),
+    ('同人', 2),
+    ('原创曲', 3),
+    ('翻唱曲', 4),
+    ('教程', 5),
+    ('MMD', 6);
 
 CREATE INDEX IF NOT EXISTS idx_fanart_user_id ON fanart (user_id);
 CREATE INDEX IF NOT EXISTS idx_fanart_status ON fanart (status);

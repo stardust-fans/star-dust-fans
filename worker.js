@@ -227,11 +227,51 @@ async function handleRequest(request, env, ctx) {
         }
     }
 
+    // ===== 公开标签列表 =====
+    if (path === '/api/tags' && method === 'GET') {
+        try {
+            const result = await env.DB.prepare(
+                'SELECT id, name, sort_order FROM tags ORDER BY sort_order ASC, id ASC'
+            ).all();
+            return jsonResponse(result.results || []);
+        } catch (error) {
+            console.error('❌ GET /api/tags 错误:', error.message);
+            return jsonResponse({ error: error.message }, 500);
+        }
+    }
+
+    // ===== 用户申请新标签 =====
+    if (path === '/api/tags/request' && method === 'POST') {
+        const userId = await getAuthenticatedUserId(request, env);
+        if (!userId) return jsonResponse({ error: '请先登录' }, 401);
+
+        try {
+            const { name } = await request.json();
+            if (!name || !String(name).trim()) {
+                return jsonResponse({ error: '标签名不能为空' }, 400);
+            }
+            const trimmed = String(name).trim().slice(0, 32);
+
+            const existing = await env.DB.prepare('SELECT id FROM tags WHERE name = ?').bind(trimmed).first();
+            if (existing) return jsonResponse({ error: '标签已存在' }, 409);
+
+            // 申请表（可选，如果你想审核）
+            // 这里直接创建，管理员可在后台看到并清理
+            const result = await env.DB.prepare(
+                'INSERT INTO tags (name, sort_order) VALUES (?, 999)'
+            ).bind(trimmed).run();
+
+            return jsonResponse({ success: true, id: result.meta?.last_row_id, name: trimmed });
+        } catch (error) {
+            return jsonResponse({ error: error.message }, 500);
+        }
+    }
+
     // ===== 1.6 GET /api/fanart =====
     if (path === '/api/fanart' && method === 'GET') {
         try {
             const stmt = env.DB.prepare(`
-                SELECT id, title, author, description, image_url, bilibili_url, source_url, type
+                SELECT id, title, author, description, image_url, bilibili_url, source_url, type, tags
                 FROM fanart
                 WHERE status = 'published'
                 ORDER BY created_at DESC
@@ -299,6 +339,52 @@ async function handleRequest(request, env, ctx) {
         } catch (error) {
             console.error('❌ /api/admin/verify 错误:', error.message);
             return jsonResponse({ error: error.message }, 400);
+        }
+    }
+
+    // ===== 管理员：标签管理 =====
+    if (path === '/api/admin/tags' && method === 'GET') {
+        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        try {
+            const result = await env.DB.prepare(
+                'SELECT id, name, sort_order FROM tags ORDER BY sort_order ASC, id ASC'
+            ).all();
+            return jsonResponse(result.results || []);
+        } catch (error) {
+            return jsonResponse({ error: error.message }, 500);
+        }
+    }
+
+    if (path === '/api/admin/tags' && method === 'POST') {
+        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        try {
+            const { name, sort_order } = await request.json();
+            if (!name || !String(name).trim()) {
+                return jsonResponse({ error: '标签名不能为空' }, 400);
+            }
+            const trimmed = String(name).trim().slice(0, 32);
+            const existing = await env.DB.prepare('SELECT id FROM tags WHERE name = ?').bind(trimmed).first();
+            if (existing) return jsonResponse({ error: '标签已存在' }, 409);
+
+            const result = await env.DB.prepare(
+                'INSERT INTO tags (name, sort_order) VALUES (?, ?)'
+            ).bind(trimmed, sort_order || 0).run();
+
+            return jsonResponse({ success: true, id: result.meta?.last_row_id });
+        } catch (error) {
+            return jsonResponse({ error: error.message }, 500);
+        }
+    }
+
+    const adminTagMatch = path.match(/^\/api\/admin\/tags\/(\d+)$/);
+    if (adminTagMatch && method === 'DELETE') {
+        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        try {
+            const id = adminTagMatch[1];
+            await env.DB.prepare('DELETE FROM tags WHERE id = ?').bind(id).run();
+            return jsonResponse({ success: true });
+        } catch (error) {
+            return jsonResponse({ error: error.message }, 500);
         }
     }
 
@@ -1131,6 +1217,7 @@ async function handleRequest(request, env, ctx) {
         try {
             const body = await request.json();
             const { title, author, description, type, bilibili_url, source_url, images } = body;
+            const tagsJson = Array.isArray(tags) && tags.length > 0 ? JSON.stringify(tags.slice(0, 10)) : null;
 
             if (!images || images.length === 0) {
                 return jsonResponse({ error: '图片不能为空' }, 400);
@@ -1142,8 +1229,8 @@ async function handleRequest(request, env, ctx) {
             const imagesJson = JSON.stringify(images);
 
             const stmt = env.DB.prepare(`
-                INSERT INTO fanart (title, author, description, image_url, bilibili_url, source_url, type, status, images, user_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 INSERT INTO fanart (title, author, description, image_url, bilibili_url, source_url, type, status, images, user_id, tags)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `);
             const result = await stmt.bind(
                 finalTitle,
@@ -1155,7 +1242,8 @@ async function handleRequest(request, env, ctx) {
                 type || 'illust',
                 'pending',
                 imagesJson,
-                userId
+                userId,
+                tagsJson
             ).run();
 
             return jsonResponse({
@@ -1460,12 +1548,13 @@ async function handleRequest(request, env, ctx) {
     if (path === '/api/admin/fanart' && method === 'POST') {
         if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
         try {
-            const { title, author, description, image_url, bilibili_url, source_url, type, status } = await request.json();
+            const { title, author, description, image_url, bilibili_url, source_url, type, status, tags } = await request.json();
+            const tagsJson = Array.isArray(tags) && tags.length > 0 ? JSON.stringify(tags.slice(0, 10)) : null;
             const stmt = env.DB.prepare(`
-                INSERT INTO fanart (title, author, description, image_url, bilibili_url, source_url, type, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO fanart (title, author, description, image_url, bilibili_url, source_url, type, status, tags)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             `);
-            const result = await stmt.bind(title, author || null, description || null, image_url || null, bilibili_url || null, source_url || null, type || 'illust', status || 'published').run();
+            const result = await stmt.bind(title, author || null, description || null, image_url || null, bilibili_url || null, source_url || null, type || 'illust', status || 'published', tagsJson).run();
             ctx.waitUntil(logAuditEvent(env, {
                 eventType: 'create', actorAdminId: isAdmin.sub, actorUsername: isAdmin.username,
                 targetTable: 'fanart', targetId: result.meta?.last_row_id,
@@ -1484,12 +1573,13 @@ async function handleRequest(request, env, ctx) {
         if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
         try {
             const id = fanartPutMatch[1];
-            const { title, author, description, image_url, bilibili_url, source_url, type, status } = await request.json();
+            const { title, author, description, image_url, bilibili_url, source_url, type, status, tags } = await request.json();
+            const tagsJson = Array.isArray(tags) && tags.length > 0 ? JSON.stringify(tags.slice(0, 10)) : null;
             const stmt = env.DB.prepare(`
-                UPDATE fanart SET title = ?, author = ?, description = ?, image_url = ?, bilibili_url = ?, source_url = ?, type = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+                UPDATE fanart SET title = ?, author = ?, description = ?, image_url = ?, bilibili_url = ?, source_url = ?, type = ?, status = ?, tags = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
             `);
-            await stmt.bind(title, author || null, description || null, image_url || null, bilibili_url || null, source_url || null, type || 'illust', status || 'published', id).run();
+            await stmt.bind(title, author || null, description || null, image_url || null, bilibili_url || null, source_url || null, type || 'illust', status || 'published', tagsJson, id).run();
             ctx.waitUntil(logAuditEvent(env, {
                 eventType: 'update', actorAdminId: isAdmin.sub, actorUsername: isAdmin.username,
                 targetTable: 'fanart', targetId: Number(id),
