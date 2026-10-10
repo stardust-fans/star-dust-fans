@@ -3,6 +3,17 @@ import { handleOidcRequest } from "./src/worker/oidc.js";
 import { handleSamlRequest } from "./src/worker/saml.js";
 import { handleScimRequest } from "./src/worker/scim.js";
 import { isValidDisplayName, isValidUsername, normalizeDisplayName, normalizeUsername, usernameCandidate } from "./src/shared/username.js";
+// ===== 附件白名单 =====
+const ATTACHMENT_ALLOWED_EXT = new Set([
+  'zip', '7z', 'rar', 'tar', 'gz', 'bz2', 'xz', 'zst',
+  'pdf', 'txt', 'md', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
+  'mp3', 'wav', 'flac', 'ogg', 'm4a',
+  'mp4', 'webm', 'mov', 'mkv', 'avi',
+  'psd', 'clip', 'sai2', 'kra', 'procreate', 'ai', 'sketch',
+  'aseprite', 'aup3', 'flp', 'als',
+]);
+const ATTACHMENT_MAX_SIZE = 150 * 1024 * 1024;
+const ATTACHMENT_MAX_COUNT = 3;
 
 export default {
     async fetch(request, env, ctx) {
@@ -271,7 +282,7 @@ async function handleRequest(request, env, ctx) {
     if (path === '/api/fanart' && method === 'GET') {
         try {
             const stmt = env.DB.prepare(`
-                SELECT id, title, author, description, image_url, bilibili_url, source_url, type, tags
+                SELECT id, title, author, description, image_url, bilibili_url, source_url, type, tags, attachments
                 FROM fanart
                 WHERE status = 'published'
                 ORDER BY created_at DESC
@@ -856,6 +867,64 @@ async function handleRequest(request, env, ctx) {
         }
     }
 
+    // ===== 上传附件到 R2（用 SHA-256 命名）=====
+    if (path === '/api/upload-attachment' && method === 'POST') {
+        const userId = await getAuthenticatedUserId(request, env);
+        if (!userId) {
+            return jsonResponse({ error: '请先登录' }, 401);
+        }
+
+        try {
+            const formData = await request.formData();
+            const file = formData.get('file');
+            if (!file) {
+                return jsonResponse({ error: '没有上传文件' }, 400);
+            }
+
+            if (file.size > ATTACHMENT_MAX_SIZE) {
+                return jsonResponse({ error: '文件大小不能超过 150MB' }, 400);
+            }
+
+            const originalName = file.name || 'attachment';
+            const ext = originalName.split('.').pop()?.toLowerCase() || '';
+            if (!ATTACHMENT_ALLOWED_EXT.has(ext)) {
+                return jsonResponse({ error: `不允许上传 .${ext} 类型的文件` }, 400);
+            }
+
+            const arrayBuffer = await file.arrayBuffer();
+            const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+            const hashArray = new Uint8Array(hashBuffer);
+            const hashHex = Array.from(hashArray).map((b) => b.toString(16).padStart(2, '0')).join('');
+
+            const key = `attachments/${hashHex}.${ext}`;
+
+            const existing = await env.R2_BUCKET.head(key);
+            if (!existing) {
+                await env.R2_BUCKET.put(key, arrayBuffer, {
+                    httpMetadata: {
+                        contentType: file.type || 'application/octet-stream',
+                        contentDisposition: `attachment; filename="${encodeURIComponent(originalName)}"`,
+                    },
+                });
+            }
+
+            const url = `https://stardustinfinity.top/${key}`;
+
+            return jsonResponse({
+                success: true,
+                url,
+                key,
+                hash: hashHex,
+                name: originalName,
+                size: file.size,
+            });
+
+        } catch (error) {
+            console.error('❌ /api/upload-attachment 错误:', error.message);
+            return jsonResponse({ error: error.message }, 500);
+        }
+    }
+
     // ===== GET /api/fanart/:id =====
     if (path.startsWith('/api/fanart/') && method === 'GET') {
         const id = path.split('/').pop();
@@ -1154,7 +1223,7 @@ async function handleRequest(request, env, ctx) {
 
         try {
             const result = await env.DB.prepare(`
-                SELECT id, title, author, description, image_url, bilibili_url, source_url, type, status, created_at
+                SELECT id, title, author, description, image_url, bilibili_url, source_url, type, status, created_at ,  attachments
                 FROM fanart WHERE user_id = ? ORDER BY created_at DESC
             `).bind(userId).all();
 
@@ -1216,8 +1285,38 @@ async function handleRequest(request, env, ctx) {
 
         try {
             const body = await request.json();
-            const { title, author, description, type, bilibili_url, source_url, images } = body;
+                        const { title, author, description, type, bilibili_url, source_url, images, tags, attachments } = body;
             const tagsJson = Array.isArray(tags) && tags.length > 0 ? JSON.stringify(tags.slice(0, 10)) : null;
+
+
+            // 附件校验
+            let attachmentsJson = null;
+            if (Array.isArray(attachments) && attachments.length > 0) {
+                if (attachments.length > ATTACHMENT_MAX_COUNT) {
+                    return jsonResponse({ error: `最多只能上传 ${ATTACHMENT_MAX_COUNT} 个附件` }, 400);
+                }
+                const cleaned = [];
+                for (const a of attachments) {
+                    if (!a || typeof a !== 'object') continue;
+                    const { url, name, size } = a;
+                    if (typeof url !== 'string' || !url.startsWith('https://stardustinfinity.top/attachments/')) {
+                        return jsonResponse({ error: '附件地址不合法' }, 400);
+                    }
+                    const ext = String(name || '').split('.').pop()?.toLowerCase() || '';
+                    if (!ATTACHMENT_ALLOWED_EXT.has(ext)) {
+                        return jsonResponse({ error: `不允许上传 .${ext} 类型的文件` }, 400);
+                    }
+                    if (typeof size !== 'number' || size > ATTACHMENT_MAX_SIZE) {
+                        return jsonResponse({ error: '附件大小超限' }, 400);
+                    }
+                    cleaned.push({
+                        url,
+                        name: String(name).slice(0, 200),
+                        size,
+                    });
+                }
+                attachmentsJson = cleaned.length > 0 ? JSON.stringify(cleaned) : null;
+            }
 
             if (!images || images.length === 0) {
                 return jsonResponse({ error: '图片不能为空' }, 400);
@@ -1227,10 +1326,9 @@ async function handleRequest(request, env, ctx) {
             const finalAuthor = (author || '').trim() || username || '匿名';
             const firstImage = images[0] || '';
             const imagesJson = JSON.stringify(images);
-
             const stmt = env.DB.prepare(`
-                 INSERT INTO fanart (title, author, description, image_url, bilibili_url, source_url, type, status, images, user_id, tags)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 INSERT INTO fanart (title, author, description, image_url, bilibili_url, source_url, type, status, images, user_id, tags, attachments)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `);
             const result = await stmt.bind(
                 finalTitle,
@@ -1243,7 +1341,8 @@ async function handleRequest(request, env, ctx) {
                 'pending',
                 imagesJson,
                 userId,
-                tagsJson
+                tagsJson,
+                attachmentsJson
             ).run();
 
             return jsonResponse({
@@ -1548,13 +1647,16 @@ async function handleRequest(request, env, ctx) {
     if (path === '/api/admin/fanart' && method === 'POST') {
         if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
         try {
-            const { title, author, description, image_url, bilibili_url, source_url, type, status, tags } = await request.json();
+            const { title, author, description, image_url, bilibili_url, source_url, type, status, tags, attachments } = await request.json();
             const tagsJson = Array.isArray(tags) && tags.length > 0 ? JSON.stringify(tags.slice(0, 10)) : null;
+            const attachmentsJson = Array.isArray(attachments) && attachments.length > 0
+                ? JSON.stringify(attachments.slice(0, ATTACHMENT_MAX_COUNT))
+                : null;
             const stmt = env.DB.prepare(`
-                INSERT INTO fanart (title, author, description, image_url, bilibili_url, source_url, type, status, tags)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO fanart (title, author, description, image_url, bilibili_url, source_url, type, status, tags, attachments)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `);
-            const result = await stmt.bind(title, author || null, description || null, image_url || null, bilibili_url || null, source_url || null, type || 'illust', status || 'published', tagsJson).run();
+            const result = await stmt.bind(title, author || null, description || null, image_url || null, bilibili_url || null, source_url || null, type || 'illust', status || 'published', tagsJson, attachmentsJson).run();
             ctx.waitUntil(logAuditEvent(env, {
                 eventType: 'create', actorAdminId: isAdmin.sub, actorUsername: isAdmin.username,
                 targetTable: 'fanart', targetId: result.meta?.last_row_id,
@@ -1573,13 +1675,16 @@ async function handleRequest(request, env, ctx) {
         if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
         try {
             const id = fanartPutMatch[1];
-            const { title, author, description, image_url, bilibili_url, source_url, type, status, tags } = await request.json();
+            const { title, author, description, image_url, bilibili_url, source_url, type, status, tags, attachments } = await request.json();
             const tagsJson = Array.isArray(tags) && tags.length > 0 ? JSON.stringify(tags.slice(0, 10)) : null;
+            const attachmentsJson = Array.isArray(attachments) && attachments.length > 0
+                ? JSON.stringify(attachments.slice(0, ATTACHMENT_MAX_COUNT))
+                : null;
             const stmt = env.DB.prepare(`
-                UPDATE fanart SET title = ?, author = ?, description = ?, image_url = ?, bilibili_url = ?, source_url = ?, type = ?, status = ?, tags = ?, updated_at = CURRENT_TIMESTAMP
+                UPDATE fanart SET title = ?, author = ?, description = ?, image_url = ?, bilibili_url = ?, source_url = ?, type = ?, status = ?, tags = ?, attachments = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
             `);
-            await stmt.bind(title, author || null, description || null, image_url || null, bilibili_url || null, source_url || null, type || 'illust', status || 'published', tagsJson, id).run();
+            await stmt.bind(title, author || null, description || null, image_url || null, bilibili_url || null, source_url || null, type || 'illust', status || 'published', tagsJson, attachmentsJson, id).run();
             ctx.waitUntil(logAuditEvent(env, {
                 eventType: 'update', actorAdminId: isAdmin.sub, actorUsername: isAdmin.username,
                 targetTable: 'fanart', targetId: Number(id),

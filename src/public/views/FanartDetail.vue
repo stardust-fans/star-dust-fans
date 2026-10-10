@@ -34,6 +34,18 @@
           <span>发布时间：{{ formatDate(item.created_at) }}</span>
         </div>
         <p v-if="item.description" class="detail-desc">{{ item.description }}</p>
+
+        <!-- 附件 -->
+        <div v-if="attachmentList.length > 0" class="detail-attachments">
+          <h3>附件</h3>
+          <ul>
+            <li v-for="(a, i) in attachmentList" :key="i">
+              <a :href="a.url" :download="a.name">{{ a.name }}</a>
+              <span class="attachment-size">({{ formatSize(a.size) }})</span>
+            </li>
+          </ul>
+        </div>
+
         <div v-if="item.bilibili_url" class="detail-links">
           <a :href="item.bilibili_url" target="_blank" rel="noopener">▶ B站链接</a>
         </div>
@@ -77,6 +89,24 @@ const images = computed(() => {
   }
 });
 
+// 附件
+const attachmentList = computed(() => {
+  if (!item.value?.attachments) return [];
+  try {
+    const arr = JSON.parse(item.value.attachments);
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+});
+
+function formatSize(bytes) {
+  if (typeof bytes !== 'number') return '';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+}
+
 // 图片放大预览
 const lightboxOpen = ref(false);
 const lightboxIndex = ref(0);
@@ -113,3 +143,51 @@ onMounted(async () => {
   }
 });
 </script>
+
+<style scoped>
+.detail-attachments {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.detail-attachments h3 {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  margin-bottom: 10px;
+  color: var(--ink);
+}
+
+.detail-attachments ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.detail-attachments li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.detail-attachments a {
+  color: var(--cobalt);
+  text-decoration: none;
+  word-break: break-all;
+  transition: color 0.2s var(--ease);
+}
+
+.detail-attachments a:hover {
+  text-decoration: underline;
+}
+
+.attachment-size {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--ink-muted);
+}
+</style>

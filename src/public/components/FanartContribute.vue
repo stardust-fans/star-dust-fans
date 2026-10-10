@@ -85,6 +85,31 @@
           </div>
         </div>
 
+        <!-- 附件 -->
+        <div class="form-group">
+          <label>附件（最多 3 个，每个不超过 150MB）</label>
+          <div class="file-input-wrapper">
+            <input
+              type="file"
+              :accept="attachmentAccept"
+              multiple
+              @change="handleAttachments"
+            />
+            <span v-if="attachments.length > 0" style="color: var(--cobalt);">
+              已上传 {{ attachments.length }}/3
+            </span>
+          </div>
+          <ul v-if="attachments.length > 0" class="attachment-list">
+            <li v-for="(a, i) in attachments" :key="i">
+              <span>{{ a.name }} ({{ formatSize(a.size) }})</span>
+              <button type="button" @click="removeAttachment(i)">移除</button>
+            </li>
+          </ul>
+          <p class="hint">
+            允许：{{ attachmentAcceptHint }}
+          </p>
+        </div>
+
         <div class="form-group">
           <label>B站链接</label>
           <input v-model="form.bilibili_url" type="url" />
@@ -136,6 +161,19 @@ const error = ref('');
 const availableTags = ref([]);
 const showAddTag = ref(false);
 const newTagName = ref('');
+
+// ===== 附件 =====
+const attachments = ref([]);
+const ATTACHMENT_ALLOWED = [
+  'zip', '7z', 'rar', 'tar', 'gz', 'bz2', 'xz', 'zst',
+  'pdf', 'txt', 'md', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
+  'mp3', 'wav', 'flac', 'ogg', 'm4a',
+  'mp4', 'webm', 'mov', 'mkv', 'avi',
+  'psd', 'clip', 'sai2', 'kra', 'procreate', 'ai', 'sketch',
+  'aseprite', 'aup3', 'flp', 'als',
+];
+const attachmentAccept = ATTACHMENT_ALLOWED.map((e) => `.${e}`).join(',');
+const attachmentAcceptHint = ATTACHMENT_ALLOWED.map((e) => `.${e}`).join('、');
 
 async function loadTags() {
   try {
@@ -236,6 +274,61 @@ async function handleFiles(e) {
   showToast(`成功上传 ${urls.length} 张图片`, 'success');
 }
 
+async function handleAttachments(e) {
+  const files = Array.from(e.target.files);
+  if (files.length === 0) return;
+
+  if (attachments.value.length + files.length > 3) {
+    showToast('最多只能上传 3 个附件', 'error');
+    e.target.value = '';
+    return;
+  }
+
+  for (const file of files) {
+    if (file.size > 150 * 1024 * 1024) {
+      showToast(`「${file.name}」超过 150MB`, 'error');
+      continue;
+    }
+    const ext = file.name.split('.').pop()?.toLowerCase() || '';
+    if (!ATTACHMENT_ALLOWED.includes(ext)) {
+      showToast(`不允许 .${ext} 类型`, 'error');
+      continue;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      const res = await fetch('/api/upload-attachment', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '上传失败');
+      attachments.value.push({
+        url: data.url,
+        name: data.name,
+        size: data.size,
+        hash: data.hash,
+      });
+    } catch (err) {
+      showToast(`「${file.name}」上传失败：${err.message}`, 'error');
+    }
+  }
+
+  e.target.value = '';
+}
+
+function removeAttachment(i) {
+  attachments.value.splice(i, 1);
+}
+
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+}
+
 async function submit() {
   error.value = '';
   loading.value = true;
@@ -245,6 +338,7 @@ async function submit() {
       ...form,
       title: form.title.trim() || '无题',
       tags: form.tags.slice(0, 10),
+      attachments: attachments.value,
     };
 
     const res = await fetch('/api/contributions/fanart', {
@@ -331,5 +425,47 @@ onMounted(loadTags);
   color: var(--ink);
   font-size: 0.8rem;
   cursor: pointer;
+}
+
+.attachment-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.attachment-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 12px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-size: 0.82rem;
+}
+
+.attachment-list li button {
+  padding: 2px 8px;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink-muted);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.attachment-list li button:hover {
+  color: #ff6b6b;
+  border-color: #ff6b6b;
+}
+
+.hint {
+  font-size: 0.78rem;
+  color: var(--ink-faint);
+  margin-top: 6px;
+  line-height: 1.6;
 }
 </style>

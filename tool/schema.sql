@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS fanart (
     flag_reason TEXT,
     images TEXT,
     tags TEXT DEFAULT NULL,
+    attachments TEXT DEFAULT NULL,
     user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
