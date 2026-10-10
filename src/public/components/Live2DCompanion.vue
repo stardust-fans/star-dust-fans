@@ -8,9 +8,9 @@ const props = defineProps({
 });
 
 const containerRef = ref(null);
+const stageRef = ref(null);
 let instance = null;
 
-// ===== 随机文案库 =====
 const MESSAGES = [
   '今天也要元气满满哦～',
   '诶嘿，被你发现了！',
@@ -27,22 +27,186 @@ const MESSAGES = [
   '一起来看星星吧',
 ];
 
-// 模型的表情名称（必须跟 model3.json 里的 Name 一致）
 const EXPRESSIONS = ['哭哭', '嘴', '脸红', '脸黑'];
 
 let lastExpression = null;
 let moved = false;
-
-// ===== 拖动状态 =====
-const dragging = ref(false);
-const offset = ref({ x: 0, y: 0 });
+let dragging = false;
 let dragStart = { mouseX: 0, mouseY: 0, offsetX: 0, offsetY: 0 };
+const offset = ref({ x: 0, y: 0 });
+
+const RATIO = 1.4;
 
 const stageStyle = computed(() => ({
   width: props.size + 'px',
-  height: props.size + 'px',
-  transform: `translate(${offset.value.x}px, ${offset.value.y}px)`,
+  height: props.size * RATIO + 'px',
 }));
+
+// ===== "摸" 检测状态 =====
+let lastPetX = null;
+let lastPetY = null;
+let petStartTime = 0;
+let petCooldownUntil = 0;
+let lastPetActivityTime = 0;
+let petAccumulatedDistance = 0;
+
+// 参数
+const PET_MIN_DURATION = 1000;    // 至少移动 1000ms
+const PET_MAX_DURATION = 5000;   // 超过 5 秒重置
+const PET_COOLDOWN = 2000;       // 触发后 2 秒冷却
+const PET_IDLE_TIMEOUT = 600;    // 超过 600ms 没动，视为停下
+const PET_MIN_DISTANCE = 40;     // 累计移动 ≥ 40px
+
+function resetPet() {
+  lastPetX = null;
+  lastPetY = null;
+  petStartTime = 0;
+  lastPetActivityTime = 0;
+  petAccumulatedDistance = 0;
+}
+
+function onGlobalMouseMoveForPet(e) {
+  if (dragging) return;
+  if (Date.now() < petCooldownUntil) return;
+  if (!isInContainer(e)) {
+    resetPet();
+    return;
+  }
+
+  const now = Date.now();
+  const x = e.clientX;
+  const y = e.clientY;
+
+  if (lastPetX === null) {
+    lastPetX = x;
+    lastPetY = y;
+    petStartTime = now;
+    lastPetActivityTime = now;
+    petAccumulatedDistance = 0;
+    return;
+  }
+
+  if (now - lastPetActivityTime > PET_IDLE_TIMEOUT) {
+    resetPet();
+    lastPetX = x;
+    lastPetY = y;
+    petStartTime = now;
+    lastPetActivityTime = now;
+    petAccumulatedDistance = 0;
+    return;
+  }
+  lastPetActivityTime = now;
+
+  const dx = x - lastPetX;
+  const dy = y - lastPetY;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  lastPetX = x;
+  lastPetY = y;
+
+  petAccumulatedDistance += dist;
+
+  const elapsed = now - petStartTime;
+
+  if (elapsed > PET_MAX_DURATION) {
+    resetPet();
+    lastPetX = x;
+    lastPetY = y;
+    petStartTime = now;
+    lastPetActivityTime = now;
+    petAccumulatedDistance = 0;
+    return;
+  }
+
+  if (elapsed >= PET_MIN_DURATION && petAccumulatedDistance >= PET_MIN_DISTANCE) {
+    triggerPetReaction();
+    resetPet();
+    petCooldownUntil = now + PET_COOLDOWN;
+  }
+}
+
+function triggerPetReaction() {
+  if (!instance) return;
+
+  const action = Math.random() < 0.3 ? 'expression' : 'message';
+
+  if (action === 'expression') {
+    const name = pickExpression();
+    try {
+      instance.models.model.expression(name);
+      lastExpression = name;
+      console.log('[Live2D] 摸出表情:', name);
+    } catch (err) {
+      console.warn('[Live2D] 摸出表情失败：', err?.message);
+    }
+  } else {
+    const msg = MESSAGES[Math.floor(Math.random() * MESSAGES.length)];
+    try {
+      instance.tipsMessage(msg, 3000, 8);
+      console.log('[Live2D] 摸出文案:', msg);
+    } catch (err) {
+      console.warn('[Live2D] 摸出文案失败：', err?.message);
+    }
+  }
+
+  applyOffset();
+}
+
+function applyOffset() {
+  if (!containerRef.value) return;
+  containerRef.value.style.transform = `translate(${offset.value.x}px, ${offset.value.y}px)`;
+}
+
+function isInContainer(e) {
+  if (!containerRef.value) return false;
+  const r = containerRef.value.getBoundingClientRect();
+  return e.clientX >= r.left && e.clientX <= r.right &&
+         e.clientY >= r.top && e.clientY <= r.bottom;
+}
+
+function onGlobalMouseDown(e) {
+  if (e.button !== 0) return;
+  if (!isInContainer(e)) return;
+
+  moved = false;
+  dragging = true;
+  dragStart = {
+    mouseX: e.clientX,
+    mouseY: e.clientY,
+    offsetX: offset.value.x,
+    offsetY: offset.value.y,
+  };
+}
+
+function onGlobalMouseMove(e) {
+  if (dragging) {
+    const dx = e.clientX - dragStart.mouseX;
+    const dy = e.clientY - dragStart.mouseY;
+
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+      moved = true;
+    }
+
+    offset.value = {
+      x: dragStart.offsetX + dx,
+      y: dragStart.offsetY + dy,
+    };
+    applyOffset();
+  }
+
+  onGlobalMouseMoveForPet(e);
+}
+
+function onGlobalMouseUp(e) {
+  if (e.button !== 0) return;
+
+  if (dragging) {
+    dragging = false;
+    if (!moved && isInContainer(e)) {
+      onModelClick();
+    }
+    moved = false;
+  }
+}
 
 onMounted(async () => {
   if (window.matchMedia('(pointer: coarse)').matches) return;
@@ -57,14 +221,14 @@ onMounted(async () => {
           name: '豆丁星尘',
           path: '/stardust.live2d/豆丁星尘.model3.json',
           scale: 0.15,
-          position: [0, 60],
+          position: [0, 120],
           stageStyle: {
             width: props.size,
-            height: props.size,
+            height: props.size * RATIO,
           },
         },
       ],
-      parentElement: containerRef.value,
+      parentElement: stageRef.value,
       dockedPosition: 'none',
       menus: { items: [] },
       statusBar: { disable: true },
@@ -80,10 +244,6 @@ onMounted(async () => {
 });
 
 function onModelClick() {
-  if (moved) {
-    moved = false;
-    return;
-  }
   if (!instance) return;
 
   const action = Math.random() < 0.5 ? 'expression' : 'message';
@@ -164,8 +324,9 @@ function onReset() {
 }
 
 onBeforeUnmount(() => {
-  window.removeEventListener('mousemove', onDragMove);
-  window.removeEventListener('mouseup', onDragEnd);
+  document.removeEventListener('mousedown', onGlobalMouseDown);
+  document.removeEventListener('mousemove', onGlobalMouseMove);
+  document.removeEventListener('mouseup', onGlobalMouseUp);
   if (instance) {
     try { instance.destroy(); } catch (e) {}
     instance = null;
