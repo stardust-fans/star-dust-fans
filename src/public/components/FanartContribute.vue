@@ -105,9 +105,6 @@
               <button type="button" @click="removeAttachment(i)">移除</button>
             </li>
           </ul>
-          <p class="hint">
-            允许：{{ attachmentAcceptHint }}
-          </p>
         </div>
 
         <div class="form-group">
