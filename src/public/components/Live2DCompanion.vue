@@ -1,3 +1,14 @@
+<template>
+  <div
+    ref="containerRef"
+    class="live2d-companion"
+    :class="{ dragging }"
+    :style="stageStyle"
+  >
+    <div ref="stageRef" class="live2d-stage"></div>
+  </div>
+</template>
+
 <script setup>
 import { onMounted, onBeforeUnmount, ref, computed } from 'vue';
 
@@ -50,12 +61,11 @@ let petCooldownUntil = 0;
 let lastPetActivityTime = 0;
 let petAccumulatedDistance = 0;
 
-// 参数
-const PET_MIN_DURATION = 1000;    // 至少移动 1000ms
-const PET_MAX_DURATION = 5000;   // 超过 5 秒重置
-const PET_COOLDOWN = 2000;       // 触发后 2 秒冷却
-const PET_IDLE_TIMEOUT = 600;    // 超过 600ms 没动，视为停下
-const PET_MIN_DISTANCE = 40;     // 累计移动 ≥ 40px
+const PET_MIN_DURATION = 500;
+const PET_MAX_DURATION = 5000;
+const PET_COOLDOWN = 2000;
+const PET_IDLE_TIMEOUT = 600;
+const PET_MIN_DISTANCE = 20;
 
 function resetPet() {
   lastPetX = null;
@@ -213,6 +223,12 @@ onMounted(async () => {
   if (window.matchMedia('(max-width: 768px)').matches) return;
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
+  applyOffset();
+
+  document.addEventListener('mousedown', onGlobalMouseDown);
+  document.addEventListener('mousemove', onGlobalMouseMove);
+  document.addEventListener('mouseup', onGlobalMouseUp);
+
   try {
     const { loadOml2d } = await import('oh-my-live2d');
     instance = loadOml2d({
@@ -280,49 +296,6 @@ function pickExpression() {
   return name;
 }
 
-function onDragStart(e) {
-  if (e.button !== 0) return;
-
-  moved = false;
-  dragStart = {
-    mouseX: e.clientX,
-    mouseY: e.clientY,
-    offsetX: offset.value.x,
-    offsetY: offset.value.y,
-  };
-  dragging.value = true;
-
-  window.addEventListener('mousemove', onDragMove);
-  window.addEventListener('mouseup', onDragEnd);
-  e.preventDefault();
-}
-
-function onDragMove(e) {
-  if (!dragging.value) return;
-
-  const dx = e.clientX - dragStart.mouseX;
-  const dy = e.clientY - dragStart.mouseY;
-
-  if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
-    moved = true;
-  }
-
-  offset.value = {
-    x: dragStart.offsetX + dx,
-    y: dragStart.offsetY + dy,
-  };
-}
-
-function onDragEnd() {
-  dragging.value = false;
-  window.removeEventListener('mousemove', onDragMove);
-  window.removeEventListener('mouseup', onDragEnd);
-}
-
-function onReset() {
-  offset.value = { x: 0, y: 0 };
-}
-
 onBeforeUnmount(() => {
   document.removeEventListener('mousedown', onGlobalMouseDown);
   document.removeEventListener('mousemove', onGlobalMouseMove);
@@ -333,3 +306,26 @@ onBeforeUnmount(() => {
   }
 });
 </script>
+
+<style scoped>
+.live2d-companion {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 900;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  will-change: transform;
+}
+
+.live2d-companion.dragging {
+  cursor: grabbing;
+}
+
+.live2d-stage {
+  width: 100%;
+  height: 100%;
+}
+</style>
