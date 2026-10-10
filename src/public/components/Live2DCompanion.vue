@@ -1,15 +1,3 @@
-<template>
-  <div
-    ref="containerRef"
-    class="live2d-companion"
-    :class="{ dragging }"
-    :style="stageStyle"
-    @mousedown="onDragStart"
-    @dblclick="onReset"
-    @click="onModelClick"
-  ></div>
-</template>
-
 <script setup>
 import { onMounted, onBeforeUnmount, ref, computed } from 'vue';
 
@@ -42,10 +30,7 @@ const MESSAGES = [
 // 模型的表情名称（必须跟 model3.json 里的 Name 一致）
 const EXPRESSIONS = ['哭哭', '嘴', '脸红', '脸黑'];
 
-// 记录上一次触发的表情，避免连续重复
 let lastExpression = null;
-
-// 记录是否发生了拖动，拖动后不触发点击
 let moved = false;
 
 // ===== 拖动状态 =====
@@ -60,7 +45,9 @@ const stageStyle = computed(() => ({
 }));
 
 onMounted(async () => {
+  if (window.matchMedia('(pointer: coarse)').matches) return;
   if (window.matchMedia('(max-width: 768px)').matches) return;
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
   try {
     const { loadOml2d } = await import('oh-my-live2d');
@@ -92,7 +79,6 @@ onMounted(async () => {
   }
 });
 
-// ===== 点击模型：表情 / 文案 二选一 =====
 function onModelClick() {
   if (moved) {
     moved = false;
@@ -100,7 +86,6 @@ function onModelClick() {
   }
   if (!instance) return;
 
-  // 五五开
   const action = Math.random() < 0.5 ? 'expression' : 'message';
 
   if (action === 'expression') {
@@ -123,7 +108,6 @@ function onModelClick() {
   }
 }
 
-// 随机选一个表情，保证不跟上一次重复
 function pickExpression() {
   if (EXPRESSIONS.length <= 1) return EXPRESSIONS[0];
 
@@ -136,7 +120,6 @@ function pickExpression() {
   return name;
 }
 
-// ===== 拖动逻辑 =====
 function onDragStart(e) {
   if (e.button !== 0) return;
 
@@ -160,7 +143,6 @@ function onDragMove(e) {
   const dx = e.clientX - dragStart.mouseX;
   const dy = e.clientY - dragStart.mouseY;
 
-  // 移动超过 3px 视为拖动，不触发点击
   if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
     moved = true;
   }
@@ -177,7 +159,6 @@ function onDragEnd() {
   window.removeEventListener('mouseup', onDragEnd);
 }
 
-// ===== 双击回到默认位置 =====
 function onReset() {
   offset.value = { x: 0, y: 0 };
 }
@@ -191,28 +172,3 @@ onBeforeUnmount(() => {
   }
 });
 </script>
-
-<style scoped>
-.live2d-companion {
-  position: fixed;
-  right: 20px;
-  bottom: 20px;
-  z-index: 900;
-  cursor: grab;
-  user-select: none;
-  -webkit-user-select: none;
-  touch-action: none;
-}
-
-.live2d-companion.dragging {
-  cursor: grabbing;
-}
-
-.live2d-companion.dragging :deep(canvas) {
-  pointer-events: none;
-}
-
-.live2d-companion:not(.dragging) :deep(canvas) {
-  pointer-events: auto;
-}
-</style>
