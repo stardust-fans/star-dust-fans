@@ -31,7 +31,7 @@ export const AUDIT_TARGET_TABLE_LABELS = {
 // 播放量等级门槛：借鉴日本 VOCALOID 社区"殿堂入り/伝説入り"惯例
 export const MASTERPIECE_VIEW_THRESHOLD = 100000; // 殿堂曲：播放量 ≥ 10万
 export const LEGEND_VIEW_THRESHOLD = 1000000; // 传说曲：播放量 ≥ 100万
-
+export const DEFAULT_FANART_TAGS = ['表情包', '同人', '原创曲', '翻唱曲', '教程', 'MMD'];
 export const OMEW_URL = "https://omew.stardustinfinity.top";
 export const OMEW_SSO_URL = `${OMEW_URL}/api/auth/oidc/start?return_to=%2F`;
 

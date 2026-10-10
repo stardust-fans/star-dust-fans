@@ -11,6 +11,9 @@
     <div class="fanart-info">
       <div class="fanart-type">{{ typeLabel }}</div>
       <h3>{{ item.title }}</h3>
+      <div v-if="tagList.length" class="fanart-tags">
+        <span v-for="tag in tagList" :key="tag" class="fanart-tag">{{ tag }}</span>
+      </div>
       <p class="fanart-author">作者：{{ item.author || '匿名' }}</p>
       <p v-if="item.description" class="fanart-desc">{{ item.description }}</p>
       <div class="fanart-links">
@@ -35,6 +38,16 @@ const imageError = ref(false);
 
 const typeLabel = computed(() => FANART_TYPE_LABELS[props.item.type] || props.item.type || '插画');
 
+const tagList = computed(() => {
+  if (!props.item.tags) return [];
+  try {
+    const arr = JSON.parse(props.item.tags);
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+});
+
 const coverSrc = computed(() => {
   if (props.item.images) {
     try {
@@ -49,3 +62,21 @@ function goDetail() {
   router.push(`/fanart/${props.item.id}`);
 }
 </script>
+
+<style scoped>
+.fanart-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin: 6px 0 8px;
+}
+
+.fanart-tag {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--cobalt);
+  padding: 2px 8px;
+  border: 1px solid var(--cobalt-soft);
+  border-radius: 100px;
+}
+</style>
