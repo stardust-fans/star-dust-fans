@@ -29,10 +29,7 @@ const MESSAGES = [
 
 const EXPRESSIONS = ['哭哭', '嘴', '脸红', '脸黑'];
 
-// 记录上一次触发的表情，避免连续重复
 let lastExpression = null;
-
-// 记录是否发生了拖动，拖动后不触发点击
 let moved = false;
 let dragging = false;
 let dragStart = { mouseX: 0, mouseY: 0, offsetX: 0, offsetY: 0 };
@@ -212,6 +209,7 @@ function onGlobalMouseUp(e) {
 }
 
 onMounted(async () => {
+  if (window.matchMedia('(pointer: coarse)').matches) return;
   if (window.matchMedia('(max-width: 768px)').matches) return;
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
@@ -245,11 +243,9 @@ onMounted(async () => {
   }
 });
 
-// ===== 点击模型：表情 / 文案 二选一 =====
 function onModelClick() {
   if (!instance) return;
 
-  // 五五开
   const action = Math.random() < 0.5 ? 'expression' : 'message';
 
   if (action === 'expression') {
@@ -272,7 +268,6 @@ function onModelClick() {
   }
 }
 
-// 随机选一个表情，保证不跟上一次重复
 function pickExpression() {
   if (EXPRESSIONS.length <= 1) return EXPRESSIONS[0];
 
