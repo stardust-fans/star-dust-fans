@@ -1,0 +1,1 @@
+ALTER TABLE fanart ADD COLUMN attachments TEXT DEFAULT NULL;
