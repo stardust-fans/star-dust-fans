@@ -47,7 +47,7 @@
 
         <!-- 标签多选 -->
         <div class="form-group">
-          <label>标签（可多选，最多 10 个）</label>
+          <label>标签（可选，可多选，最多 10 个）</label>
           <div class="tag-selector">
             <label
               v-for="tag in availableTags"

@@ -5,7 +5,23 @@
       <button class="btn btn-primary" @click="openCreate"><i class="fas fa-plus"></i> 添加歌曲</button>
     </div>
 
-    <SongForm v-if="formVisible" :editing="editingSong" @saved="handleSaved" @cancel="closeForm" />
+    <SongForm v-if="formVisible" :key="editingSong?.id || 'new'" :editing="editingSong" @saved="handleSaved" @cancel="closeForm" />
+
+    <div class="song-toolbar">
+      <label class="song-search">
+        搜索歌曲
+        <input v-model="query" type="search" maxlength="200" placeholder="标题、BV 号或 UP 主" />
+      </label>
+      <label>
+        排序
+        <select v-model="sort">
+          <option value="latest">最新</option>
+          <option value="oldest">最早</option>
+          <option value="view-desc">播放量 ↓</option>
+          <option value="view-asc">播放量 ↑</option>
+        </select>
+      </label>
+    </div>
 
     <div class="table-wrapper">
       <table>
@@ -14,8 +30,8 @@
         </thead>
         <tbody>
           <tr v-if="loading"><td colspan="5" class="loading-state">加载中...</td></tr>
-          <tr v-else-if="loadError"><td colspan="5" style="text-align:center;color:#666;">加载失败</td></tr>
-          <tr v-else-if="songs.length === 0"><td colspan="5" class="empty-state">暂无歌曲</td></tr>
+          <tr v-else-if="error"><td colspan="5" class="empty-state">{{ error }} <button class="btn btn-outline" @click="reload">重试</button></td></tr>
+          <tr v-else-if="songs.length === 0"><td colspan="5" class="empty-state">{{ query.trim() ? '没有找到匹配的歌曲' : '暂无歌曲' }}</td></tr>
           <tr v-else v-for="song in songs" :key="song.id">
             <td>
               <img
@@ -60,14 +76,16 @@
         </tbody>
       </table>
     </div>
+    <SongPagination v-model:page="page" :page-count="pageCount" :total="total" :disabled="loading" />
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref } from 'vue';
 import { useAdminApi } from '../composables/useAdminApi.js';
 import { useToast } from '../composables/useToast.js';
-import { API_BASE } from '../../shared/api.js';
+import { useSongList } from '../../shared/useSongList.js';
+import SongPagination from '../../shared/SongPagination.vue';
 import { toImageSrc } from '../../shared/image.js';
 import { SONG_STATUS_LABELS } from '../../shared/constants.js';
 import StatusBadge from '../components/StatusBadge.vue';
@@ -77,24 +95,13 @@ import SongForm from './SongForm.vue';
 const { adminFetch } = useAdminApi();
 const { showToast } = useToast();
 
-const songs = ref([]);
-const loading = ref(true);
-const loadError = ref(false);
+const { songs, total, page, pageCount, query, sort, loading, error, reload } = useSongList({
+  pageSize: 20,
+  endpoint: '/admin/songs',
+  request: adminFetch,
+});
 const formVisible = ref(false);
 const editingSong = ref(null);
-
-async function loadSongs() {
-  loading.value = true;
-  loadError.value = false;
-  try {
-    const res = await fetch(`${API_BASE}/songs`);
-    songs.value = (await res.json()) || [];
-  } catch (error) {
-    loadError.value = true;
-  } finally {
-    loading.value = false;
-  }
-}
 
 function openCreate() {
   editingSong.value = null;
@@ -110,18 +117,35 @@ function closeForm() {
 }
 async function handleSaved() {
   closeForm();
-  await loadSongs();
+  await reload();
 }
 async function handleDelete(id) {
   if (!confirm('确认删除？')) return;
   try {
     await adminFetch(`/admin/songs/${id}`, { method: 'DELETE' });
     showToast('已删除', 'info');
-    loadSongs();
+    await reload();
   } catch (error) {
     showToast('❌ ' + error.message, 'error');
   }
 }
 
-onMounted(loadSongs);
 </script>
+
+<style scoped>
+.song-toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 16px; margin-bottom: 20px; }
+.song-toolbar label { display: flex; flex-direction: column; gap: 6px; color: var(--ink-soft); }
+.song-search { flex: 1; min-width: 200px; }
+.song-toolbar input,
+.song-toolbar select {
+  min-height: 42px;
+  padding: 8px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--paper-raised);
+  color: var(--ink);
+  font: inherit;
+}
+.song-toolbar input:focus,
+.song-toolbar select:focus { outline: 2px solid var(--cobalt); outline-offset: 2px; }
+</style>

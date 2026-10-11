@@ -2,7 +2,7 @@
   <div class="form-panel">
     <h3>{{ editing ? '编辑歌曲' : '添加歌曲' }}</h3>
     <p class="form-hint">
-      B 站接口目前会拦截本站服务器出口（详见 agents/decisions.md），信息需要手动录入。
+      歌曲信息可手动录入，也可通过 JSON 快速填充。
       可在自己电脑上跑 <code>python3 tool/bili_analyze.py &lt;BV号&gt;</code>，把输出的 JSON 粘贴到下面一键填充，省去逐项抄录。
     </p>
     <div class="form-row">
@@ -74,7 +74,7 @@
     </div>
 
     <div class="form-row">
-      <label>标签</label>
+      <label>标签（可选）</label>
       <div class="checkbox-group" style="display:flex;gap:12px;flex-wrap:wrap;">
         <label><input type="checkbox" v-model="masterpiece" @change="tierManuallySet = true" /> 🏆 殿堂曲</label>
         <label><input type="checkbox" v-model="legend" @change="tierManuallySet = true" /> 🌟 传说曲</label>
@@ -84,8 +84,8 @@
       <p class="form-hint">殿堂曲/传说曲会根据播放数据自动预判（殿堂≥10万，传说≥100万），勾选后可手动覆盖。</p>
     </div>
     <div class="form-row">
-      <label>自定义标签</label>
-      <input type="text" v-model="tags" placeholder="国风, 神调教, 出道曲" />
+      <label>自定义标签（可选）</label>
+      <input type="text" v-model="tags" placeholder="可留空，例如：国风, 神调教, 出道曲" />
     </div>
     <div class="form-row">
       <label>合作详情</label>

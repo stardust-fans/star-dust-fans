@@ -53,7 +53,6 @@ const stageStyle = computed(() => ({
   height: props.size * RATIO + 'px',
 }));
 
-// ===== "摸" 检测状态 =====
 let lastPetX = null;
 let lastPetY = null;
 let petStartTime = 0;
@@ -327,5 +326,9 @@ onBeforeUnmount(() => {
 .live2d-stage {
   width: 100%;
   height: 100%;
+}
+
+@media (max-width: 768px) {
+  .live2d-companion { display: none; }
 }
 </style>
