@@ -5,7 +5,7 @@ VOCALOID 中文虚拟歌姬「星尘」的非官方粉丝站，运行在 stardus
 - 网站链接：https://stardustinfinity.top/
 ## 功能
 
-- 歌曲库：收录歌曲信息与统计数据快照，附加圈内人工评价标记（殿堂曲 / 传说曲 / 国家队 / 众神下凡 / 自定义标签）
+- 歌曲库：分页浏览，按标题、BV 号或 UP 主搜索，支持发布日期和播放量排序；收录歌曲信息与统计数据快照，评价标记和自定义标签均可选
 - 同人作品展示
 - 周边量贩信息
 - 社群日报
@@ -15,7 +15,7 @@ VOCALOID 中文虚拟歌姬「星尘」的非官方粉丝站，运行在 stardus
 
 - 运行时：[Cloudflare Workers](https://developers.cloudflare.com/workers/)，ES modules，无后端框架
 - 数据库：[Cloudflare D1](https://developers.cloudflare.com/d1/)
-- 前端：[Vue 3](https://vuejs.org/) + [Vite](https://vitejs.dev/)（`@cloudflare/vite-plugin`），两个独立构建入口——公开站与管理后台，均使用 hash 路由
+- 前端：[Vue 3](https://vuejs.org/) + [Vite](https://vitejs.dev/)（`@cloudflare/vite-plugin`），两个独立构建入口——公开站使用 history 路由，管理后台使用 hash 路由
 - 静态资源：Workers Static Assets
 - 认证：本地 HMAC 会话、PBKDF2-HMAC-SHA256 密码哈希，以及 RS256 OpenID Connect Provider
 - 测试：[Vitest](https://vitest.dev/) + `@cloudflare/vitest-pool-workers`

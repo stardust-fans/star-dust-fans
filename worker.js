@@ -15,6 +15,28 @@ const ATTACHMENT_ALLOWED_EXT = new Set([
 const ATTACHMENT_MAX_SIZE = 150 * 1024 * 1024;
 const ATTACHMENT_MAX_COUNT = 3;
 
+function songFilter(searchParams, includeUnpublished) {
+    const conditions = [includeUnpublished ? "status != 'deleted'" : "status = 'published'"];
+    const params = [];
+    const query = (searchParams.get('q') || '').trim().slice(0, 200);
+    if (query) {
+        conditions.push(`(
+            instr(lower(coalesce(title, '')), lower(?)) > 0
+            OR instr(lower(coalesce(bvid, '')), lower(?)) > 0
+            OR instr(lower(coalesce(owner_name, '')), lower(?)) > 0
+        )`);
+        params.push(query, query, query);
+    }
+    return { where: conditions.join(' AND '), params };
+}
+
+const SONG_SORT_ORDERS = Object.freeze({
+    latest: 'coalesce(pubdate, 0) DESC, id DESC',
+    oldest: 'coalesce(pubdate, 0) ASC, id ASC',
+    'view-desc': 'coalesce(stat_view, 0) DESC, id DESC',
+    'view-asc': 'coalesce(stat_view, 0) ASC, id ASC',
+});
+
 export default {
     async fetch(request, env, ctx) {
         try {
@@ -99,8 +121,13 @@ async function handleRequest(request, env, ctx) {
     const isAdmin = await getAuthenticatedUser(request, env, 'admin');
 
     // ===== 1. GET /api/songs =====
-    if (path === '/api/songs' && method === 'GET') {
+    if ((path === '/api/songs' || path === '/api/admin/songs') && method === 'GET') {
+        const adminList = path === '/api/admin/songs';
+        if (adminList && !isAdmin) return jsonResponse({ error: '未授权' }, 401);
         try {
+            const { where, params } = songFilter(url.searchParams, adminList);
+            const sort = url.searchParams.get('sort') || 'latest';
+            const order = Object.hasOwn(SONG_SORT_ORDERS, sort) ? SONG_SORT_ORDERS[sort] : SONG_SORT_ORDERS.latest;
             const limit = parseInt(url.searchParams.get('limit') || '1000');
             const offset = parseInt(url.searchParams.get('offset') || '0');
             const safeLimit = Number.isNaN(limit) ? 1000 : Math.min(Math.max(limit, 1), 1000);
@@ -111,13 +138,13 @@ async function handleRequest(request, env, ctx) {
                        owner_name, owner_mid, owner_face,
                        stat_view, stat_danmaku, stat_reply, stat_favorite, stat_coin, stat_share, stat_like,
                        is_masterpiece, is_national_team, is_gods_descend, is_legend,
-                       special_tags, collaboration_details, status
+                       special_tags, collaboration_details, status, flag_reason
                 FROM songs
-                WHERE status = 'published'
-                ORDER BY id ASC
+                WHERE ${where}
+                ORDER BY ${order}
                 LIMIT ? OFFSET ?
             `);
-            const result = await stmt.bind(safeLimit, safeOffset).all();
+            const result = await stmt.bind(...params, safeLimit, safeOffset).all();
 
             const songs = (result.results || []).map(row => ({
                 id: row.id,
@@ -148,6 +175,7 @@ async function handleRequest(request, env, ctx) {
                 special_tags: row.special_tags ? JSON.parse(row.special_tags) : [],
                 collaboration_details: row.collaboration_details,
                 status: row.status,
+                ...(adminList ? { flag_reason: row.flag_reason || '' } : {}),
             }));
 
             return jsonResponse(songs);
@@ -210,10 +238,13 @@ async function handleRequest(request, env, ctx) {
     }
 
     // ===== 1.1 GET /api/songs/count =====
-    if (path === '/api/songs/count' && method === 'GET') {
+    if ((path === '/api/songs/count' || path === '/api/admin/songs/count') && method === 'GET') {
+        const adminList = path === '/api/admin/songs/count';
+        if (adminList && !isAdmin) return jsonResponse({ error: '未授权' }, 401);
         try {
-            const stmt = env.DB.prepare('SELECT COUNT(*) as total FROM songs WHERE status = "published"');
-            const result = await stmt.first();
+            const { where, params } = songFilter(url.searchParams, adminList);
+            const stmt = env.DB.prepare(`SELECT COUNT(*) as total FROM songs WHERE ${where}`);
+            const result = await stmt.bind(...params).first();
             return jsonResponse({ total: result?.total || 0 });
         } catch (error) {
             console.error('❌ /api/songs/count 错误:', error.message);
