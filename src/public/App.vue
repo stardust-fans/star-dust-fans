@@ -6,7 +6,6 @@
   </div>
   <AppFooter v-if="!fullBleed" />
   <ToastContainer />
-  <MysteryDinosaur />
   <Live2DCompanion v-if="!hideChrome" :size="260" />
 </template>
 
@@ -17,7 +16,6 @@ import CosmicBackground from './components/CosmicBackground.vue';
 import NavBar from './components/NavBar.vue';
 import AppFooter from './components/AppFooter.vue';
 import ToastContainer from './components/ToastContainer.vue';
-import MysteryDinosaur from './components/MysteryDinosaur.vue';
 import Live2DCompanion from './components/Live2DCompanion.vue';
 
 const route = useRoute();
