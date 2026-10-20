@@ -100,6 +100,8 @@ SAML 2.0 入口提供 IdP 元数据、HTTP-Redirect/HTTP-POST SSO、带 XML Sign
    npx wrangler r2 bucket cors set stardust-uploads --file cors.json
    ```
 
+   > `cors.json` 必须是 R2 API 的 `{"rules":[…]}` 格式（不是 AWS S3 的 `CORSRules`，wrangler 会直接报错）；非交互环境加 `--force`。
+
 `R2_ACCOUNT_ID` 与 `R2_BUCKET_NAME` 是公开变量，已写在 `wrangler.jsonc` 的 `vars` 里。没配凭据时前端自动走分片上传，功能不受影响。
 
 ### 读取附件
