@@ -71,6 +71,41 @@ SAML 2.0 入口提供 IdP 元数据、HTTP-Redirect/HTTP-POST SSO、带 XML Sign
 | `tool/` | 本机辅助脚本（B 站信息抓取、密码哈希生成等），不参与线上构建 |
 | `migrations/` | D1 数据库迁移脚本 |
 
+## 附件上传（R2 直传）
+
+投稿页的附件（zip / psd / mp4 …，最多 3 个，每个 ≤ **500MB**）按三级策略上传，前一级不可用时自动降级：
+
+| 顺序 | 路径 | 说明 |
+| :-- | :-- | :-- |
+| 1 | **R2 直传** | Worker 只签发预签名 PUT 地址（`POST /api/upload-attachment/presign`），文件由浏览器**直接** PUT 到 `https://<account>.r2.cloudflarestorage.com`。字节不经过 Worker，因此不受 Worker 请求体（100MB）与内存（128MB）限制 |
+| 2 | 分片上传 | 没配直传凭据（`presign` 返回 501）或直传失败时，>20MB 的文件按 8MB 分片经 Worker 上传（R2 multipart） |
+| 3 | 单请求 | ≤20MB 的文件仍走原来的 `POST /api/upload-attachment` |
+
+上传完成后调用 `POST /api/upload-attachment/confirm` 确认对象确实落桶，再把 `{ url, name, size }` 写进作品记录。
+
+### 启用直传
+
+1. Cloudflare 控制台 → **R2 → Manage R2 API Tokens → Create API token**，权限选 *Object Read & Write*，拿到 **Access Key ID** 与 **Secret Access Key**。
+2. 把凭据设为 Worker secret（不要写进 `wrangler.jsonc`）：
+
+   ```bash
+   npx wrangler secret put R2_ACCESS_KEY_ID
+   npx wrangler secret put R2_SECRET_ACCESS_KEY
+   ```
+
+   本地开发写进 `.dev.vars` 即可。
+3. 给存储桶配 CORS（浏览器直传必须），仓库里的 `cors.json` 可直接用：
+
+   ```bash
+   npx wrangler r2 bucket cors set stardust-uploads --file cors.json
+   ```
+
+`R2_ACCOUNT_ID` 与 `R2_BUCKET_NAME` 是公开变量，已写在 `wrangler.jsonc` 的 `vars` 里。没配凭据时前端自动走分片上传，功能不受影响。
+
+### 读取附件
+
+`/attachments/*` 由 Worker 从 R2 读取（已加入 `run_worker_first`），支持 `HEAD` 与 `Range`（视频可拖动进度），附件带 `immutable` 长缓存。
+
 ## CI/CD
 
 GitHub Actions 在 Pull Request 上自动构建、测试，并在评论中给出预览部署链接与数据库变更提示；合并到 `main` 后自动应用 D1 迁移并部署到生产环境。

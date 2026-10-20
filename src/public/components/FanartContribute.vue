@@ -121,7 +121,7 @@
             </span>
           </div>
           <div v-if="uploadingAttachment" style="color: var(--ink-muted); font-size: 0.85rem;">
-            上传中... {{ attachmentProgress }}%（大文件会分片上传）
+            上传中... {{ attachmentProgress }}%（R2 直传，大文件自动分片）
           </div>
           <ul v-if="attachments.length > 0" class="attachment-list">
             <li v-for="(a, i) in attachments" :key="i">
@@ -329,8 +329,65 @@ function removeImage(index) {
   form.images = uploadedImages.value.slice();
 }
 
+// R2 直传：先向 Worker 要一个预签名地址，然后浏览器直接 PUT 到 R2
+// 字节不经过 Worker，所以完全绕开 Worker 的请求体/内存上限
+async function directUpload(file, onProgress) {
+  const presignRes = await fetch('/api/upload-attachment/presign', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({
+      name: file.name,
+      size: file.size,
+      type: file.type || 'application/octet-stream',
+    }),
+  });
+
+  // 501 = 服务端没配置 R2 直传凭据，交给分片上传兜底
+  if (presignRes.status === 501) return null;
+
+  const presign = await presignRes.json();
+  if (!presignRes.ok) throw new Error(presign.error || '签发直传地址失败');
+
+  await new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', presign.uploadUrl);
+    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && onProgress) {
+        onProgress(Math.round((event.loaded / event.total) * 100));
+      }
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve();
+      else reject(new Error(`R2 直传失败（HTTP ${xhr.status}）`));
+    };
+    xhr.onerror = () => reject(new Error('R2 直传网络错误，检查存储桶 CORS 配置'));
+    xhr.send(file);
+  });
+
+  const confirmRes = await fetch('/api/upload-attachment/confirm', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ key: presign.key, name: file.name }),
+  });
+  const confirm = await confirmRes.json();
+  if (!confirmRes.ok) throw new Error(confirm.error || '确认上传失败');
+  return confirm;
+}
+
 async function uploadAttachment(file, onProgress) {
-  // 小文件：单请求直传
+  // 1) 优先走 R2 直传
+  try {
+    const direct = await directUpload(file, onProgress);
+    if (direct) return direct;
+  } catch (err) {
+    console.warn('R2 直传不可用，回退到 Worker 上传：', err.message);
+    if (onProgress) onProgress(0);
+  }
+
+  // 2) 回退：小文件单请求直传
   if (file.size <= ATTACHMENT_CHUNK_THRESHOLD) {
     const formData = new FormData();
     formData.append('file', file);
@@ -437,7 +494,10 @@ async function handleAttachments(e) {
         size: data.size,
         hash: data.hash,
       });
-      showToast(`「${file.name}」上传完成`, 'success');
+      showToast(
+        `「${file.name}」上传完成${data.mode === 'direct' ? '（R2 直传）' : ''}`,
+        'success'
+      );
     } catch (err) {
       showToast(`「${file.name}」上传失败：${err.message}`, 'error');
     } finally {

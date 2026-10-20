@@ -34,7 +34,9 @@
   "workers_dev": true,
   "preview_urls": true,
   "vars": {
-    "OIDC_ISSUER": "https://stardustinfinity.top"
+    "OIDC_ISSUER": "https://stardustinfinity.top",
+    "R2_ACCOUNT_ID": "20c1630f373f1d9663f96f153d4a3194",
+    "R2_BUCKET_NAME": "stardust-uploads"
   },
   "observability": {
     "logs": {

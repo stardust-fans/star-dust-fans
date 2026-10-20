@@ -1,0 +1,13 @@
+[
+  {
+    "AllowedOrigins": [
+      "https://stardustinfinity.top",
+      "https://www.stardustinfinity.top",
+      "http://localhost:5173"
+    ],
+    "AllowedMethods": ["GET", "HEAD", "PUT"],
+    "AllowedHeaders": ["*"],
+    "ExposeHeaders": ["ETag"],
+    "MaxAgeSeconds": 3600
+  }
+]
