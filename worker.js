@@ -33,6 +33,72 @@ function parseRangeHeader(value) {
     return { offset, length: end - offset + 1 };
 }
 
+// ===== R2 直传：S3 兼容接口的 SigV4 预签名 =====
+// 浏览器拿到签名 URL 后直接 PUT 到 R2，字节不经过 Worker，
+// 因此不受 Worker 请求体（100MB）与内存（128MB）限制。
+const R2_S3_REGION = 'auto';
+const R2_PRESIGN_EXPIRES = 15 * 60;
+
+function toHex(buffer) {
+    return Array.from(new Uint8Array(buffer)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function sha256Hex(value) {
+    const data = typeof value === 'string' ? new TextEncoder().encode(value) : value;
+    return toHex(await crypto.subtle.digest('SHA-256', data));
+}
+
+async function hmacSha256(key, value) {
+    const cryptoKey = await crypto.subtle.importKey(
+        'raw', key, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+    );
+    return new Uint8Array(await crypto.subtle.sign('HMAC', cryptoKey, new TextEncoder().encode(value)));
+}
+
+async function presignR2Put({ accountId, accessKeyId, secretAccessKey, bucket, key, expiresIn = R2_PRESIGN_EXPIRES }) {
+    const host = `${accountId}.r2.cloudflarestorage.com`;
+    const canonicalUri = `/${bucket}/${key.split('/').map((seg) => encodeURIComponent(seg)).join('/')}`;
+    const amzDate = new Date().toISOString().replace(/[:-]|\.\d{3}/g, '');
+    const dateStamp = amzDate.slice(0, 8);
+    const scope = `${dateStamp}/${R2_S3_REGION}/s3/aws4_request`;
+
+    const query = {
+        'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
+        'X-Amz-Credential': `${accessKeyId}/${scope}`,
+        'X-Amz-Date': amzDate,
+        'X-Amz-Expires': String(expiresIn),
+        'X-Amz-SignedHeaders': 'host',
+    };
+    const canonicalQuery = Object.keys(query)
+        .sort()
+        .map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(query[k])}`)
+        .join('&');
+
+    const canonicalRequest = [
+        'PUT',
+        canonicalUri,
+        canonicalQuery,
+        `host:${host}\n`,
+        'host',
+        'UNSIGNED-PAYLOAD',
+    ].join('\n');
+
+    const stringToSign = [
+        'AWS4-HMAC-SHA256',
+        amzDate,
+        scope,
+        await sha256Hex(canonicalRequest),
+    ].join('\n');
+
+    const kDate = await hmacSha256(new TextEncoder().encode(`AWS4${secretAccessKey}`), dateStamp);
+    const kRegion = await hmacSha256(kDate, R2_S3_REGION);
+    const kService = await hmacSha256(kRegion, 's3');
+    const kSigning = await hmacSha256(kService, 'aws4_request');
+    const signature = toHex(await hmacSha256(kSigning, stringToSign));
+
+    return `https://${host}${canonicalUri}?${canonicalQuery}&X-Amz-Signature=${signature}`;
+}
+
 function songFilter(searchParams, includeUnpublished) {
     const conditions = [includeUnpublished ? "status != 'deleted'" : "status = 'published'"];
     const params = [];
@@ -1121,6 +1187,108 @@ async function handleRequest(request, env, ctx) {
             return jsonResponse({ success: true });
         } catch (error) {
             console.error('❌ multipart abort 错误:', error.message);
+            return jsonResponse({ error: error.message }, 500);
+        }
+    }
+
+    // ===== R2 直传：签发预签名 PUT 地址 =====
+    // 浏览器直接 PUT 到 R2，字节不经过 Worker，单文件可到 500MB
+    if (path === '/api/upload-attachment/presign' && method === 'POST') {
+        const userId = await getAuthenticatedUserId(request, env);
+        if (!userId) {
+            return jsonResponse({ error: '请先登录' }, 401);
+        }
+
+        try {
+            const body = await request.json();
+            const originalName = String(body?.name || '').slice(0, 200);
+            const size = Number(body?.size);
+            const ext = originalName.split('.').pop()?.toLowerCase() || '';
+
+            if (!ATTACHMENT_ALLOWED_EXT.has(ext)) {
+                return jsonResponse({ error: `不允许上传 .${ext} 类型的文件` }, 400);
+            }
+            if (!Number.isFinite(size) || size <= 0) {
+                return jsonResponse({ error: '文件大小不合法' }, 400);
+            }
+            if (size > ATTACHMENT_MAX_SIZE) {
+                return jsonResponse({ error: `文件大小不能超过 ${ATTACHMENT_LIMIT_TEXT}` }, 400);
+            }
+
+            const accountId = env.R2_ACCOUNT_ID;
+            const accessKeyId = env.R2_ACCESS_KEY_ID;
+            const secretAccessKey = env.R2_SECRET_ACCESS_KEY;
+            const bucket = env.R2_BUCKET_NAME || 'stardust-uploads';
+
+            if (!accountId || !accessKeyId || !secretAccessKey) {
+                // 没有配置直传凭据：告诉前端回退到分片上传
+                return jsonResponse({
+                    error: '未配置 R2 直传凭据（R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY）',
+                    code: 'DIRECT_UPLOAD_DISABLED',
+                }, 501);
+            }
+
+            const key = `attachments/${crypto.randomUUID()}.${ext}`;
+            const uploadUrl = await presignR2Put({
+                accountId, accessKeyId, secretAccessKey, bucket, key,
+            });
+
+            return jsonResponse({
+                success: true,
+                mode: 'direct',
+                uploadUrl,
+                key,
+                name: originalName,
+                size,
+                expiresIn: R2_PRESIGN_EXPIRES,
+            });
+        } catch (error) {
+            console.error('❌ presign 错误:', error.message);
+            return jsonResponse({ error: error.message }, 500);
+        }
+    }
+
+    // ===== R2 直传：确认对象已落桶 =====
+    if (path === '/api/upload-attachment/confirm' && method === 'POST') {
+        const userId = await getAuthenticatedUserId(request, env);
+        if (!userId) {
+            return jsonResponse({ error: '请先登录' }, 401);
+        }
+
+        try {
+            const body = await request.json();
+            const key = String(body?.key || '');
+            if (!key.startsWith('attachments/') || key.includes('..')) {
+                return jsonResponse({ error: '参数不合法' }, 400);
+            }
+
+            const ext = key.split('.').pop()?.toLowerCase() || '';
+            if (!ATTACHMENT_ALLOWED_EXT.has(ext)) {
+                return jsonResponse({ error: `不允许上传 .${ext} 类型的文件` }, 400);
+            }
+
+            const head = await env.R2_BUCKET.head(key);
+            if (!head) {
+                return jsonResponse({ error: '文件还没传完' }, 409);
+            }
+            if (head.size > ATTACHMENT_MAX_SIZE) {
+                await env.R2_BUCKET.delete(key);
+                return jsonResponse({ error: `文件大小不能超过 ${ATTACHMENT_LIMIT_TEXT}` }, 400);
+            }
+
+            const name = String(body?.name || key.split('/').pop()).slice(0, 200);
+
+            return jsonResponse({
+                success: true,
+                mode: 'direct',
+                url: `https://stardustinfinity.top/${key}`,
+                key,
+                hash: null,
+                name,
+                size: head.size,
+            });
+        } catch (error) {
+            console.error('❌ confirm 错误:', error.message);
             return jsonResponse({ error: error.message }, 500);
         }
     }
