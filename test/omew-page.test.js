@@ -57,6 +57,7 @@ describe("OMEW public page contract", () => {
       "/saml/*",
       "/scim/*",
       "/uploads/*",
+      "/attachments/*",
       "/special-thanks.json",
     ]) {
       expect(runWorkerFirst).toContain(`"${entry}"`);
