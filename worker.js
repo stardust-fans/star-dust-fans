@@ -1,4 +1,4 @@
-﻿// worker.js
+// worker.js
 import { handleOidcRequest } from "./src/worker/oidc.js";
 import { handleSamlRequest } from "./src/worker/saml.js";
 import { handleScimRequest } from "./src/worker/scim.js";
@@ -12,8 +12,26 @@ const ATTACHMENT_ALLOWED_EXT = new Set([
   'psd', 'clip', 'sai2', 'kra', 'procreate', 'ai', 'sketch',
   'aseprite', 'aup3', 'flp', 'als',
 ]);
-const ATTACHMENT_MAX_SIZE = 150 * 1024 * 1024;
+const ATTACHMENT_MAX_SIZE = 500 * 1024 * 1024;
 const ATTACHMENT_MAX_COUNT = 3;
+// 大文件走 R2 multipart 分片上传：单个请求体远小于 Worker 的请求体/内存上限
+const ATTACHMENT_PART_SIZE = 8 * 1024 * 1024;
+const ATTACHMENT_MAX_PARTS = 256;
+const ATTACHMENT_LIMIT_TEXT = `${Math.round(ATTACHMENT_MAX_SIZE / 1024 / 1024)}MB`;
+
+// 解析 Range 头："bytes=0-1023" / "bytes=1024-" / "bytes=-1024"
+function parseRangeHeader(value) {
+    const match = /^bytes=(\d*)-(\d*)$/.exec(String(value || '').trim());
+    if (!match) return null;
+    const [, rawStart, rawEnd] = match;
+    if (rawStart === '' && rawEnd === '') return null;
+    if (rawStart === '') return { suffix: Number(rawEnd) };
+    const offset = Number(rawStart);
+    if (rawEnd === '') return { offset };
+    const end = Number(rawEnd);
+    if (end < offset) return null;
+    return { offset, length: end - offset + 1 };
+}
 
 function songFilter(searchParams, includeUnpublished) {
     const conditions = [includeUnpublished ? "status != 'deleted'" : "status = 'published'"];
@@ -913,7 +931,7 @@ async function handleRequest(request, env, ctx) {
             }
 
             if (file.size > ATTACHMENT_MAX_SIZE) {
-                return jsonResponse({ error: '文件大小不能超过 150MB' }, 400);
+                return jsonResponse({ error: `文件大小不能超过 ${ATTACHMENT_LIMIT_TEXT}` }, 400);
             }
 
             const originalName = file.name || 'attachment';
@@ -952,6 +970,157 @@ async function handleRequest(request, env, ctx) {
 
         } catch (error) {
             console.error('❌ /api/upload-attachment 错误:', error.message);
+            return jsonResponse({ error: error.message }, 500);
+        }
+    }
+
+    // ===== 大文件分片上传（R2 multipart）=====
+    // 单请求体远小于 Worker 上限，500MB 以内的附件都能传
+    if (path === '/api/upload-attachment/multipart/init' && method === 'POST') {
+        const userId = await getAuthenticatedUserId(request, env);
+        if (!userId) {
+            return jsonResponse({ error: '请先登录' }, 401);
+        }
+
+        try {
+            const body = await request.json();
+            const originalName = String(body?.name || '').slice(0, 200);
+            const size = Number(body?.size);
+            const ext = originalName.split('.').pop()?.toLowerCase() || '';
+
+            if (!ATTACHMENT_ALLOWED_EXT.has(ext)) {
+                return jsonResponse({ error: `不允许上传 .${ext} 类型的文件` }, 400);
+            }
+            if (!Number.isFinite(size) || size <= 0) {
+                return jsonResponse({ error: '文件大小不合法' }, 400);
+            }
+            if (size > ATTACHMENT_MAX_SIZE) {
+                return jsonResponse({ error: `文件大小不能超过 ${ATTACHMENT_LIMIT_TEXT}` }, 400);
+            }
+
+            const key = `attachments/${crypto.randomUUID()}.${ext}`;
+            const upload = await env.R2_BUCKET.createMultipartUpload(key, {
+                httpMetadata: {
+                    contentType: String(body?.type || 'application/octet-stream').slice(0, 100),
+                    contentDisposition: `attachment; filename="${encodeURIComponent(originalName)}"`,
+                },
+            });
+
+            return jsonResponse({
+                success: true,
+                key,
+                uploadId: upload.uploadId,
+                partSize: ATTACHMENT_PART_SIZE,
+                name: originalName,
+            });
+        } catch (error) {
+            console.error('❌ multipart init 错误:', error.message);
+            return jsonResponse({ error: error.message }, 500);
+        }
+    }
+
+    if (path === '/api/upload-attachment/multipart/part' && method === 'PUT') {
+        const userId = await getAuthenticatedUserId(request, env);
+        if (!userId) {
+            return jsonResponse({ error: '请先登录' }, 401);
+        }
+
+        try {
+            const key = url.searchParams.get('key') || '';
+            const uploadId = url.searchParams.get('uploadId') || '';
+            const partNumber = Number(url.searchParams.get('partNumber'));
+
+            if (!key.startsWith('attachments/') || key.includes('..') || !uploadId) {
+                return jsonResponse({ error: '分片参数不合法' }, 400);
+            }
+            if (!Number.isInteger(partNumber) || partNumber < 1 || partNumber > ATTACHMENT_MAX_PARTS) {
+                return jsonResponse({ error: '分片序号不合法' }, 400);
+            }
+
+            const buffer = await request.arrayBuffer();
+            if (buffer.byteLength === 0) {
+                return jsonResponse({ error: '分片内容为空' }, 400);
+            }
+            if (buffer.byteLength > ATTACHMENT_PART_SIZE) {
+                return jsonResponse({ error: '分片过大' }, 413);
+            }
+
+            const upload = env.R2_BUCKET.resumeMultipartUpload(key, uploadId);
+            const part = await upload.uploadPart(partNumber, buffer);
+
+            return jsonResponse({ success: true, partNumber: part.partNumber, etag: part.etag });
+        } catch (error) {
+            console.error('❌ multipart part 错误:', error.message);
+            return jsonResponse({ error: error.message }, 500);
+        }
+    }
+
+    if (path === '/api/upload-attachment/multipart/complete' && method === 'POST') {
+        const userId = await getAuthenticatedUserId(request, env);
+        if (!userId) {
+            return jsonResponse({ error: '请先登录' }, 401);
+        }
+
+        try {
+            const body = await request.json();
+            const key = String(body?.key || '');
+            const uploadId = String(body?.uploadId || '');
+            const parts = Array.isArray(body?.parts) ? body.parts : [];
+
+            if (!key.startsWith('attachments/') || key.includes('..') || !uploadId) {
+                return jsonResponse({ error: '参数不合法' }, 400);
+            }
+            if (parts.length === 0 || parts.length > ATTACHMENT_MAX_PARTS) {
+                return jsonResponse({ error: '分片数量不合法' }, 400);
+            }
+
+            const uploadedParts = parts
+                .map((p) => ({ partNumber: Number(p?.partNumber), etag: String(p?.etag || '') }))
+                .filter((p) => Number.isInteger(p.partNumber) && p.partNumber > 0 && p.etag)
+                .sort((a, b) => a.partNumber - b.partNumber);
+
+            if (uploadedParts.length !== parts.length) {
+                return jsonResponse({ error: '分片信息不完整' }, 400);
+            }
+
+            const upload = env.R2_BUCKET.resumeMultipartUpload(key, uploadId);
+            const object = await upload.complete(uploadedParts);
+
+            const originalName = String(body?.name || key.split('/').pop() || 'attachment').slice(0, 200);
+            const declaredSize = Number(body?.size);
+
+            return jsonResponse({
+                success: true,
+                url: `https://stardustinfinity.top/${key}`,
+                key,
+                hash: null,
+                name: originalName,
+                size: object?.size ?? (Number.isFinite(declaredSize) ? declaredSize : null),
+            });
+        } catch (error) {
+            console.error('❌ multipart complete 错误:', error.message);
+            return jsonResponse({ error: error.message }, 500);
+        }
+    }
+
+    if (path === '/api/upload-attachment/multipart/abort' && method === 'POST') {
+        const userId = await getAuthenticatedUserId(request, env);
+        if (!userId) {
+            return jsonResponse({ error: '请先登录' }, 401);
+        }
+
+        try {
+            const body = await request.json();
+            const key = String(body?.key || '');
+            const uploadId = String(body?.uploadId || '');
+            if (!key.startsWith('attachments/') || !uploadId) {
+                return jsonResponse({ error: '参数不合法' }, 400);
+            }
+            const upload = env.R2_BUCKET.resumeMultipartUpload(key, uploadId);
+            await upload.abort();
+            return jsonResponse({ success: true });
+        } catch (error) {
+            console.error('❌ multipart abort 错误:', error.message);
             return jsonResponse({ error: error.message }, 500);
         }
     }
@@ -1450,20 +1619,85 @@ async function handleRequest(request, env, ctx) {
         }
     }
 
-    // ===== 公开访问 R2 图片 =====
-    if (path.startsWith('/uploads/') && method === 'GET') {
+    // ===== 公开访问 R2 对象（图片 / 附件）=====
+    if ((path.startsWith('/uploads/') || path.startsWith('/attachments/')) && (method === 'GET' || method === 'HEAD')) {
         try {
-            const object = await env.R2_BUCKET.get(path.slice(1));
-            if (!object) {
+            const key = path.slice(1);
+            const isAttachment = path.startsWith('/attachments/');
+            const defaultType = isAttachment ? 'application/octet-stream' : 'image/jpeg';
+            const range = parseRangeHeader(request.headers.get('Range'));
+
+            // 普通 GET（绝大多数图片请求）：一次 get 就够，保持原有开销
+            if (!range && method === 'GET') {
+                const object = await env.R2_BUCKET.get(key);
+                if (!object || !object.body) {
+                    return new Response('Not Found', { status: 404 });
+                }
+                const headers = new Headers({
+                    'Content-Type': object.httpMetadata?.contentType || defaultType,
+                    'Accept-Ranges': 'bytes',
+                    'Cache-Control': isAttachment
+                        ? 'public, max-age=31536000, immutable'
+                        : 'public, max-age=86400',
+                });
+                if (object.httpMetadata?.contentDisposition) {
+                    headers.set('Content-Disposition', object.httpMetadata.contentDisposition);
+                }
+                return new Response(object.body, { status: 200, headers });
+            }
+
+            const head = await env.R2_BUCKET.head(key);
+            if (!head) {
                 return new Response('Not Found', { status: 404 });
             }
-            return new Response(object.body, {
-                headers: {
-                    'Content-Type': object.httpMetadata?.contentType || 'image/jpeg',
-                    'Cache-Control': 'public, max-age=86400',
-                },
+
+            const headers = new Headers({
+                'Content-Type': head.httpMetadata?.contentType || defaultType,
+                'Accept-Ranges': 'bytes',
+                'Cache-Control': isAttachment
+                    ? 'public, max-age=31536000, immutable'
+                    : 'public, max-age=86400',
+                'ETag': head.httpEtag,
+                'Last-Modified': head.uploaded.toUTCString(),
             });
+            if (head.httpMetadata?.contentDisposition) {
+                headers.set('Content-Disposition', head.httpMetadata.contentDisposition);
+            }
+
+            // Range 请求：视频等大文件可拖动进度
+            if (range) {
+                const start = range.offset !== undefined
+                    ? range.offset
+                    : Math.max(0, head.size - (range.suffix || 0));
+                const maxLength = head.size - start;
+                const length = range.length !== undefined
+                    ? Math.min(range.length, maxLength)
+                    : maxLength;
+
+                if (start >= head.size || start < 0 || length <= 0) {
+                    return new Response('Range Not Satisfiable', {
+                        status: 416,
+                        headers: { 'Content-Range': `bytes */${head.size}` },
+                    });
+                }
+
+                headers.set('Content-Range', `bytes ${start}-${start + length - 1}/${head.size}`);
+                if (method === 'HEAD') {
+                    headers.set('Content-Length', String(length));
+                    return new Response(null, { status: 206, headers });
+                }
+
+                const object = await env.R2_BUCKET.get(key, { range: { offset: start, length } });
+                if (!object || !object.body) {
+                    return new Response('Not Found', { status: 404 });
+                }
+                return new Response(object.body, { status: 206, headers });
+            }
+
+            headers.set('Content-Length', String(head.size));
+            return new Response(null, { status: 200, headers });
         } catch (error) {
+            console.error('❌ R2 对象读取失败:', error.message);
             return new Response('Error', { status: 500 });
         }
     }

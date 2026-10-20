@@ -13,16 +13,29 @@
         </div>
 
         <div class="form-group">
-          <label>图片（最多 100 张）<span class="required">*</span></label>
+          <label>图片（最多 100 张，每张不超过 15MB）<span class="required">*</span></label>
           <div class="file-input-wrapper">
-            <input type="file" accept="image/*" multiple @change="handleFiles" />
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              :disabled="uploadingImages"
+              @change="handleFiles"
+            />
             <span v-if="uploadedImages.length > 0" style="color: var(--cobalt);">
-              已上传 {{ uploadedImages.length }} 张
+              已上传 {{ uploadedImages.length }} / 100 张
             </span>
           </div>
-          <div v-if="uploadProgress > 0 && uploadProgress < 100" style="color: var(--ink-muted); font-size: 0.85rem;">
+          <div v-if="uploadingImages" style="color: var(--ink-muted); font-size: 0.85rem;">
             上传中... {{ uploadProgress }}%
           </div>
+          <ul v-if="uploadedImages.length > 0" class="attachment-list image-list">
+            <li v-for="(url, i) in uploadedImages" :key="url + '-' + i">
+              <img :src="url" class="image-thumb" :alt="`图片 ${i + 1}`" loading="lazy" />
+              <span class="image-name">第 {{ i + 1 }} 张</span>
+              <button type="button" @click="removeImage(i)">移除</button>
+            </li>
+          </ul>
         </div>
 
         <div class="form-group">
@@ -38,10 +51,17 @@
         <div class="form-group">
           <label>类型</label>
           <select v-model="form.type">
-            <option value="illust">插画</option>
-            <option value="video">视频</option>
-            <option value="fiction">小说</option>
-            <option value="music">音乐</option>
+            <optgroup v-if="officialTags.length > 0" label="官方分类">
+              <option v-for="tag in officialTags" :key="tag.id" :value="tag.name">
+                {{ tag.name }}
+              </option>
+            </optgroup>
+            <optgroup label="其他格式">
+              <option value="illust">插画</option>
+              <option value="video">视频</option>
+              <option value="fiction">小说</option>
+              <option value="music">音乐</option>
+            </optgroup>
           </select>
         </div>
 
@@ -87,17 +107,21 @@
 
         <!-- 附件 -->
         <div class="form-group">
-          <label>附件（最多 3 个，每个不超过 150MB）</label>
+          <label>附件（最多 3 个，每个不超过 500MB）</label>
           <div class="file-input-wrapper">
             <input
               type="file"
               :accept="attachmentAccept"
               multiple
+              :disabled="uploadingAttachment"
               @change="handleAttachments"
             />
             <span v-if="attachments.length > 0" style="color: var(--cobalt);">
               已上传 {{ attachments.length }}/3
             </span>
+          </div>
+          <div v-if="uploadingAttachment" style="color: var(--ink-muted); font-size: 0.85rem;">
+            上传中... {{ attachmentProgress }}%（大文件会分片上传）
           </div>
           <ul v-if="attachments.length > 0" class="attachment-list">
             <li v-for="(a, i) in attachments" :key="i">
@@ -131,7 +155,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue';
+import { ref, reactive, computed, onMounted } from 'vue';
 import { useToast } from '../composables/useToast.js';
 import { fetchAPI } from '../../shared/api.js';
 
@@ -151,16 +175,32 @@ const form = reactive({
 
 const uploadedImages = ref([]);
 const uploadProgress = ref(0);
+const uploadingImages = ref(false);
 const loading = ref(false);
 const error = ref('');
+
+// 图片限制（与服务端 /api/upload 一致：单张 15MB，最多 100 张）
+const MAX_IMAGES = 100;
+const MAX_IMAGE_SIZE = 15 * 1024 * 1024;
 
 // ===== 标签 =====
 const availableTags = ref([]);
 const showAddTag = ref(false);
 const newTagName = ref('');
 
+// 官方分类 = 管理员维护的标签（sort_order < 999），用户自助申请的排在后面
+const officialTags = computed(() =>
+  availableTags.value.filter((tag) => Number(tag.sort_order) < 999)
+);
+
 // ===== 附件 =====
 const attachments = ref([]);
+const MAX_ATTACHMENT_SIZE = 500 * 1024 * 1024;
+// 超过阈值走 R2 分片上传（单请求体 8MB，绕开 Worker 请求体/内存上限）
+const ATTACHMENT_CHUNK_SIZE = 8 * 1024 * 1024;
+const ATTACHMENT_CHUNK_THRESHOLD = 20 * 1024 * 1024;
+const uploadingAttachment = ref(false);
+const attachmentProgress = ref(0);
 const ATTACHMENT_ALLOWED = [
   'zip', '7z', 'rar', 'tar', 'gz', 'bz2', 'xz', 'zst',
   'pdf', 'txt', 'md', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
@@ -227,27 +267,40 @@ function close() {
 }
 
 async function handleFiles(e) {
-  const files = Array.from(e.target.files);
+  const input = e.target;
+  const files = Array.from(input.files || []);
+  // 立刻清空 input：否则再次选择同一个文件不会触发 change（点了像没反应）
+  input.value = '';
   if (files.length === 0) return;
 
-  if (files.length > 100) {
-    error.value = '最多只能上传 100 张图片';
+  const remain = MAX_IMAGES - uploadedImages.value.length;
+  if (remain <= 0) {
+    showToast(`最多只能上传 ${MAX_IMAGES} 张图片`, 'error');
     return;
   }
 
-  const totalSize = files.reduce((acc, f) => acc + f.size, 0);
-  if (totalSize > 100 * 1024 * 1024) {
-    error.value = '图片总大小不能超过 100MB';
-    return;
+  const batch = files.slice(0, remain);
+  if (files.length > remain) {
+    showToast(`最多 ${MAX_IMAGES} 张，本次只接收前 ${remain} 张`, 'error');
   }
+
+  const accepted = batch.filter((file) => {
+    if (file.size > MAX_IMAGE_SIZE) {
+      showToast(`「${file.name}」超过 15MB，已跳过`, 'error');
+      return false;
+    }
+    return true;
+  });
+  if (accepted.length === 0) return;
 
   error.value = '';
-  const urls = [];
-  let completed = 0;
+  uploadingImages.value = true;
+  uploadProgress.value = 0;
 
-  for (const file of files) {
+  let ok = 0;
+  for (let i = 0; i < accepted.length; i++) {
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('file', accepted[i]);
     try {
       const res = await fetch('/api/upload', {
         method: 'POST',
@@ -256,34 +309,114 @@ async function handleFiles(e) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '上传失败');
-      urls.push(data.url);
+      // 追加而不是覆盖：分多次选择图片时都保留
+      uploadedImages.value.push(data.url);
+      form.images = uploadedImages.value.slice();
+      ok++;
     } catch (err) {
       error.value = `上传失败：${err.message}`;
       showToast(error.value, 'error');
-      return;
     }
-    completed++;
-    uploadProgress.value = Math.round((completed / files.length) * 100);
+    uploadProgress.value = Math.round(((i + 1) / accepted.length) * 100);
   }
 
-  uploadedImages.value = urls;
-  form.images = urls;
-  showToast(`成功上传 ${urls.length} 张图片`, 'success');
+  uploadingImages.value = false;
+  if (ok > 0) showToast(`成功上传 ${ok} 张图片`, 'success');
+}
+
+function removeImage(index) {
+  uploadedImages.value.splice(index, 1);
+  form.images = uploadedImages.value.slice();
+}
+
+async function uploadAttachment(file, onProgress) {
+  // 小文件：单请求直传
+  if (file.size <= ATTACHMENT_CHUNK_THRESHOLD) {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch('/api/upload-attachment', {
+      method: 'POST',
+      credentials: 'include',
+      body: formData,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || '上传失败');
+    return data;
+  }
+
+  // 大文件：R2 multipart 分片上传
+  const initRes = await fetch('/api/upload-attachment/multipart/init', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({
+      name: file.name,
+      size: file.size,
+      type: file.type || 'application/octet-stream',
+    }),
+  });
+  const init = await initRes.json();
+  if (!initRes.ok) throw new Error(init.error || '初始化上传失败');
+
+  const { key, uploadId } = init;
+  const partSize = Math.max(Number(init.partSize) || ATTACHMENT_CHUNK_SIZE, 5 * 1024 * 1024);
+  const totalParts = Math.ceil(file.size / partSize);
+  const parts = [];
+
+  try {
+    for (let i = 0; i < totalParts; i++) {
+      const chunk = file.slice(i * partSize, Math.min(file.size, (i + 1) * partSize));
+      const res = await fetch(
+        `/api/upload-attachment/multipart/part?key=${encodeURIComponent(key)}` +
+          `&uploadId=${encodeURIComponent(uploadId)}&partNumber=${i + 1}`,
+        {
+          method: 'PUT',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/octet-stream' },
+          body: chunk,
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `第 ${i + 1} 片上传失败`);
+      parts.push({ partNumber: data.partNumber, etag: data.etag });
+      if (onProgress) onProgress(Math.round(((i + 1) / totalParts) * 100));
+    }
+
+    const doneRes = await fetch('/api/upload-attachment/multipart/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ key, uploadId, parts, name: file.name, size: file.size }),
+    });
+    const done = await doneRes.json();
+    if (!doneRes.ok) throw new Error(done.error || '合并分片失败');
+    return done;
+  } catch (err) {
+    // 失败时放弃这次分片上传，避免 R2 里留下未完成的上传
+    fetch('/api/upload-attachment/multipart/abort', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ key, uploadId }),
+    }).catch(() => {});
+    throw err;
+  }
 }
 
 async function handleAttachments(e) {
-  const files = Array.from(e.target.files);
+  const input = e.target;
+  const files = Array.from(input.files || []);
+  input.value = '';
   if (files.length === 0) return;
 
   if (attachments.value.length + files.length > 3) {
     showToast('最多只能上传 3 个附件', 'error');
-    e.target.value = '';
     return;
   }
 
   for (const file of files) {
-    if (file.size > 150 * 1024 * 1024) {
-      showToast(`「${file.name}」超过 150MB`, 'error');
+    if (file.size > MAX_ATTACHMENT_SIZE) {
+      showToast(`「${file.name}」超过 ${Math.round(MAX_ATTACHMENT_SIZE / 1024 / 1024)}MB`, 'error');
       continue;
     }
     const ext = file.name.split('.').pop()?.toLowerCase() || '';
@@ -292,28 +425,26 @@ async function handleAttachments(e) {
       continue;
     }
 
-    const formData = new FormData();
-    formData.append('file', file);
+    uploadingAttachment.value = true;
+    attachmentProgress.value = 0;
     try {
-      const res = await fetch('/api/upload-attachment', {
-        method: 'POST',
-        credentials: 'include',
-        body: formData,
+      const data = await uploadAttachment(file, (percent) => {
+        attachmentProgress.value = percent;
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || '上传失败');
       attachments.value.push({
         url: data.url,
         name: data.name,
         size: data.size,
         hash: data.hash,
       });
+      showToast(`「${file.name}」上传完成`, 'success');
     } catch (err) {
       showToast(`「${file.name}」上传失败：${err.message}`, 'error');
+    } finally {
+      uploadingAttachment.value = false;
+      attachmentProgress.value = 0;
     }
   }
-
-  e.target.value = '';
 }
 
 function removeAttachment(i) {
@@ -323,7 +454,8 @@ function removeAttachment(i) {
 function formatSize(bytes) {
   if (bytes < 1024) return bytes + ' B';
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-  return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+  if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+  return (bytes / 1024 / 1024 / 1024).toFixed(2) + ' GB';
 }
 
 async function submit() {
@@ -457,6 +589,25 @@ onMounted(loadTags);
 .attachment-list li button:hover {
   color: #ff6b6b;
   border-color: #ff6b6b;
+}
+
+.image-list li {
+  gap: 10px;
+}
+
+.image-thumb {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  flex: 0 0 auto;
+  background: var(--paper);
+}
+
+.image-name {
+  flex: 1;
+  color: var(--ink-muted);
 }
 
 .hint {
