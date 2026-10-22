@@ -16,3 +16,4 @@
 | 039 | [Fix] 统一 SSO 用户名规则 | 新账号统一 ASCII 规则；旧账号保留原名至下次登录，由用户确认候选并改名 | 避免主站接受的用户名在 OMEW 首次 SSO 登录时不可用 | ✅ 已完成 |
 | 040 | [Feature] OAuth 昵称字段 | 通过 OIDC discovery、ID Token、UserInfo 提供标准 nickname | 让站内昵称在 OAuth SSO 中可供消费端使用 | 🔄 进行中 |
 | 041 | [Feature] 歌曲分页搜索与可选标签 | 前后台歌曲列表按页加载并搜索，明确标签可选并验证无标签保存 | 歌曲库需要分页和搜索，投稿及管理标签不应成为必选项 | ✅ 已完成 |
+| 042 | [Maintenance] GitEdge controller | Prepare a fixed one-off controller workflow to commit two reviewed runner-maintenance workflows to the fixed GitEdge repository with OID compare-and-swap and dispatch both. | Restore standard API workflow maintenance while the GitEdge editor transport is unavailable. | ✅ 已完成 |
