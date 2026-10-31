@@ -12,3 +12,5 @@
 - [购买字段格式] -> [统计 108 张专辑] -> [形如 `[淘宝 店名](链接) ￥75/￥120`、`78￥`、缺链接的 `[淘宝 行星图书馆]`、裸链接、`￥52 已完售`、`通贩不可用`、`随专辑附赠`；解析出 148 条，其中 80 条可购买，覆盖 69 张专辑。可购买 = 有渠道名且备注不含 不可用/完售/售罄/停售/未开售/尚未开始。]
 - [Windows 下重建 LRC 数据报 EPERM] -> [dev 服务器监听 static/data/lrc 时执行 build:lrc] -> [rename 被占用目录拒绝，旧目录已被删；停掉 dev 服务器后重建成功。CI 为 Linux 不受影响。]
 - [build_lrc 导入 src/shared/constants.js] -> [运行时出现 MODULE_TYPELESS_PACKAGE_JSON 警告] -> [package.json 无 "type": "module"；改为在脚本内保留同值常量并注明与 LRC_URL 一致。]
+- [详情改弹窗] -> [选用原生 `<dialog>` + `showModal()`] -> [浏览器自带模态焦点限制、Esc 关闭与置顶层，不受导航栏 z-index 影响；单实例挂在页面上，瀑布流卡片高度不再因展开变化。点遮罩通过 `event.target === dialog` 判断。]
+- [「再次呼唤我的名字吧」显示为「实体 dizzylab」] -> [查 LRC `res/再次呼唤我的名字吧/meta.toml`] -> [上游把 Dizzylab 电子版链接填在「购买」且无价格；在 LRC 源数据改为「电子」￥28（LRC 任务 098）。尘站构建拉取 GitHub 上 LRC main，LRC 推送并由其工作流重建目录后才会显示。]

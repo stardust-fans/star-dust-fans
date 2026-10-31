@@ -16,3 +16,4 @@
 - `npx vite build` → 成功；`npx vitest run` → 9 files / 101 tests passed。
 - 浏览器：星尘 69 张、3 列瀑布流、51 张卡片显示购买渠道；「全部」108 张；搜索「平行四界」26 张；375px 单列无横向滚动；无失败请求。
 - `git push -u origin feat/lrc-lyrics-redesign`；`gh pr create` → https://github.com/stardust-fans/star-dust-fans/pull/105（base main）。
+- 新增 `src/public/components/LyricsAlbumDialog.vue`、`src/shared/lrc.js`；`LyricsView.vue` 改为按钮打开弹窗；`npx vite build` 成功，`npx vitest run` 9 files / 101 tests passed；浏览器验证弹窗打开/Esc/遮罩关闭与 375px 宽度。
