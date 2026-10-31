@@ -13,7 +13,7 @@
     <section class="lrc-partnership" aria-labelledby="lrc-partnership-title">
       <h2 id="lrc-partnership-title">LRC × 尘站</h2>
       <p>
-        与 <a href="https://lrc.wuyilingwei.com" target="_blank" rel="noopener">LRC · V宇宙词站</a>
+        与 <a :href="LRC_URL" target="_blank" rel="noopener">LRC · V宇宙词站</a>
         合作，分享由社群整理的虚拟歌姬专辑歌词。
         <RouterLink to="/lyrics">浏览与下载歌词 →</RouterLink>
       </p>
@@ -89,6 +89,7 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import contributors from '../../shared/contributors.json';
+import { LRC_URL } from '../../shared/constants.js';
 
 const imageUrl = '/images/bayuep-support.png';
 

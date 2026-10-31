@@ -2,7 +2,7 @@
   <div>
     <div class="page-header" style="display:flex; justify-content:space-between; align-items:center;">
       <div>
-        <span class="eyebrow page-eyebrow">02 · Archive</span>
+        <span class="eyebrow page-eyebrow">03 · Archive</span>
         <h1 class="page-title">同人</h1>
         <p class="page-subtitle">
           来自吸尘器的爱<template v-if="filteredItems.length"> · 共 {{ filteredItems.length }} 件作品</template>

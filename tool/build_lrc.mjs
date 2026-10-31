@@ -2,21 +2,34 @@ import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { strToU8, unzipSync, zipSync } from 'fflate';
+import { imageSize } from 'image-size';
 import { z } from 'zod';
 
 const REPOSITORY = 'lsy-404/LRC';
-const SITE = 'https://lrc.wuyilingwei.com';
+// 与 src/shared/constants.js 的 LRC_URL 保持一致
+const SITE = 'https://lrc.leisiyu.dev';
 const DATA_DIR = resolve(import.meta.dirname, '../static/data');
 const PUBLIC_PATH = '/data/lrc';
 const filename = z.string().min(1).refine(value => !/[\\/\u0000-\u001f]/.test(value) && !['.', '..'].includes(value));
+const names = z.array(z.string());
 const albumSchema = z.looseObject({
     slug: z.string().regex(/^[A-Za-z0-9_-]+$/),
     folder: filename,
     name: z.string().min(1),
     year: z.string(),
-    vocal: z.array(z.string()),
-    produce: z.array(z.string()),
-    lyric_maker: z.array(z.string()),
+    vocal: names,
+    produce: names,
+    lyricist: names,
+    composer: names,
+    arranger: names,
+    tuning: names,
+    illustrator: names,
+    mixer: names,
+    lyric_maker: names,
+    release: z.string(),
+    purchase: z.string(),
+    electronic: z.string(),
+    cover: z.string().regex(/^\/albums\/[\w.-]+\.webp$/).nullable(),
     songs: z.array(z.looseObject({ title: filename })),
     song_count: z.number().int().nonnegative(),
 }).refine(album => album.song_count === album.songs.length && new Set(album.songs.map(song => song.title)).size === album.song_count);
@@ -29,6 +42,49 @@ async function download(url, headers = {}) {
     const response = await fetch(url, { headers, signal: AbortSignal.timeout(60_000) });
     if (!response.ok) throw new Error(`LRC 下载失败：${response.status} ${url}`);
     return new Uint8Array(await response.arrayBuffer());
+}
+
+const DISABLED_VALUES = new Set(['', '不适用', '缺少信息']);
+const UNAVAILABLE = /不可用|完售|售罄|停售|未开售|尚未开始/;
+const PRICE = /￥\s*(\d+(?:\.\d+)?)|(\d+(?:\.\d+)?)\s*￥/g;
+// 上游字段是手写 Markdown：[名称](链接) 后跟价格或状态，也有缺链接的名称和裸链接
+const LINK = /\[([^\]]+)\]\s*(?:\(([^)]*)\))?|(https?:\/\/[^\s\]）】]+)/g;
+
+function httpUrl(value) {
+    if (!value) return null;
+    try {
+        const url = new URL(value);
+        return ['http:', 'https:'].includes(url.protocol) ? url.href : null;
+    } catch {
+        return null;
+    }
+}
+
+function note(text) {
+    return { label: null, url: null, prices: [], note: text };
+}
+
+function parseLinks(text) {
+    const value = text.trim();
+    if (DISABLED_VALUES.has(value)) return [];
+    const matches = [...value.matchAll(LINK)];
+    if (!matches.length) return [note(value)];
+    const lead = value.slice(0, matches[0].index).trim();
+    return [...(lead ? [note(lead)] : []), ...matches.map((match, index) => {
+        const url = httpUrl(match[3] ?? match[2]?.trim().split(/\s+/)[0]);
+        const tail = value.slice(match.index + match[0].length, matches[index + 1]?.index ?? value.length);
+        return {
+            label: match[1]?.trim() || (url && new URL(url).hostname.replace(/^www\./, '')),
+            url,
+            prices: [...tail.matchAll(PRICE)].map(price => `￥${price[1] ?? price[2]}`),
+            note: tail.replace(PRICE, '').replace(/^[\s/()（）【】]+|[\s/()（）【】]+$/g, ''),
+        };
+    })];
+}
+
+function parseOffers(album) {
+    return [['physical', album.purchase], ['digital', album.electronic]].flatMap(([type, text]) =>
+        parseLinks(text).map(entry => ({ type, ...entry, available: Boolean(entry.label) && !UNAVAILABLE.test(entry.note) })));
 }
 
 const headers = { 'User-Agent': 'star-dust-fans', Accept: 'application/vnd.github+json' };
@@ -50,7 +106,7 @@ const source = {
     catalog_url: `${raw}/docs/.vuepress/public/api/albums.json`,
     license: 'CC BY-NC-SA 4.0',
     license_url: 'https://creativecommons.org/licenses/by-nc-sa/4.0/',
-    changes: '歌词及专辑 ZIP 保持原样；目录添加尘站下载地址，完整包按专辑目录整理歌词。',
+    changes: '歌词、封面及专辑 ZIP 保持原样；目录添加尘站下载地址、封面尺寸与整理后的购买渠道，完整包按专辑目录整理歌词。',
 };
 const attribution = strToU8(`${source.name}\n${SITE}\n来源：${source.repository}/tree/${revision}\n许可：${source.license} ${source.license_url}\n${source.changes}\n`);
 const fullArchive = Object.create(null);
@@ -63,6 +119,7 @@ const staging = await mkdtemp(resolve(DATA_DIR, '.lrc-'));
 try {
     await mkdir(resolve(staging, 'albums'));
     await mkdir(resolve(staging, 'lyrics'));
+    await mkdir(resolve(staging, 'covers'));
     let nextAlbum = 0;
     const results = await Promise.allSettled(Array.from({ length: Math.min(6, catalog.count) }, async () => {
         while (nextAlbum < catalog.count) {
@@ -71,6 +128,14 @@ try {
             const zip = await download(`${raw}/pack/${encodeURIComponent(album.folder)}.zip`);
             const files = unzipSync(zip, { filter: file => file.name.endsWith('.lrc') });
             await writeFile(resolve(staging, 'albums', `${album.slug}.zip`), zip);
+            let cover = null;
+            if (album.cover) {
+                // 上游站点把封面打包成带哈希的资源，只能从固定提交的仓库文件取
+                const image = await download(`${raw}/docs${album.cover}`);
+                const { width, height } = imageSize(image);
+                await writeFile(resolve(staging, 'covers', `${album.slug}.webp`), image);
+                cover = { url: `${PUBLIC_PATH}/covers/${album.slug}.webp`, width, height };
+            }
             await mkdir(resolve(staging, 'lyrics', album.slug));
             const songs = [];
             for (const song of album.songs) {
@@ -85,7 +150,9 @@ try {
             albums[index] = {
                 ...album,
                 songs,
-                cover: album.cover ? new URL(album.cover, SITE).href : null,
+                cover,
+                offers: parseOffers(album),
+                release_links: parseLinks(album.release).filter(link => link.url),
                 detail_url: `${raw}/docs/.vuepress/public/api/albums/${album.slug}.json`,
                 source_url: `${SITE}/albums/${album.slug}.html`,
                 download_url: `${PUBLIC_PATH}/albums/${album.slug}.zip`,
