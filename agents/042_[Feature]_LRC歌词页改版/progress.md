@@ -9,3 +9,9 @@
 - `git merge --no-ff worktree-agent-a66bd2cd475e813f8`：并入贡献者别名提交 3ce46f0。
 - `npx vite build` → 成功；`npx vitest run` → 9 files / 101 tests passed。
 - 浏览器 http://localhost:5173/lyrics：默认星尘 69 张、最新在前、搜索「碎屑」1 条、空结果提示、第 2/9 页、375px scrollWidth=375；/about 显示「暝行镌无 @lsy-404」。
+- `git push origin main` → rejected（Changes must be made through a pull request；Required status check "build-and-deploy"）。
+- `npm install -D @yeger/vue-masonry-wall@6.1.4 image-size@2.0.4`：新增 3 个包。
+- 改 `tool/build_lrc.mjs`：署名/购买字段 schema、`parseLinks`/`parseOffers`、封面宽高；`npm run build:lrc` → 148 条购买信息（80 条可购买）、106 条发布链接。
+- 重写 `src/public/views/LyricsView.vue`（瀑布流、默认购买与价格、完整信息展开）；还原 `src/shared/SongPagination.vue`。
+- `npx vite build` → 成功；`npx vitest run` → 9 files / 101 tests passed。
+- 浏览器：星尘 69 张、3 列瀑布流、51 张卡片显示购买渠道；「全部」108 张；搜索「平行四界」26 张；375px 单列无横向滚动；无失败请求。

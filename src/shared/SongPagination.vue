@@ -1,6 +1,6 @@
 <template>
-  <nav v-if="total > 0" class="song-pagination" :aria-label="label">
-    <span class="page-summary" aria-live="polite">共 {{ total }} {{ unit }} · 第 {{ page }} / {{ pageCount }} 页</span>
+  <nav v-if="total > 0" class="song-pagination" aria-label="歌曲分页">
+    <span class="page-summary" aria-live="polite">共 {{ total }} 首 · 第 {{ page }} / {{ pageCount }} 页</span>
     <div class="page-buttons">
       <button type="button" :disabled="disabled || page <= 1" @click="$emit('update:page', page - 1)">上一页</button>
       <template v-for="(item, index) in pages" :key="index">
@@ -21,8 +21,6 @@ const props = defineProps({
   pageCount: { type: Number, required: true },
   total: { type: Number, required: true },
   disabled: { type: Boolean, default: false },
-  unit: { type: String, default: '首' },
-  label: { type: String, default: '歌曲分页' },
 });
 defineEmits(['update:page']);
 
