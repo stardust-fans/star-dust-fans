@@ -8,29 +8,47 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const REPO = 'stardust-fans/star-dust-fans';
 const OUTPUT = resolve(dirname(fileURLToPath(import.meta.url)), '../src/shared/contributors.json');
 
-// 键为 GitHub 登录名小写（登录名大小写不敏感），值为署名展示名；表里没有的直接用登录名。
+// 键为 GitHub 登录名小写（登录名大小写不敏感），值为 { name, login? }：name 是署名展示名，login 是账号归并到的主登录名；表里没有的直接用登录名。
 const ALIASES = {
-    wuyilingwei: '武乙凌薇',
-    cooollawf: '八月p',
-    cjnsasdf: 'StarryMiko2233',
+    'lsy-404': { name: '暝行镌无' },
+    wuyilingwei: { login: 'lsy-404', name: '暝行镌无' },
+    cooollawf: { name: '八月p' },
+    cjnsasdf: { name: 'StarryMiko2233' },
 };
 
-const FALLBACK = Object.entries(ALIASES).map(([login, name]) => ({ login, name }));
+// 别名表里每个主身份只出现一次
+function aliasIdentities() {
+    const byLogin = new Map();
+    for (const [key, alias] of Object.entries(ALIASES)) {
+        const login = alias.login || key;
+        if (!byLogin.has(login.toLowerCase())) byLogin.set(login.toLowerCase(), { login, name: alias.name });
+    }
+    return [...byLogin.values()];
+}
+
+const FALLBACK = aliasIdentities();
 
 export function normalizeContributors(list) {
-    return list
-        .filter(u => u && typeof u.login === 'string' && u.type !== 'Bot' && !u.login.endsWith('[bot]'))
-        .sort((a, b) => (b.contributions || 0) - (a.contributions || 0))
-        .map(u => ({ login: u.login, name: ALIASES[u.login.toLowerCase()] || u.login }));
+    const merged = new Map();
+    for (const u of list) {
+        if (!u || typeof u.login !== 'string' || u.type === 'Bot' || u.login.endsWith('[bot]')) continue;
+        const alias = ALIASES[u.login.toLowerCase()];
+        const login = alias?.login || u.login;
+        const key = login.toLowerCase();
+        const entry = merged.get(key) || { login, name: alias?.name || login, contributions: 0 };
+        entry.contributions += u.contributions || 0;
+        merged.set(key, entry);
+    }
+    return [...merged.values()]
+        .sort((a, b) => b.contributions - a.contributions)
+        .map(({ login, name }) => ({ login, name }));
 }
 
 // GitHub 的贡献者统计对 co-author 的收录有延迟，甚至要等下一轮统计才出现。
 // 别名表里的人是明确知道要署名的，补进名单尾部，避免名单短暂少人。
 export function withAliased(contributors) {
     const seen = new Set(contributors.map(c => c.login.toLowerCase()));
-    const missing = Object.entries(ALIASES)
-        .filter(([login]) => !seen.has(login))
-        .map(([login, name]) => ({ login, name }));
+    const missing = aliasIdentities().filter(c => !seen.has(c.login.toLowerCase()));
     return [...contributors, ...missing];
 }
 
