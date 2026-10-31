@@ -38,6 +38,7 @@ export const OMEW_SSO_URL = `${OMEW_URL}/api/auth/oidc/start?return_to=%2F`;
 export const PAGE_TITLE_MAP = {
   home: "星尘 · 永远闪耀",
   videos: "视频 · 星尘粉丝站",
+  lyrics: "歌词 · LRC × 星尘粉丝站",
   fanart: "同人 · 星尘粉丝站",
   shop: "量贩 · 星尘粉丝站",
   daily: "吸尘器日报 · 星尘粉丝站",
