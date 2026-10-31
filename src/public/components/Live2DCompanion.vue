@@ -21,6 +21,7 @@ const props = defineProps({
 const containerRef = ref(null);
 const stageRef = ref(null);
 let instance = null;
+let disposed = false;
 
 const MESSAGES = [
   '今天也要元气满满哦～',
@@ -230,6 +231,7 @@ onMounted(async () => {
 
   try {
     const { loadOml2d } = await import('oh-my-live2d');
+    if (disposed) return;
     instance = loadOml2d({
       models: [
         {
@@ -296,6 +298,7 @@ function pickExpression() {
 }
 
 onBeforeUnmount(() => {
+  disposed = true;
   document.removeEventListener('mousedown', onGlobalMouseDown);
   document.removeEventListener('mousemove', onGlobalMouseMove);
   document.removeEventListener('mouseup', onGlobalMouseUp);

@@ -6,7 +6,7 @@
   </div>
   <AppFooter v-if="!fullBleed" />
   <ToastContainer />
-  <Live2DCompanion v-if="!hideChrome && !route.meta.hideCompanion" :size="260" />
+  <Live2DCompanion v-if="route.name && !hideChrome && !route.meta.hideCompanion" :size="260" />
 </template>
 
 <script setup>
