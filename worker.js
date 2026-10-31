@@ -654,18 +654,13 @@ async function handleRequest(request, env, ctx) {
                 ? null
                 : (Array.isArray(body.permissions) ? body.permissions : targetPermissions);
 
-            if (isAdmin.sub === id) {
-                if (nextRole !== targetRole) {
-                    return jsonResponse({ error: '不能修改自己的角色' }, 400);
-                }
-                if (JSON.stringify(nextPermissions ?? null) !== JSON.stringify(targetPermissions ?? null)) {
-                    return jsonResponse({ error: '不能修改自己的权限' }, 400);
-                }
-            }
-
+            // 允许改自己的角色和权限，只要改完还有别人（或自己）保有全权即可
             const targetIsSuper = adminIsSuper({ role: targetRole, permissions: targetPermissions });
-            if (targetIsSuper && nextRole !== 'super') {
-                const superRow = await env.DB.prepare("SELECT COUNT(*) AS n FROM admins WHERE role = 'super'").first();
+            const nextIsSuper = nextRole === 'super' || nextPermissions === null;
+            if (targetIsSuper && !nextIsSuper) {
+                const superRow = await env.DB.prepare(
+                    "SELECT COUNT(*) AS n FROM admins WHERE role = 'super' OR permissions IS NULL"
+                ).first();
                 if ((superRow?.n || 0) <= 1) {
                     return jsonResponse({ error: '至少要保留一个超级管理员' }, 400);
                 }
@@ -713,7 +708,9 @@ async function handleRequest(request, env, ctx) {
 
             const target = await env.DB.prepare('SELECT username, role, permissions FROM admins WHERE id = ?').bind(id).first();
             if (target && adminIsSuper({ role: normalizeAdminRole(target.role), permissions: parseAdminPermissions(target.permissions) })) {
-                const superRow = await env.DB.prepare("SELECT COUNT(*) AS n FROM admins WHERE role = 'super'").first();
+                const superRow = await env.DB.prepare(
+                    "SELECT COUNT(*) AS n FROM admins WHERE role = 'super' OR permissions IS NULL"
+                ).first();
                 if ((superRow?.n || 0) <= 1) {
                     return jsonResponse({ error: '至少要保留一个超级管理员' }, 400);
                 }
