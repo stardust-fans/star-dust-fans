@@ -70,41 +70,13 @@
               <a class="album-download" :href="album.download_url" :download="`${album.folder}.zip`" :aria-label="`下载《${album.name}》专辑歌词包`">专辑 ZIP ↓ · {{ formatBytes(album.download_bytes) }}</a>
               <a class="link" :href="album.source_url" target="_blank" rel="noopener">专辑资料 ↗</a>
             </div>
-            <details class="album-details">
-              <summary>完整信息与单曲下载</summary>
-              <dl class="album-facts">
-                <template v-for="[label, values] in credits(album)" :key="label">
-                  <dt>{{ label }}</dt>
-                  <dd>{{ values.join('、') }}</dd>
-                </template>
-                <template v-if="album.release_links.length">
-                  <dt>发布</dt>
-                  <dd><a v-for="link in album.release_links" :key="link.url" :href="link.url" target="_blank" rel="noopener">{{ link.label }}</a></dd>
-                </template>
-                <template v-for="[type, offers] in offerGroups(album)" :key="type">
-                  <dt>{{ OFFER_TYPES[type] }}</dt>
-                  <dd>
-                    <span v-for="(offer, index) in offers" :key="index" class="fact-offer" :class="{ unavailable: !offer.available }">
-                      <a v-if="offer.url" :href="offer.url" target="_blank" rel="noopener nofollow">{{ offer.label }}</a>
-                      <template v-else-if="offer.label">{{ offer.label }}</template>
-                      {{ [offer.prices.join(' / '), offer.note].filter(Boolean).join(' · ') }}
-                    </span>
-                  </dd>
-                </template>
-              </dl>
-              <p class="album-tracks-title">单曲 LRC（{{ album.song_count }}）</p>
-              <ul class="album-tracks">
-                <li v-for="song in album.songs" :key="song.title">
-                  <span>{{ song.title }}</span>
-                  <a :href="song.download_url" :download="`${song.title}.lrc`" :aria-label="`下载《${song.title}》LRC 歌词`">LRC ↓</a>
-                </li>
-              </ul>
-            </details>
+            <button type="button" class="album-more" aria-haspopup="dialog" @click="selectedAlbum = album">完整信息与单曲下载 →</button>
           </div>
         </article>
       </template>
     </MasonryWall>
     <EmptyState v-else message="没有找到匹配的专辑，换个关键词或歌姬试试" />
+    <LyricsAlbumDialog v-if="selectedAlbum" :album="selectedAlbum" @close="selectedAlbum = null" />
 
     <aside class="lyrics-license" aria-label="数据来源与许可">
       <p>歌词数据来自 <a :href="catalog.source.repository" target="_blank" rel="noopener">{{ catalog.source.name }}</a>，
@@ -122,26 +94,13 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { MasonryWall } from '@yeger/vue-masonry-wall';
 import { LRC_URL } from '../../shared/constants.js';
+import { OFFER_TYPES, formatBytes, names, releaseDate } from '../../shared/lrc.js';
 import EmptyState from '../components/EmptyState.vue';
+import LyricsAlbumDialog from '../components/LyricsAlbumDialog.vue';
 
 const STARDUST_LABEL = '星尘';
 const STARDUST = /星尘|星塵|永夜|stardust|minus/i;
 const MIN_VOCAL_ALBUMS = 5;
-// LRC 目录用这个日期表示发行日期不适用
-const NOT_APPLICABLE_DATE = '1970-01-01';
-const DISABLED_NAMES = new Set(['', '不适用', '缺少信息']);
-const OFFER_TYPES = { physical: '实体', digital: '电子' };
-const CREDIT_FIELDS = [
-  ['produce', '出品'],
-  ['vocal', '演唱'],
-  ['lyricist', '作词'],
-  ['composer', '作曲'],
-  ['arranger', '编曲'],
-  ['tuning', '调校'],
-  ['mixer', '混音'],
-  ['illustrator', '曲绘'],
-  ['lyric_maker', '歌词制作'],
-];
 
 const catalog = ref(null);
 const loading = ref(true);
@@ -150,31 +109,14 @@ const query = ref('');
 const search = ref('');
 const vocal = ref(STARDUST_LABEL);
 const sort = ref('latest');
+const selectedAlbum = ref(null);
 let controller;
 let searchTimer;
-
-function names(values) {
-  return values.filter(value => !DISABLED_NAMES.has(value.trim()));
-}
-
-function credits(album) {
-  return CREDIT_FIELDS.map(([field, label]) => [label, names(album[field])]).filter(([, values]) => values.length);
-}
-
-function offerGroups(album) {
-  return Object.keys(OFFER_TYPES)
-    .map(type => [type, album.offers.filter(offer => offer.type === type)])
-    .filter(([, offers]) => offers.length);
-}
 
 function matchesVocal(album, name) {
   return name === STARDUST_LABEL
     ? album.vocal.some(value => STARDUST.test(value))
     : album.vocal.some(value => value.includes(name));
-}
-
-function releaseDate(album) {
-  return album.year === NOT_APPLICABLE_DATE ? '' : album.year;
 }
 
 // 没有发行日期的专辑在两种日期排序下都排在最后
@@ -216,10 +158,6 @@ watch(query, () => {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(() => { search.value = query.value.trim(); }, 250);
 });
-
-function formatBytes(bytes) {
-  return bytes < 1024 * 1024 ? `${Math.ceil(bytes / 1024)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
 
 async function loadCatalog() {
   controller?.abort();
@@ -341,20 +279,23 @@ onUnmounted(() => {
   transition: border-color 0.2s var(--ease), background 0.2s var(--ease);
 }
 .album-download:hover { border-color: var(--cobalt); background: var(--cobalt-wash); }
-.album-details { margin-top: 14px; border-top: 1px solid var(--line); }
-.album-details summary { padding: 12px 0 0; color: var(--ink-soft); font-size: 0.82rem; cursor: pointer; }
-.album-details summary:hover { color: var(--ink); }
-.album-details[open] summary { padding-bottom: 12px; }
-.album-facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; font-size: 0.78rem; }
-.album-facts dt { color: var(--ink-muted); }
-.album-facts dd { display: flex; flex-direction: column; gap: 2px; color: var(--ink-soft); }
-.album-facts a { color: var(--cobalt); text-underline-offset: 3px; }
-.fact-offer.unavailable { color: var(--ink-muted); }
-.fact-offer.unavailable a { color: var(--ink-muted); }
-.album-tracks-title { margin-top: 16px; color: var(--ink-muted); font-size: 0.78rem; }
-.album-tracks { list-style: none; margin-top: 6px; }
-.album-tracks li { display: flex; justify-content: space-between; align-items: center; gap: 12px; border-top: 1px solid var(--line); font-size: 0.82rem; }
-.album-tracks li a { flex-shrink: 0; display: inline-flex; align-items: center; min-height: 40px; color: var(--cobalt); font-family: var(--font-mono); font-size: 0.74rem; text-decoration: none; }
+.album-more {
+  width: 100%;
+  min-height: 40px;
+  margin-top: 14px;
+  padding: 10px 0 0;
+  border: none;
+  border-top: 1px solid var(--line);
+  background: none;
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 0.82rem;
+  text-align: left;
+  cursor: pointer;
+  transition: color 0.2s var(--ease);
+}
+.album-more:hover { color: var(--cobalt); }
+.album-more:focus-visible { outline: 2px solid var(--cobalt); outline-offset: 2px; }
 .lyrics-license { margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--line); color: var(--ink-muted); font-size: 0.8rem; }
 .lyrics-license a { color: var(--cobalt); text-underline-offset: 4px; }
 .lyrics-license p + p { margin-top: 8px; }
