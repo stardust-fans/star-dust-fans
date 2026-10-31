@@ -16,5 +16,5 @@
 | 039 | [Fix] 统一 SSO 用户名规则 | 新账号统一 ASCII 规则；旧账号保留原名至下次登录，由用户确认候选并改名 | 避免主站接受的用户名在 OMEW 首次 SSO 登录时不可用 | completed |
 | 040 | [Feature] OAuth 昵称字段 | 通过 OIDC discovery、ID Token、UserInfo 提供标准 nickname | 让站内昵称在 OAuth SSO 中可供消费端使用 | running |
 | 041 | [Feature] 歌曲分页搜索与可选标签 | 前后台歌曲列表按页加载并搜索，明确标签可选并验证无标签保存 | 歌曲库需要分页和搜索，投稿及管理标签不应成为必选项 | completed |
-| 042 | [Feature] LRC歌词页改版 | 歌词页重做：封面瀑布流、搜索与歌姬筛选、按发行日期排序，默认选中星尘；卡片默认显示可用购买与价格，完整信息与单曲下载收进展开；封面随构建自托管，LRC 地址迁到 lrc.leisiyu.dev | Rosmontis 要求按最新排布重新设计 LRC 界面并默认选中星尘 | completed |
+| 042 | [Feature] LRC歌词页改版 | 歌词页重做：封面瀑布流、搜索与歌姬筛选、按发行日期排序，默认选中星尘；卡片默认显示可用购买与价格，完整信息与单曲下载收进展开；封面随构建自托管，LRC 地址迁到 lrc.leisiyu.dev | Rosmontis 要求按最新排布重新设计 LRC 界面并默认选中星尘（PR 待合并） | running |
 | 043 | [Feature] 贡献者别名合并 | 贡献者名单将 lsy-404 与 wuyilingwei 合并为一行，署名「暝行镌无」，链接 @lsy-404 | Rosmontis 要求两个账号统一署名 | completed |
