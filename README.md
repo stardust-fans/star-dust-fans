@@ -9,6 +9,7 @@ VOCALOID 中文虚拟歌姬「星尘」的非官方粉丝站，运行在 stardus
 - 同人作品展示
 - 周边量贩信息
 - 社群日报
+- LRC 合作歌词库：独立构建的专辑目录、专辑包、单曲 LRC 与完整歌词包下载
 - 管理后台：歌曲 / 日报 / 同人 / 量贩内容管理，多管理员账号，操作审计日志
 
 ## 技术栈
@@ -34,6 +35,12 @@ npm run deploy         # wrangler deploy 部署 Worker
 ```
 
 数据库结构定义见 `tool/schema.sql`；增量迁移脚本在 `migrations/`，通过 `wrangler d1 migrations apply` 应用。
+
+### LRC 歌词数据
+
+`npm run build` 会从 [LRC · V宇宙词站](https://lrc.wuyilingwei.com) 的[公开仓库](https://github.com/lsy-404/LRC)获取歌词目录与专辑包，并固定到同一个上游提交。数据独立输出到 `static/data/lrc/`，随静态资源发布，不写入歌曲数据库；下载来源不完整时构建会失败。
+
+本地开发前运行 `npm run build:lrc` 生成数据，然后打开 `/lyrics`。该页提供专辑 ZIP、单曲 LRC、完整歌词 ZIP 和 JSON 数据目录；完整包包含许可与来源说明。LRC 数据遵循 [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)，保留原始歌词与制作署名。
 
 ## OpenID Connect、SAML 与 SCIM
 
@@ -68,7 +75,7 @@ SAML 2.0 入口提供 IdP 元数据、HTTP-Redirect/HTTP-POST SSO、带 XML Sign
 | `src/public/` | 公开站 Vue 应用 |
 | `src/admin/` | 管理后台 Vue 应用 |
 | `src/shared/` | 公开站与后台共用的格式化 / 常量 / API 封装 |
-| `tool/` | 本机辅助脚本（B 站信息抓取、密码哈希生成等），不参与线上构建 |
+| `tool/` | 构建数据生成及本机辅助脚本（贡献者、LRC 歌词、B 站信息抓取等） |
 | `migrations/` | D1 数据库迁移脚本 |
 
 ## 附件上传（R2 直传）

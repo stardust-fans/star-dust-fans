@@ -15,6 +15,7 @@
       <ul class="nav-menu" :class="{ open: menuOpen }">
         <li><RouterLink to="/" @click="closeMenu">主页</RouterLink></li>
         <li><RouterLink to="/videos" @click="closeMenu">视频</RouterLink></li>
+        <li><RouterLink to="/lyrics" @click="closeMenu">歌词</RouterLink></li>
         <li><RouterLink to="/fanart" @click="closeMenu">同人</RouterLink></li>
         <li><RouterLink to="/shop" @click="closeMenu">量贩</RouterLink></li>
         <li><RouterLink to="/daily" @click="closeMenu">日报</RouterLink></li>

@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from "vue-router";
 import { PAGE_TITLE_MAP } from "../../shared/constants.js";
 import HomeView from "../views/HomeView.vue";
 import VideosView from "../views/VideosView.vue";
+import LyricsView from "../views/LyricsView.vue";
 import DailyView from "../views/DailyView.vue";
 import FanartView from "../views/FanartView.vue";
 import ShopView from "../views/ShopView.vue";
@@ -33,6 +34,7 @@ const router = createRouter({
   routes: [
     { path: "/", name: "home", component: HomeView },
     { path: "/videos", name: "videos", component: VideosView },
+    { path: "/lyrics", name: "lyrics", component: LyricsView, meta: { hideCompanion: true } },
     { path: "/daily", name: "daily", component: DailyView },
     { path: "/fanart", name: "fanart", component: FanartView },
     { path: "/shop", name: "shop", component: ShopView },

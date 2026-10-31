@@ -6,11 +6,12 @@
   "scripts": {
     "dev": "vite dev",
     "dev:worker": "wrangler dev",
-    "prebuild": "node tool/fetch_contributors.mjs",
+    "prebuild": "node tool/fetch_contributors.mjs && npm run build:lrc",
     "build": "vite build",
     "preview": "vite preview",
     "deploy": "wrangler deploy",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build:lrc": "node tool/build_lrc.mjs"
   },
   "keywords": [],
   "author": "",
@@ -19,11 +20,13 @@
     "@cloudflare/vite-plugin": "^1.52.1",
     "@cloudflare/vitest-pool-workers": "^0.21.3",
     "@vitejs/plugin-vue": "^6.0.8",
+    "fflate": "^0.8.3",
     "vite": "^8.2.1",
     "vitest": "^4.1.10",
     "vue": "^3.5.41",
     "vue-router": "^4.6.4",
-    "wrangler": "^4.113.0"
+    "wrangler": "^4.113.0",
+    "zod": "^4.6.7"
   },
   "dependencies": {
     "jose": "^6.2.12",

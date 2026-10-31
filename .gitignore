@@ -12,6 +12,8 @@ data/*.db
 .cfld.json
 .DS_Store
 dist/
+static/data/lrc/
+static/data/.lrc-*/
 tool/.bili_cli_config.json
 
 # 星图星表二进制数据必须入库（全局 gitignore 忽略了 *.bin）
