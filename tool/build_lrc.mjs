@@ -75,11 +75,12 @@ try {
             const songs = [];
             for (const song of album.songs) {
                 const name = `${song.title}.lrc`;
+                const resourceName = `${createHash('sha256').update(name).digest('hex')}.lrc`;
                 const contents = files[name];
                 if (!contents?.length) throw new Error(`LRC 专辑包缺少歌词：${album.folder}/${name}`);
-                await writeFile(resolve(staging, 'lyrics', album.slug, name), contents);
+                await writeFile(resolve(staging, 'lyrics', album.slug, resourceName), contents);
                 fullArchive[`${album.folder}/${name}`] = contents;
-                songs.push({ ...song, download_url: `${PUBLIC_PATH}/lyrics/${album.slug}/${encodeURIComponent(name)}` });
+                songs.push({ ...song, download_url: `${PUBLIC_PATH}/lyrics/${album.slug}/${resourceName}` });
             }
             albums[index] = {
                 ...album,
