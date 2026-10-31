@@ -3,6 +3,13 @@ import { handleOidcRequest } from "./src/worker/oidc.js";
 import { handleSamlRequest } from "./src/worker/saml.js";
 import { handleScimRequest } from "./src/worker/scim.js";
 import { isValidDisplayName, isValidUsername, normalizeDisplayName, normalizeUsername, usernameCandidate } from "./src/shared/username.js";
+import {
+    adminHasPermission,
+    adminIsSuper,
+    normalizeAdminRole,
+    parseAdminPermissions,
+    serializeAdminPermissions,
+} from "./src/shared/adminPermissions.js";
 // ===== 附件白名单 =====
 const ATTACHMENT_ALLOWED_EXT = new Set([
   'zip', '7z', 'rar', 'tar', 'gz', 'bz2', 'xz', 'zst',
@@ -183,6 +190,29 @@ async function handleRequest(request, env, ctx) {
         });
     }
 
+    // ===== 管理员权限校验 =====
+    // admin 是 getAuthenticatedUser 返回的管理员身份：{ sub, username, role, permissions }
+    // role: 'super' | 'admin'；permissions: string[] | null（null = 旧账号，全权）
+    function requirePermission(admin, scope) {
+        if (!admin) return jsonResponse({ error: '未授权' }, 401);
+        if (!adminHasPermission(admin, scope)) {
+            return jsonResponse({ error: '没有该模块的操作权限', scope }, 403);
+        }
+        return null;
+    }
+
+    // 返回给前端的管理员档案（登录 / /api/admin/me 共用）
+    function adminProfile(admin) {
+        return {
+            id: admin.sub,
+            username: admin.username,
+            role: admin.role,
+            permissions: admin.permissions,
+            isSuper: adminIsSuper(admin),
+            allAccess: admin.role === 'super' || admin.permissions === null,
+        };
+    }
+
     const oidcResponse = await handleOidcRequest(
         request,
         env,
@@ -207,7 +237,10 @@ async function handleRequest(request, env, ctx) {
     // ===== 1. GET /api/songs =====
     if ((path === '/api/songs' || path === '/api/admin/songs') && method === 'GET') {
         const adminList = path === '/api/admin/songs';
-        if (adminList && !isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        if (adminList) {
+            const denied = requirePermission(isAdmin, 'songs');
+            if (denied) return denied;
+        }
         try {
             const { where, params } = songFilter(url.searchParams, adminList);
             const sort = url.searchParams.get('sort') || 'latest';
@@ -324,7 +357,10 @@ async function handleRequest(request, env, ctx) {
     // ===== 1.1 GET /api/songs/count =====
     if ((path === '/api/songs/count' || path === '/api/admin/songs/count') && method === 'GET') {
         const adminList = path === '/api/admin/songs/count';
-        if (adminList && !isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        if (adminList) {
+            const denied = requirePermission(isAdmin, 'songs');
+            if (denied) return denied;
+        }
         try {
             const { where, params } = songFilter(url.searchParams, adminList);
             const stmt = env.DB.prepare(`SELECT COUNT(*) as total FROM songs WHERE ${where}`);
@@ -438,7 +474,7 @@ async function handleRequest(request, env, ctx) {
             }
 
             const row = username
-                ? await env.DB.prepare('SELECT id, username, password_hash FROM admins WHERE username = ?').bind(username).first()
+                ? await env.DB.prepare('SELECT id, username, password_hash, role, permissions FROM admins WHERE username = ?').bind(username).first()
                 : null;
 
             const passwordOk = row
@@ -452,10 +488,16 @@ async function handleRequest(request, env, ctx) {
                     role: 'admin',
                     exp: Date.now() + 24 * 60 * 60 * 1000,
                 }, env);
+                const profile = adminProfile({
+                    sub: row.id,
+                    username: row.username,
+                    role: normalizeAdminRole(row.role),
+                    permissions: parseAdminPermissions(row.permissions),
+                });
                 ctx.waitUntil(logAuditEvent(env, {
                     eventType: 'login_success', actorAdminId: row.id, actorUsername: row.username, request,
                 }));
-                return jsonResponse({ success: true, token });
+                return jsonResponse({ success: true, token, admin: profile });
             }
 
             ctx.waitUntil(logAuditEvent(env, {
@@ -468,9 +510,16 @@ async function handleRequest(request, env, ctx) {
         }
     }
 
+    // ===== 当前管理员档案（角色 + 权限范围）=====
+    if (path === '/api/admin/me' && method === 'GET') {
+        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        return jsonResponse(adminProfile(isAdmin));
+    }
+
     // ===== 管理员：标签管理 =====
     if (path === '/api/admin/tags' && method === 'GET') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'tags');
+        if (denied) return denied;
         try {
             const result = await env.DB.prepare(
                 'SELECT id, name, sort_order FROM tags ORDER BY sort_order ASC, id ASC'
@@ -482,7 +531,8 @@ async function handleRequest(request, env, ctx) {
     }
 
     if (path === '/api/admin/tags' && method === 'POST') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'tags');
+        if (denied) return denied;
         try {
             const { name, sort_order } = await request.json();
             if (!name || !String(name).trim()) {
@@ -504,7 +554,8 @@ async function handleRequest(request, env, ctx) {
 
     const adminTagMatch = path.match(/^\/api\/admin\/tags\/(\d+)$/);
     if (adminTagMatch && method === 'DELETE') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'tags');
+        if (denied) return denied;
         try {
             const id = adminTagMatch[1];
             await env.DB.prepare('DELETE FROM tags WHERE id = ?').bind(id).run();
@@ -516,10 +567,19 @@ async function handleRequest(request, env, ctx) {
 
     // ===== 3.5 管理员账号管理 =====
     if (path === '/api/admin/admins' && method === 'POST') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'admins');
+        if (denied) return denied;
         try {
-            const { username, password } = await request.json();
-            if (!username || !String(username).trim()) {
+            const body = await request.json();
+            const username = String(body.username || '').trim();
+            const password = body.password;
+            const role = normalizeAdminRole(body.role);
+            // 普通管理员必须带明确的权限数组（空数组 = 无权限）；超级管理员始终全权
+            const permissions = role === 'super'
+                ? null
+                : (Array.isArray(body.permissions) ? body.permissions : []);
+
+            if (!username) {
                 return jsonResponse({ error: '用户名不能为空' }, 400);
             }
             if (!password || String(password).length < 8) {
@@ -533,16 +593,16 @@ async function handleRequest(request, env, ctx) {
 
             const passwordHash = await hashPassword(password);
             const result = await env.DB.prepare(
-                'INSERT INTO admins (username, password_hash) VALUES (?, ?)'
-            ).bind(username, passwordHash).run();
+                'INSERT INTO admins (username, password_hash, role, permissions) VALUES (?, ?, ?, ?)'
+            ).bind(username, passwordHash, role, serializeAdminPermissions(permissions)).run();
 
             ctx.waitUntil(logAuditEvent(env, {
                 eventType: 'create', actorAdminId: isAdmin.sub, actorUsername: isAdmin.username,
                 targetTable: 'admins', targetId: result.meta?.last_row_id,
-                summary: { username }, request,
+                summary: { username, role, permissions }, request,
             }));
 
-            return jsonResponse({ success: true, id: result.meta?.last_row_id });
+            return jsonResponse({ success: true, id: result.meta?.last_row_id, role, permissions });
         } catch (error) {
             console.error('❌ POST /api/admin/admins 错误:', error.message);
             return jsonResponse({ error: error.message }, 500);
@@ -550,19 +610,96 @@ async function handleRequest(request, env, ctx) {
     }
 
     if (path === '/api/admin/admins' && method === 'GET') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'admins');
+        if (denied) return denied;
         try {
-            const result = await env.DB.prepare('SELECT id, username, created_at FROM admins ORDER BY id ASC').all();
-            return jsonResponse(result.results || []);
+            const result = await env.DB.prepare(
+                'SELECT id, username, role, permissions, created_at FROM admins ORDER BY id ASC'
+            ).all();
+            const list = (result.results || []).map((row) => ({
+                id: row.id,
+                username: row.username,
+                role: normalizeAdminRole(row.role),
+                permissions: parseAdminPermissions(row.permissions),
+                allAccess: normalizeAdminRole(row.role) === 'super' || row.permissions === null,
+                isSelf: isAdmin.sub === row.id,
+                created_at: row.created_at,
+            }));
+            return jsonResponse(list);
         } catch (error) {
             console.error('❌ GET /api/admin/admins 错误:', error.message);
             return jsonResponse({ error: error.message }, 500);
         }
     }
 
+    const adminUpdateMatch = path.match(/^\/api\/admin\/admins\/(\d+)$/);
+    if (adminUpdateMatch && method === 'PUT') {
+        const denied = requirePermission(isAdmin, 'admins');
+        if (denied) return denied;
+        try {
+            const id = parseInt(adminUpdateMatch[1], 10);
+            const body = await request.json();
+            const target = await env.DB.prepare(
+                'SELECT id, username, role, permissions FROM admins WHERE id = ?'
+            ).bind(id).first();
+            if (!target) {
+                return jsonResponse({ error: '账号不存在' }, 404);
+            }
+
+            const targetRole = normalizeAdminRole(target.role);
+            const targetPermissions = parseAdminPermissions(target.permissions);
+            const nextRole = body.role !== undefined ? normalizeAdminRole(body.role) : targetRole;
+            // 超级管理员始终全权；普通管理员不传 permissions 时沿用原值（旧账号 null = 全权保留）
+            const nextPermissions = nextRole === 'super'
+                ? null
+                : (Array.isArray(body.permissions) ? body.permissions : targetPermissions);
+
+            if (isAdmin.sub === id) {
+                if (nextRole !== targetRole) {
+                    return jsonResponse({ error: '不能修改自己的角色' }, 400);
+                }
+                if (JSON.stringify(nextPermissions ?? null) !== JSON.stringify(targetPermissions ?? null)) {
+                    return jsonResponse({ error: '不能修改自己的权限' }, 400);
+                }
+            }
+
+            const targetIsSuper = adminIsSuper({ role: targetRole, permissions: targetPermissions });
+            if (targetIsSuper && nextRole !== 'super') {
+                const superRow = await env.DB.prepare("SELECT COUNT(*) AS n FROM admins WHERE role = 'super'").first();
+                if ((superRow?.n || 0) <= 1) {
+                    return jsonResponse({ error: '至少要保留一个超级管理员' }, 400);
+                }
+            }
+
+            const updates = ['role = ?', 'permissions = ?'];
+            const params = [nextRole, serializeAdminPermissions(nextPermissions)];
+            if (body.password !== undefined) {
+                if (!body.password || String(body.password).length < 8) {
+                    return jsonResponse({ error: '密码至少 8 位' }, 400);
+                }
+                updates.push('password_hash = ?');
+                params.push(await hashPassword(String(body.password)));
+            }
+            params.push(id);
+            await env.DB.prepare(`UPDATE admins SET ${updates.join(', ')} WHERE id = ?`).bind(...params).run();
+
+            ctx.waitUntil(logAuditEvent(env, {
+                eventType: 'update', actorAdminId: isAdmin.sub, actorUsername: isAdmin.username,
+                targetTable: 'admins', targetId: id,
+                summary: { username: target.username, role: nextRole, permissions: nextPermissions }, request,
+            }));
+
+            return jsonResponse({ success: true, role: nextRole, permissions: nextPermissions });
+        } catch (error) {
+            console.error('❌ PUT /api/admin/admins 错误:', error.message);
+            return jsonResponse({ error: error.message }, 500);
+        }
+    }
+
     const adminDeleteMatch = path.match(/^\/api\/admin\/admins\/(\d+)$/);
     if (adminDeleteMatch && method === 'DELETE') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'admins');
+        if (denied) return denied;
         try {
             const id = parseInt(adminDeleteMatch[1], 10);
             if (isAdmin.sub === id) {
@@ -574,7 +711,14 @@ async function handleRequest(request, env, ctx) {
                 return jsonResponse({ error: '不能删除最后一个管理员账号' }, 400);
             }
 
-            const target = await env.DB.prepare('SELECT username FROM admins WHERE id = ?').bind(id).first();
+            const target = await env.DB.prepare('SELECT username, role, permissions FROM admins WHERE id = ?').bind(id).first();
+            if (target && adminIsSuper({ role: normalizeAdminRole(target.role), permissions: parseAdminPermissions(target.permissions) })) {
+                const superRow = await env.DB.prepare("SELECT COUNT(*) AS n FROM admins WHERE role = 'super'").first();
+                if ((superRow?.n || 0) <= 1) {
+                    return jsonResponse({ error: '至少要保留一个超级管理员' }, 400);
+                }
+            }
+
             const result = await env.DB.prepare('DELETE FROM admins WHERE id = ?').bind(id).run();
             if (result.meta?.changes === 0) {
                 return jsonResponse({ error: '账号不存在' }, 404);
@@ -703,7 +847,8 @@ async function handleRequest(request, env, ctx) {
 
     // ===== 3.6 GET /api/admin/audit-logs =====
     if (path === '/api/admin/audit-logs' && method === 'GET') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'audit');
+        if (denied) return denied;
         try {
             const eventType = url.searchParams.get('event_type');
             const actor = url.searchParams.get('actor');
@@ -729,7 +874,8 @@ async function handleRequest(request, env, ctx) {
 
     // ===== 4. POST /api/admin/songs =====
     if (path === '/api/admin/songs' && method === 'POST') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'songs');
+        if (denied) return denied;
         try {
             const body = await request.json();
             const { bvid, special_tags, collaboration_details, status, flag_reason,
@@ -816,7 +962,8 @@ async function handleRequest(request, env, ctx) {
     // ===== 5. PUT /api/admin/songs/:id =====
     const putMatch = path.match(/^\/api\/admin\/songs\/(\d+)$/);
     if (putMatch && method === 'PUT') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'songs');
+        if (denied) return denied;
         try {
             const id = putMatch[1];
             const body = await request.json();
@@ -913,7 +1060,8 @@ async function handleRequest(request, env, ctx) {
     // ===== 6. DELETE /api/admin/songs/:id =====
     const deleteMatch = path.match(/^\/api\/admin\/songs\/(\d+)$/);
     if (deleteMatch && method === 'DELETE') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'songs');
+        if (denied) return denied;
         try {
             const id = deleteMatch[1];
             const target = await env.DB.prepare('SELECT title FROM songs WHERE id = ?').bind(id).first();
@@ -1872,7 +2020,8 @@ async function handleRequest(request, env, ctx) {
 
     // ===== 获取待审核列表 =====
     if (path === '/api/admin/pending' && method === 'GET') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'review');
+        if (denied) return denied;
         try {
             const fanartStmt = env.DB.prepare(`
                 SELECT id, 'fanart' as type, title, author, description, image_url, created_at
@@ -1896,7 +2045,8 @@ async function handleRequest(request, env, ctx) {
     // ===== 审核通过 =====
     const approveMatch = path.match(/^\/api\/admin\/pending\/(fanart|shop)\/(\d+)$/);
     if (approveMatch && method === 'PUT') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'review');
+        if (denied) return denied;
         try {
             const type = approveMatch[1];
             const id = approveMatch[2];
@@ -1941,7 +2091,8 @@ async function handleRequest(request, env, ctx) {
     // ===== 审核驳回 =====
     const rejectMatch = path.match(/^\/api\/admin\/pending\/(fanart|shop)\/(\d+)$/);
     if (rejectMatch && method === 'DELETE') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'review');
+        if (denied) return denied;
         try {
             const type = rejectMatch[1];
             const id = rejectMatch[2];
@@ -1987,7 +2138,8 @@ async function handleRequest(request, env, ctx) {
 
     // ===== 7. 吸尘器日报 API =====
     if (path === '/api/admin/daily' && method === 'GET') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'daily');
+        if (denied) return denied;
         try {
             const stmt = env.DB.prepare('SELECT * FROM daily ORDER BY publish_date DESC, id DESC');
             const result = await stmt.all();
@@ -1999,7 +2151,8 @@ async function handleRequest(request, env, ctx) {
     }
 
     if (path === '/api/admin/daily' && method === 'POST') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'daily');
+        if (denied) return denied;
         try {
             const { title, content, source_url, cover_url, publish_date, status } = await request.json();
             const stmt = env.DB.prepare(`
@@ -2022,7 +2175,8 @@ async function handleRequest(request, env, ctx) {
 
     const dailyPutMatch = path.match(/^\/api\/admin\/daily\/(\d+)$/);
     if (dailyPutMatch && method === 'PUT') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'daily');
+        if (denied) return denied;
         try {
             const id = dailyPutMatch[1];
             const { title, content, source_url, cover_url, publish_date, status } = await request.json();
@@ -2046,7 +2200,8 @@ async function handleRequest(request, env, ctx) {
 
     const dailyDeleteMatch = path.match(/^\/api\/admin\/daily\/(\d+)$/);
     if (dailyDeleteMatch && method === 'DELETE') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'daily');
+        if (denied) return denied;
         try {
             const id = dailyDeleteMatch[1];
             const target = await env.DB.prepare('SELECT title FROM daily WHERE id = ?').bind(id).first();
@@ -2066,7 +2221,8 @@ async function handleRequest(request, env, ctx) {
 
     // ===== 8. 同人作品 API =====
     if (path === '/api/admin/fanart' && method === 'GET') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'fanart');
+        if (denied) return denied;
         try {
             const stmt = env.DB.prepare('SELECT * FROM fanart ORDER BY created_at DESC');
             const result = await stmt.all();
@@ -2078,7 +2234,8 @@ async function handleRequest(request, env, ctx) {
     }
 
     if (path === '/api/admin/fanart' && method === 'POST') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'fanart');
+        if (denied) return denied;
         try {
             const { title, author, description, image_url, bilibili_url, source_url, type, status, tags, attachments } = await request.json();
             const tagsJson = Array.isArray(tags) && tags.length > 0 ? JSON.stringify(tags.slice(0, 10)) : null;
@@ -2105,7 +2262,8 @@ async function handleRequest(request, env, ctx) {
 
     const fanartPutMatch = path.match(/^\/api\/admin\/fanart\/(\d+)$/);
     if (fanartPutMatch && method === 'PUT') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'fanart');
+        if (denied) return denied;
         try {
             const id = fanartPutMatch[1];
             const { title, author, description, image_url, bilibili_url, source_url, type, status, tags, attachments } = await request.json();
@@ -2133,7 +2291,8 @@ async function handleRequest(request, env, ctx) {
 
     const fanartDeleteMatch = path.match(/^\/api\/admin\/fanart\/(\d+)$/);
     if (fanartDeleteMatch && method === 'DELETE') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'fanart');
+        if (denied) return denied;
         try {
             const id = fanartDeleteMatch[1];
             const target = await env.DB.prepare('SELECT title FROM fanart WHERE id = ?').bind(id).first();
@@ -2153,7 +2312,8 @@ async function handleRequest(request, env, ctx) {
 
     // ===== 9. 量贩商品 API =====
     if (path === '/api/admin/shop' && method === 'GET') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'shop');
+        if (denied) return denied;
         try {
             const stmt = env.DB.prepare('SELECT * FROM shop ORDER BY created_at DESC');
             const result = await stmt.all();
@@ -2165,7 +2325,8 @@ async function handleRequest(request, env, ctx) {
     }
 
     if (path === '/api/admin/shop' && method === 'POST') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'shop');
+        if (denied) return denied;
         try {
             const { title, description, price, image_url, bilibili_url, xianyu_url, other_url, status } = await request.json();
             const stmt = env.DB.prepare(`
@@ -2188,7 +2349,8 @@ async function handleRequest(request, env, ctx) {
 
     const shopPutMatch = path.match(/^\/api\/admin\/shop\/(\d+)$/);
     if (shopPutMatch && method === 'PUT') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'shop');
+        if (denied) return denied;
         try {
             const id = shopPutMatch[1];
             const { title, description, price, image_url, bilibili_url, xianyu_url, other_url, status } = await request.json();
@@ -2547,7 +2709,8 @@ async function handleRequest(request, env, ctx) {
 
     // ===== 管理特别感谢（写入 R2） =====
     if (path === '/api/admin/thanks' && method === 'PUT') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'thanks');
+        if (denied) return denied;
         try {
             const body = await request.json();
             const data = body.data;
@@ -2572,7 +2735,8 @@ async function handleRequest(request, env, ctx) {
 
     const shopDeleteMatch = path.match(/^\/api\/admin\/shop\/(\d+)$/);
     if (shopDeleteMatch && method === 'DELETE') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'shop');
+        if (denied) return denied;
         try {
             const id = shopDeleteMatch[1];
             const target = await env.DB.prepare('SELECT title FROM shop WHERE id = ?').bind(id).first();
@@ -2772,6 +2936,22 @@ async function getAuthenticatedUser(request, env, expectedRole) {
         if (!user || user.active === 0 || user.deleted_at) return null;
         return { ...payload, username: user.username, display_name: user.display_name };
     }
+
+    // 管理员：每次请求回查账号，删除账号或调整权限可以立即生效（不必等 token 过期）
+    if (expectedRole === 'admin') {
+        const row = await env.DB.prepare(
+            'SELECT id, username, role, permissions FROM admins WHERE id = ?'
+        ).bind(payload.sub).first();
+        if (!row) return null;
+        return {
+            sub: payload.sub,
+            exp: payload.exp,
+            username: row.username,
+            role: normalizeAdminRole(row.role),
+            permissions: parseAdminPermissions(row.permissions),
+        };
+    }
+
     return payload;
 }
 

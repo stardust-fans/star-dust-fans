@@ -13,6 +13,12 @@
       </li>
     </ul>
     <div class="sidebar-footer">
+      <div v-if="admin" class="sidebar-user">
+        <span class="sidebar-user-name">{{ admin.username }}</span>
+        <span class="sidebar-user-role" :class="{ 'is-super': isSuperAdmin }">
+          {{ isSuperAdmin ? '超级管理员' : '普通管理员' }}
+        </span>
+      </div>
       <button class="btn btn-outline btn-sm" style="width:100%;" @click="backToSite">
         <i class="fas fa-arrow-left"></i> 返回前台
       </button>
@@ -24,32 +30,25 @@
 </template>
 
 <script setup>
+import { computed } from 'vue';
 import { useAdminAuth } from '../composables/useAdminAuth.js';
 import { useToast } from '../composables/useToast.js';
+import { NAV_ITEMS } from '../navItems.js';
 
 defineProps({
   sidebarOpen: { type: Boolean, default: false },
 });
 defineEmits(['close-sidebar']);
 
-const { logout } = useAdminAuth();
+const { logout, can, admin, isSuperAdmin } = useAdminAuth();
 const { showToast } = useToast();
 
 function backToSite() {
   window.location.href = '/';
 }
 
-const items = [
-  { key: 'songs', label: '歌曲管理', icon: 'fa-music' },
-  { key: 'daily', label: '吸尘器日报', icon: 'fa-newspaper' },
-  { key: 'fanart', label: '同人作品', icon: 'fa-palette' },
-  { key: 'shop', label: '量贩管理', icon: 'fa-store' },
-  { key: 'tags', label: '标签管理', icon: 'fa-tags' },
-  { key: 'audit-log', label: '安全记录', icon: 'fa-shield-halved' },
-  { key: 'admins', label: '管理员账户', icon: 'fa-user-gear' },
-  { key: 'pending', label: '投稿审核', icon: 'fa-clock' },
-  { key: 'thanks', label: '特别感谢', icon: 'fa-heart' },
-];
+// 只显示当前账号有权限的模块
+const items = computed(() => NAV_ITEMS.filter((item) => can(item.scope)));
 
 function handleLogout() {
   logout();

@@ -21,6 +21,9 @@ const titles = {
   daily: '管理吸尘器日报',
   fanart: '管理同人作品',
   shop: '管理量贩商品',
+  tags: '管理分类标签',
+  pending: '审核投稿',
+  thanks: '特别感谢名单',
   'audit-log': '安全记录',
   admins: '管理员账户',
 };

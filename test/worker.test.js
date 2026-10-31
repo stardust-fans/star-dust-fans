@@ -563,3 +563,54 @@ describe('Auth endpoint', () => {
         expect(res.status).toBe(400);
     });
 });
+
+describe('Admin role permissions', () => {
+    const scopedHeaders = async (sub) => ({
+        Authorization: `Bearer ${await token({ sub, username: 'scoped-admin', role: 'admin' })}`,
+    });
+
+    beforeAll(async () => {
+        // 只有审核权限的普通管理员
+        await env.DB.prepare(
+            "INSERT OR REPLACE INTO admins (id, username, password_hash, role, permissions) VALUES (9010, 'reviewer', 'unused', 'admin', ?)"
+        ).bind(JSON.stringify(['review'])).run();
+    });
+
+    it('lets a scoped admin open its own modules only', async () => {
+        const headers = await scopedHeaders(9010);
+        expect((await req('/api/admin/pending', { headers })).status).toBe(200);
+        expect((await req('/api/admin/songs', { headers })).status).toBe(403);
+        expect((await req('/api/admin/tags', { headers })).status).toBe(403);
+        expect((await req('/api/admin/admins', { headers })).status).toBe(403);
+    });
+
+    it('exposes the permission profile of the current admin', async () => {
+        const headers = await scopedHeaders(9010);
+        const profile = await (await req('/api/admin/me', { headers })).json();
+        expect(profile).toMatchObject({
+            username: 'reviewer',
+            role: 'admin',
+            permissions: ['review'],
+            isSuper: false,
+        });
+    });
+
+    it('applies permission changes without waiting for the token to expire', async () => {
+        const headers = await scopedHeaders(9010);
+        await env.DB.prepare('UPDATE admins SET permissions = ? WHERE id = 9010')
+            .bind(JSON.stringify(['tags']))
+            .run();
+        expect((await req('/api/admin/tags', { headers })).status).toBe(200);
+        expect((await req('/api/admin/pending', { headers })).status).toBe(403);
+
+        await env.DB.prepare('UPDATE admins SET permissions = ? WHERE id = 9010')
+            .bind(JSON.stringify(['review']))
+            .run();
+    });
+
+    it('rejects tokens of admin accounts that no longer exist', async () => {
+        const headers = await scopedHeaders(9999);
+        expect((await req('/api/admin/me', { headers })).status).toBe(401);
+        expect((await req('/api/admin/pending', { headers })).status).toBe(401);
+    });
+});

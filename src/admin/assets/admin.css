@@ -120,6 +120,41 @@
             margin-top: 8px;
         }
 
+        .sidebar-user {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 12px;
+            padding: 8px 10px;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 6px;
+            background: rgba(153, 153, 255, 0.06);
+        }
+
+        .sidebar-user-name {
+            font-size: 0.78rem;
+            color: var(--ink);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .sidebar-user-role {
+            flex: 0 0 auto;
+            padding: 1px 8px;
+            border-radius: 100px;
+            border: 1px solid var(--line-strong);
+            font-size: 0.68rem;
+            color: var(--ink-muted);
+        }
+
+        .sidebar-user-role.is-super {
+            border-color: rgba(232, 199, 111, 0.55);
+            color: var(--gold);
+            background: rgba(232, 199, 111, 0.08);
+        }
+
         /* ===== 主内容区 ===== */
         .main-content {
             margin-left: 220px;
