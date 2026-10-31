@@ -32,7 +32,7 @@
 
       <div class="form-row">
         <label>角色</label>
-        <select v-model="form.role" :disabled="isEditingSelf">
+        <select v-model="form.role">
           <option v-for="role in ADMIN_ROLES" :key="role.key" :value="role.key">
             {{ role.label }}
           </option>
@@ -53,14 +53,18 @@
               v-model="form.permissions"
               type="checkbox"
               :value="perm.key"
-              :disabled="isEditingSelf"
             />
             <span class="perm-label">{{ perm.label }}</span>
             <small class="perm-desc">{{ perm.desc }}</small>
           </label>
         </div>
-        <small v-if="isEditingSelf" class="form-hint">不能修改自己的角色和权限，避免把自己锁在门外。</small>
-        <small v-else class="form-hint">例如只勾「投稿审核」，该账号就只能审核投稿，看不到其他模块。</small>
+        <small class="form-hint">
+          例如只勾「投稿审核」，该账号就只能审核投稿，看不到其他模块；一个都不勾则登录后没有可操作页面。
+          <template v-if="isEditingSelf">这是你自己的账号，改完立即生效。</template>
+        </small>
+        <p v-if="isEditingSelf" class="warn-text">
+          ⚠️ 把自己降成普通管理员后，你会失去「管理员账户」页面，只能靠另一个超级管理员改回来。
+        </p>
       </div>
 
       <div class="form-actions">
@@ -92,8 +96,8 @@
               <span v-if="row.isSelf" class="badge-self">我</span>
             </td>
             <td>
-              <span class="role-badge" :class="row.role">
-                {{ row.role === 'super' ? '超级管理员' : '普通管理员' }}
+              <span class="role-badge" :class="{ super: row.role === 'super' || row.allAccess }">
+                {{ row.role === 'super' || row.allAccess ? '超级管理员' : '普通管理员' }}
               </span>
             </td>
             <td>
@@ -130,7 +134,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { useAdminApi } from '../composables/useAdminApi.js';
 import { useToast } from '../composables/useToast.js';
-import { ADMIN_PERMISSIONS, ADMIN_ROLES } from '../../shared/adminPermissions.js';
+import { ADMIN_PERMISSION_KEYS, ADMIN_PERMISSIONS, ADMIN_ROLES } from '../../shared/adminPermissions.js';
 
 const { adminFetch } = useAdminApi();
 const { showToast } = useToast();
@@ -165,7 +169,10 @@ function openEdit(row) {
     username: row.username,
     password: '',
     role: row.role,
-    permissions: Array.isArray(row.permissions) ? [...row.permissions] : [],
+    // 旧的全权账号（permissions = NULL）默认全选，避免一保存就把权限清空
+    permissions: Array.isArray(row.permissions)
+      ? [...row.permissions]
+      : ADMIN_PERMISSION_KEYS.slice(),
   };
   formVisible.value = true;
 }
@@ -209,6 +216,14 @@ async function handleSave() {
     permissions: form.value.role === 'super' ? null : form.value.permissions,
   };
   if (password) payload.password = password;
+
+  if (
+    editing.value?.isSelf &&
+    form.value.role !== 'super' &&
+    !confirm('确定降低自己的权限？降级后你将无法再打开「管理员账户」，需要另一个超级管理员帮你改回来。')
+  ) {
+    return;
+  }
 
   saving.value = true;
   try {
@@ -265,6 +280,13 @@ onMounted(loadAdmins);
   margin-top: 6px;
   font-size: 0.76rem;
   color: #8a90a6;
+}
+
+.warn-text {
+  margin-top: 8px;
+  font-size: 0.76rem;
+  line-height: 1.7;
+  color: #e8a76f;
 }
 
 .form-row-block {
