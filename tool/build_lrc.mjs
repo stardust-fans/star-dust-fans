@@ -3,9 +3,9 @@ import { mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { strToU8, unzipSync, zipSync } from 'fflate';
 import { z } from 'zod';
+import { LRC_URL as SITE } from '../src/shared/constants.js';
 
 const REPOSITORY = 'lsy-404/LRC';
-const SITE = 'https://lrc.wuyilingwei.com';
 const DATA_DIR = resolve(import.meta.dirname, '../static/data');
 const PUBLIC_PATH = '/data/lrc';
 const filename = z.string().min(1).refine(value => !/[\\/\u0000-\u001f]/.test(value) && !['.', '..'].includes(value));
@@ -17,6 +17,7 @@ const albumSchema = z.looseObject({
     vocal: z.array(z.string()),
     produce: z.array(z.string()),
     lyric_maker: z.array(z.string()),
+    cover: z.string().regex(/^\/albums\/[\w.-]+\.webp$/).nullable(),
     songs: z.array(z.looseObject({ title: filename })),
     song_count: z.number().int().nonnegative(),
 }).refine(album => album.song_count === album.songs.length && new Set(album.songs.map(song => song.title)).size === album.song_count);
@@ -50,7 +51,7 @@ const source = {
     catalog_url: `${raw}/docs/.vuepress/public/api/albums.json`,
     license: 'CC BY-NC-SA 4.0',
     license_url: 'https://creativecommons.org/licenses/by-nc-sa/4.0/',
-    changes: '歌词及专辑 ZIP 保持原样；目录添加尘站下载地址，完整包按专辑目录整理歌词。',
+    changes: '歌词、封面及专辑 ZIP 保持原样；目录添加尘站下载地址，完整包按专辑目录整理歌词。',
 };
 const attribution = strToU8(`${source.name}\n${SITE}\n来源：${source.repository}/tree/${revision}\n许可：${source.license} ${source.license_url}\n${source.changes}\n`);
 const fullArchive = Object.create(null);
@@ -63,6 +64,7 @@ const staging = await mkdtemp(resolve(DATA_DIR, '.lrc-'));
 try {
     await mkdir(resolve(staging, 'albums'));
     await mkdir(resolve(staging, 'lyrics'));
+    await mkdir(resolve(staging, 'covers'));
     let nextAlbum = 0;
     const results = await Promise.allSettled(Array.from({ length: Math.min(6, catalog.count) }, async () => {
         while (nextAlbum < catalog.count) {
@@ -71,6 +73,8 @@ try {
             const zip = await download(`${raw}/pack/${encodeURIComponent(album.folder)}.zip`);
             const files = unzipSync(zip, { filter: file => file.name.endsWith('.lrc') });
             await writeFile(resolve(staging, 'albums', `${album.slug}.zip`), zip);
+            // 上游站点把封面打包成带哈希的资源，只能从固定提交的仓库文件取
+            if (album.cover) await writeFile(resolve(staging, 'covers', `${album.slug}.webp`), await download(`${raw}/docs${album.cover}`));
             await mkdir(resolve(staging, 'lyrics', album.slug));
             const songs = [];
             for (const song of album.songs) {
@@ -85,7 +89,7 @@ try {
             albums[index] = {
                 ...album,
                 songs,
-                cover: album.cover ? new URL(album.cover, SITE).href : null,
+                cover: album.cover ? `${PUBLIC_PATH}/covers/${album.slug}.webp` : null,
                 detail_url: `${raw}/docs/.vuepress/public/api/albums/${album.slug}.json`,
                 source_url: `${SITE}/albums/${album.slug}.html`,
                 download_url: `${PUBLIC_PATH}/albums/${album.slug}.zip`,

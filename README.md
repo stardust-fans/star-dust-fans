@@ -38,7 +38,7 @@ npm run deploy         # wrangler deploy 部署 Worker
 
 ### LRC 歌词数据
 
-`npm run build` 会从 [LRC · V宇宙词站](https://lrc.wuyilingwei.com) 的[公开仓库](https://github.com/lsy-404/LRC)获取歌词目录与专辑包，并固定到同一个上游提交。数据独立输出到 `static/data/lrc/`，随静态资源发布，不写入歌曲数据库；下载来源不完整时构建会失败。
+`npm run build` 会从 [LRC · V宇宙词站](https://lrc.leisiyu.dev) 的[公开仓库](https://github.com/lsy-404/LRC)获取歌词目录、专辑包与封面，并固定到同一个上游提交。数据独立输出到 `static/data/lrc/`，随静态资源发布，不写入歌曲数据库；下载来源不完整时构建会失败。
 
 本地开发前运行 `npm run build:lrc` 生成数据，然后打开 `/lyrics`。该页提供专辑 ZIP、单曲 LRC、完整歌词 ZIP 和 JSON 数据目录；完整包包含许可与来源说明。LRC 数据遵循 [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)，保留原始歌词与制作署名。
 

@@ -1,6 +1,6 @@
 <template>
   <div class="page-header">
-    <span class="eyebrow page-eyebrow">04 · Archive</span>
+    <span class="eyebrow page-eyebrow">05 · Archive</span>
     <h1 class="page-title">吸尘器日报</h1>
     <p class="page-subtitle"><template v-if="items.length">星尘的最新动态 · 共 {{ items.length }} 条</template><template v-else>有消息会在这里更新</template></p>
   </div>
