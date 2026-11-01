@@ -1099,8 +1099,8 @@ async function handleRequest(request, env, ctx) {
                 return jsonResponse({ error: '没有上传文件' }, 400);
             }
 
-            if (file.size > 15 * 1024 * 1024) {
-                return jsonResponse({ error: '文件大小不能超过15MB' }, 400);
+            if (file.size > 150 * 1024 * 1024) {
+                return jsonResponse({ error: '文件大小不能超过150MB' }, 400);
             }
 
             const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
