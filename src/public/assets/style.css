@@ -532,7 +532,7 @@ a {
 }
 
 /* ===== 响应式 ===== */
-@media (max-width: 768px) {
+@media (max-width: 1050px) {
     .nav-toggle {
         display: flex;
     }
@@ -563,7 +563,9 @@ a {
         width: 100%;
         border-bottom: 1px solid var(--line);
     }
+}
 
+@media (max-width: 768px) {
     .page-title {
         font-size: 1.8rem;
     }

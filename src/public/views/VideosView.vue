@@ -2,73 +2,68 @@
   <div class="page-header">
     <span class="eyebrow page-eyebrow">01 · Archive</span>
     <h1 class="page-title">视频</h1>
-    <p class="page-subtitle">
-      她唱过的每一首<template v-if="total"> · 共 {{ total }} 首</template>
-    </p>
+    <p class="page-subtitle">她唱过的每一首</p>
   </div>
 
-  <!-- 排序按键 -->
-  <div class="sort-bar">
-    <button class="sort-btn" @click="cycleSort">
-      <span class="sort-label">排序：</span>
-      <span class="sort-current">{{ currentSortLabel }}</span>
-      <span class="sort-arrow">↻</span>
-    </button>
+  <div class="song-toolbar">
+    <label class="song-search">
+      <span class="sr-only">搜索歌曲</span>
+      <input v-model="query" type="search" maxlength="200" placeholder="搜索歌曲标题、BV 号或 UP 主" />
+    </label>
+    <label class="song-sort">
+      排序
+      <select v-model="sort">
+        <option value="latest">最新</option>
+        <option value="oldest">最早</option>
+        <option value="view-desc">播放量 ↓</option>
+        <option value="view-asc">播放量 ↑</option>
+      </select>
+    </label>
   </div>
 
-  <div v-if="displaySongs.length > 0" class="card-grid">
-    <SongCard v-for="song in displaySongs" :key="song.id" :song="song" />
+  <div v-if="loading" class="loading-state" role="status">加载中...</div>
+  <div v-else-if="error" class="empty-state" role="alert">
+    {{ error }} <button type="button" class="sort-btn" @click="reload">重试</button>
   </div>
-  <div v-else-if="loaded" class="empty-state">这里还是空的</div>
-  <div v-else class="loading-state">加载中...</div>
+  <div v-else-if="songs.length > 0" class="card-grid">
+    <SongCard v-for="song in songs" :key="song.id" :song="song" />
+  </div>
+  <EmptyState v-else :message="query.trim() ? '没有找到匹配的歌曲，换个关键词试试' : '这里还是空的'" />
+  <SongPagination v-model:page="page" :page-count="pageCount" :total="total" :disabled="loading" />
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
-import { useSongs } from '../composables/useSongs.js';
+import { useSongList } from '../../shared/useSongList.js';
+import SongPagination from '../../shared/SongPagination.vue';
 import SongCard from '../components/SongCard.vue';
 import EmptyState from '../components/EmptyState.vue';
 
-const { songs, total, loaded, loadSongs } = useSongs();
-
-const sortModes = [
-  { value: 'latest', label: '最新' },
-  { value: 'oldest', label: '最早' },
-  { value: 'view-desc', label: '播放量 ↓' },
-  { value: 'view-asc', label: '播放量 ↑' },
-];
-
-const currentSortIndex = ref(0);
-
-function cycleSort() {
-  currentSortIndex.value = (currentSortIndex.value + 1) % sortModes.length;
-}
-
-const currentSortLabel = computed(() => {
-  return sortModes[currentSortIndex.value].label;
-});
-
-const displaySongs = computed(() => {
-  const list = Array.isArray(songs.value) ? [...songs.value] : [];
-  if (list.length === 0) return list;
-
-  const mode = sortModes[currentSortIndex.value].value;
-
-  switch (mode) {
-    case 'latest':
-      return list.sort((a, b) => (b.pubdate || 0) - (a.pubdate || 0));
-    case 'oldest':
-      return list.sort((a, b) => (a.pubdate || 0) - (b.pubdate || 0));
-    case 'view-desc':
-      return list.sort((a, b) => (b.stats?.view || 0) - (a.stats?.view || 0));
-    case 'view-asc':
-      return list.sort((a, b) => (a.stats?.view || 0) - (b.stats?.view || 0));
-    default:
-      return list;
-  }
-});
-
-onMounted(() => {
-  loadSongs();
-});
+const { songs, total, page, pageCount, query, sort, loading, error, reload } = useSongList();
 </script>
+
+<style scoped>
+.song-toolbar { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
+.song-search { flex: 1; min-width: 0; }
+.song-search input,
+.song-sort select {
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--paper-raised);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.9rem;
+}
+.song-search input { width: 100%; }
+.song-search input::placeholder { color: var(--ink-muted); }
+.song-sort { display: flex; align-items: center; gap: 8px; color: var(--ink-soft); }
+.song-search input:focus,
+.song-sort select:focus { outline: 2px solid var(--cobalt); outline-offset: 2px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+@media (max-width: 480px) {
+  .song-toolbar { flex-wrap: wrap; }
+  .song-search { flex-basis: 100%; }
+  .song-sort { margin-left: auto; }
+}
+</style>

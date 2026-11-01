@@ -47,7 +47,8 @@
         <RouterLink to="/videos" class="btn-hero-secondary">查看全部 {{ total }} 首 →</RouterLink>
       </div>
     </template>
-    <EmptyState v-else message="还没有收录歌曲，过会儿再来" />
+    <div v-else-if="error" class="empty-state" role="alert">{{ error }} <button class="sort-btn" @click="loadFeatured">重试</button></div>
+    <EmptyState v-else :message="loaded ? '还没有收录歌曲，过会儿再来' : '加载中...'" />
   </section>
 
   <section class="section" id="about">
@@ -82,11 +83,21 @@
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useSongs } from '../composables/useSongs.js';
 import SongCard from '../components/SongCard.vue';
 import EmptyState from '../components/EmptyState.vue';
 
-const { songs, total } = useSongs();
+const { songs, total, loaded, loadSongs } = useSongs();
+const error = ref('');
 const featuredSongs = computed(() => songs.value.slice(0, 6));
+async function loadFeatured() {
+  error.value = '';
+  try {
+    await loadSongs();
+  } catch (err) {
+    error.value = err.message || '歌曲加载失败';
+  }
+}
+onMounted(loadFeatured);
 </script>

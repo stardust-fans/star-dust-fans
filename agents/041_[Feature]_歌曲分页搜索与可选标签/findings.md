@@ -1,0 +1,26 @@
+# 调研与验证
+
+- 基线为 `origin/main` 的 `6d8c744`，任务工作区干净，主工作区无未提交文件。任务工作区建立于固定项目 worktree 目录。
+- `useSongs` 循环下载所有歌曲，视频页只做客户端排序；后台只取默认首批，无法浏览超过接口上限的记录。
+- `SongForm` 和歌曲 POST/PUT 接口允许空标签；`FanartContribute` 和同人投稿接口也允许空标签。补充可选文案及实际保存验证，避免重复实现已有行为。
+- API 已支持 limit/offset；增加搜索与稳定排序，让列表和计数共享同一过滤条件。管理员列表需经过认证并包含非公开状态。
+- 已读取 agent-mode v0.2.3、Cloudflare 与 workers-best-practices；检索当前 D1 prepared statements 与 Workers best practices 文档，查询参数使用绑定而非拼接用户输入。
+- 初步搜索不存在的 ContributeView/ForumView 返回路径不存在；实际同人表单位于 components/FanartContribute.vue，论坛使用 OmewView。
+- npm ci 镜像下载耗时较长；终止尚未退出的安装进程后并行重试导致 ENOTEMPTY。确认原进程完全退出后，改用 npm ci --no-audit --no-fund --prefer-offline，由 npm 清理本次依赖目录后重装。显式 rm -rf node_modules 被工具安全检查拒绝，未执行。
+- 大批 patch 使用删除和新建同一文件被工具拒绝；拆为正常 Update File 后成功，未影响源文件。worker.js 保持原有 CRLF 与 BOM，避免整文件格式变化。
+- 镜像中 core-js 与 workerd 平台包出现长时间连接等待；用官方 registry.npmjs.org 的同版本 tarball 补齐 npm 缓存，全部返回成功。停止原镜像连接后使用 npm ci --offline --no-audit --no-fund，不更改锁文件或版本。
+- 后台分页显示隐藏与标记记录后，编辑表单必须按歌曲 ID 重建，并保留 flag_reason；已补齐这两个联动字段，避免换曲编辑旧数据或保存时清空原因。
+- 安装未完全结束时首次原版对照运行在测试收集前发生 cloudflare-pool runner 启动超时，无测试执行，不计为契约测试失败证明；安装结束后重新验证。
+- 第二次原版对照仍启动超时；独立串行启动并启用 module-fallback 调试后，真正执行了六项新增接口测试：五项因缺少搜索、排序、管理员接口而失败，无标签同人投稿通过。日志 /tmp/stardust-song-baseline-test.log。
+- 纯前端三项测试正确实现通过，分别临时移除过期响应保护、末页回退及重试清除错误后，三项全部失败；恢复原文件后继续完整验证。日志 /tmp/stardust-song-state-mutation-test.log。
+- 临时增加歌曲和同人标签必填校验后，两项无标签保存测试均以 HTTP 400 失败；已恢复原文件。日志 /tmp/stardust-song-tags-mutation-test.log。
+- build 成功；存在已有 oh-my-live2d 的 fs/path 外部化、CommonJS/ESM 与大 chunk 警告。贡献者自动刷新属于构建副作用，已还原源文件，不混入本次提交。
+- 内置浏览器控制两次启动均超时并重置 kernel；改用运行时自带 Playwright 与独立 Chrome 测试上下文。临时浏览器测试在 /test，截图留在本任务 evidence。
+- GitHub main 受保护：必须 PR，严格要求 build-and-deploy，审批数零；无 CODEOWNERS 文件。Auto Merge 工作流会在 CI 成功后先部署 PR head，再合并，Draft PR 会被跳过。
+- 完整 Vitest 验证：9 个文件、100 项测试通过。首次浏览器脚本错误使用公开站旧 hash 地址，打开首页六首；依据现有导航链接与公开 router 改为 /videos，保留分页期望值。后台翻页、搜索隐藏状态均已通过；按钮名称包含 Font Awesome 图标字符，选择器改为匹配可见按钮文案。
+- 前台真正点击下一页无请求；命中测试显示 CANVAS/live2d-stage/live2d-companion 位于 BUTTON 之上。角色层为 z-index 900，新增分页需位于其上。角色 mounted 在 max-width 768px 下跳过加载却保留固定 260×364 的容器，窄屏应隐藏该容器。
+- 测试过程中系统 Google Chrome 路径消失，改用已安装缓存 Chromium 1248 的独立测试浏览器，重复验证仍复现前台遮挡，排除角色之外的浏览器启动差异。
+- 分页层与窄屏角色容器修复后，公开站完整浏览器流程通过，含首/中/末页、标题/BV/UP 主搜索、四种排序、空结果、查询回第一页与 375px 布局。后台登录、分页、搜索隐藏记录、零标签保存与查询通过。删除后记录显示已删除而非消失，新增管理员过滤遗漏软删除状态，补充契约测试复现后修复。
+- 删除契约测试在修复前实际失败（返回 status=deleted 的记录），修复后完整 Vitest 为 9 文件、101 项通过，build 再次通过。
+- 构建后的本地服务热更新未及时应用后台过滤代码；重启到当前构建后，管理员浏览器验收全部通过（20.4s）：登录、分页、隐藏状态搜索、无标签新增、空标签查询和删除后空结果。保留查询断言，未迁就错误计数修改期望。
+- 已查看桌面、375px 搜索与分页截图，以及后台无标签表单和保存成功截图；无遮挡、无横向溢出。浏览器用本机缓存 Chromium 1248 的独立上下文，所有数据写入本地样例 D1。

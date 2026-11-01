@@ -27,6 +27,16 @@
     --yes           跳过确认提示，直接提交
     --test          测试模式：只更新 cover_url，不覆盖其他字段
     --skip-filter  跳过交互式筛选（适用于收藏夹等纯净数据源）
+
+搜索过滤参数（仅 --search 生效）：
+    --no-regex-filter   关闭"星尘相关性"过滤（恢复为不过滤）
+    --exclude-regex     在默认规则基础上额外排除的标题正则（如 "榜单|合集"）
+    --debug-filter      打印每个候选的命中/未命中原因，便于调规则
+
+星尘相关性判定（三组命中两组才保留）：
+    A 标题歌手位   标题里"星尘"出现在方括号 / 开头 / feat / cover / 翻唱 / 合作分隔处
+    B 标题音乐词   标题含原创、曲、歌、翻唱、Cover、殿堂、PV、声库、VOCALOID 等
+    C 标签星尘系   视频标签含 星尘 / 星尘Infinity / 星尘v4 / SynthV / SV / Synthesizer V
 """
 import argparse
 import getpass
@@ -58,6 +68,127 @@ MIXIN_KEY_ENC_TAB = [
     26, 17, 0, 1, 60, 51, 30, 4, 22, 25, 54, 21, 56, 59, 6, 63, 57, 62, 11, 36,
     20, 34, 44, 52,
 ]
+
+
+# ===== 新增：搜索标题 / 标签的"星尘相关性"过滤规则 =====
+#
+# 目标：过滤掉搜索接口返回的无关视频（如洛天依原创、纯歌名、话题视频等），
+#      同时保留"星尘"作为虚拟歌手出现的各类写法（含榜单/合集）。
+# 策略：宁可错杀不可污染。三组信号，命中任意两组才保留：
+#   A. 标题里"星尘"处于"歌手句式位置"（方括号内 / 开头 / feat / cover / 翻唱 / 合作分隔）
+#   B. 标题同时含音乐/曲相关词
+#   C. 视频标签命中星尘系：星尘 / 星尘Infinity / 星尘v4 / SynthV / SV / Synthesizer V
+#
+# 相比"标题必须含星尘 且 (A 或 B)"：多了标签这一路证据，标题不写星尘、
+# 只在标签里挂了的稿件（以及标题只有曲名 + 标签写了星尘的）也能被捞回来。
+# 全部贪婪匹配，大小写不敏感。
+
+_RE_SINGER_POSITION = re.compile(
+    r"[\[【][^\]】]*星尘[^\]】]*[\]】]"      # 【星尘】/【星尘/诗岸】/【诗岸/星尘】/【星尘·洛天依】
+    r"|^\s*星尘"                              # 开头：星尘原创曲… / 星尘Infinity原创…
+    r"|\b(?:feat|ft|featuring)\.?\s*星尘"     # feat.星尘 / ft.星尘
+    r"|\bcover\s*[.:：]\s*星尘"               # cover.星尘 / cover:星尘
+    r"|翻唱\s*[.:：]\s*星尘"                  # 翻唱:星尘
+    r"|星尘\s*[·xX×&/、]\s*\S",               # 星尘·洛天依 / 星尘x诗岸 / 星尘&…
+    re.IGNORECASE,
+)
+
+_RE_MUSIC_WORDS = re.compile(
+    r"原创|曲|歌|翻唱|cover|feat|ft|"
+    r"殿堂|播放|top|投稿|PV|参赛|调校|量贩|调教|"
+    r"诞生日|生日|周年|"
+    r"虚拟歌手|VOCALOID|V家|每日一尘|声库|五维介质|"
+    r"单曲|专辑|EP|曲绘|混音|母带",
+    re.IGNORECASE,
+)
+
+# 引擎类标签（星尘是 SynthV 声库，很多稿件标签只写引擎）
+_RE_ENGINE_TAG = re.compile(r"synth\s*v|synthesizers?\s*v", re.IGNORECASE)
+# 两字母缩写必须整段匹配，否则 substring 会误伤（例如 svs / svip）
+_ABBR_TAGS = {"sv"}
+
+# 三组信号的键名（调试输出用）
+GROUP_TITLE_SINGER = "A 标题歌手位"
+GROUP_TITLE_MUSIC = "B 标题音乐词"
+GROUP_TAG_STARDUST = "C 标签星尘系"
+ALL_GROUPS = (GROUP_TITLE_SINGER, GROUP_TITLE_MUSIC, GROUP_TAG_STARDUST)
+REQUIRED_GROUPS = 2  # 三组里至少命中两组
+
+
+def split_tags(raw_tags):
+    """B 站搜索结果的 tag 字段是逗号分隔字符串，也兼容列表。"""
+    if not raw_tags:
+        return []
+    if isinstance(raw_tags, (list, tuple, set)):
+        parts = [str(item) for item in raw_tags]
+    else:
+        parts = re.split(r"[,，、;；|]", str(raw_tags))
+    return [part.strip() for part in parts if part and part.strip()]
+
+
+def is_stardust_tag(tag: str) -> bool:
+    """单个标签是否属于星尘系（星尘 / 星尘Infinity / 星尘v4 / SynthV / SV / Synthesizer V）。"""
+    text = (tag or "").strip()
+    if not text:
+        return False
+    # 星尘 覆盖了 星尘 / 星尘Infinity / 星尘v4 / 星尘·洛天依 等所有写法
+    if "星尘" in text:
+        return True
+    lowered = text.lower()
+    if lowered in _ABBR_TAGS:
+        return True
+    return bool(_RE_ENGINE_TAG.search(text))
+
+
+def match_stardust_tags(raw_tags):
+    """返回命中的标签列表（调试输出用）。"""
+    return [tag for tag in split_tags(raw_tags) if is_stardust_tag(tag)]
+
+
+def classify_groups(title, raw_tags=""):
+    """算出标题/标签命中了哪几组信号，返回 (命中组列表, 命中的标签列表)。"""
+    text = title or ""
+    hits = []
+    if _RE_SINGER_POSITION.search(text):
+        hits.append(GROUP_TITLE_SINGER)
+    if _RE_MUSIC_WORDS.search(text):
+        hits.append(GROUP_TITLE_MUSIC)
+    matched_tags = match_stardust_tags(raw_tags)
+    if matched_tags:
+        hits.append(GROUP_TAG_STARDUST)
+    return hits, matched_tags
+
+
+def is_stardust_related(title, raw_tags="") -> bool:
+    """标题 + 标签是否与虚拟歌手"星尘"相关（三组信号命中两组）。"""
+    hits, _ = classify_groups(title, raw_tags)
+    return len(hits) >= REQUIRED_GROUPS
+
+
+def build_exclude_regex(pattern):
+    """把 --exclude-regex 字符串编译成正则，非法则退出。"""
+    if not pattern:
+        return None
+    try:
+        return re.compile(pattern, re.IGNORECASE)
+    except re.error as e:
+        print(f"❌ --exclude-regex 不是合法正则: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def should_keep_title(title, raw_tags="", exclude_re=None):
+    """综合判定是否保留：先看三组信号，再看用户额外排除。返回 (keep, 原因)。"""
+    hits, matched_tags = classify_groups(title, raw_tags)
+    if len(hits) < REQUIRED_GROUPS:
+        if not hits:
+            return False, "0/3 组"
+        return False, f"{len(hits)}/3 组（{' + '.join(hits)}）"
+    if exclude_re and exclude_re.search(title or ""):
+        return False, "命中 --exclude-regex"
+    detail = f" {len(hits)}/3 组（{' + '.join(hits)}）"
+    if matched_tags:
+        detail += f" 标签：{'/'.join(matched_tags)}"
+    return True, detail.strip()
 
 
 # ===== 配置 =====
@@ -204,12 +335,19 @@ def fetch_video_detail(bvid, max_retries=3, delay=0.34):
                 raise
 
     raise RuntimeError(f"{bvid}: 所有重试均失败") from last_exception
+def discover_by_search(keyword, limit, delay=0.34,
+                       apply_filter=True, exclude_re=None, debug_filter=False):
+    """按关键词搜索候选 bvid。
 
-
-def discover_by_search(keyword, limit, delay=0.34):
+    apply_filter=True 时对搜索结果做"星尘相关性"过滤（零额外请求，
+    直接用搜索接口自带的 title / tag 字段，标题先 strip_html 再匹配）。
+    三组信号（标题歌手位 / 标题音乐词 / 标签星尘系）命中两组才保留。
+    """
     img_key, sub_key = get_wbi_keys()
     bvids = []
     page = 1
+    total_raw = 0          # 过滤前累计
+    filtered_out = []      # 被过滤的标题（用于统计/调试）
     while len(bvids) < limit:
         time.sleep(delay)
         params = wbi_sign({"search_type": "video", "keyword": keyword, "page": page}, img_key, sub_key)
@@ -228,13 +366,31 @@ def discover_by_search(keyword, limit, delay=0.34):
             break
         for item in results:
             bvid = item.get("bvid")
-            if bvid:
-                bvids.append(bvid)
+            if not bvid:
+                continue
+            total_raw += 1
+            if apply_filter:
+                raw_title = strip_html(item.get("title") or "")
+                raw_tags = item.get("tag") or item.get("tags") or ""
+                keep, reason = should_keep_title(raw_title, raw_tags, exclude_re)
+                if debug_filter:
+                    mark = "✅" if keep else "❌"
+                    print(f"  {mark} [{reason}] {raw_title[:60]}")
+                if not keep:
+                    filtered_out.append(raw_title)
+                    continue
+            bvids.append(bvid)
             if len(bvids) >= limit:
                 break
         page += 1
         if page > 20:
             break
+
+    if apply_filter:
+        print(f"🧹 星尘相关性过滤：候选 {total_raw} 个 → 保留 {len(bvids[:limit])} 个 → 排除 {len(filtered_out)} 个")
+        if debug_filter:
+            for title in filtered_out[:20]:
+                print(f"  · 排除：{title[:60]}")
     return bvids[:limit]
 
 
@@ -344,8 +500,6 @@ class SiteClient:
         r = requests.put(f"{self.base_url}/api/admin/songs/{song_id}", json=payload,
                           headers=self._headers(), timeout=30)
         return r.status_code, r.json()
-
-
 def build_add_payload(detail):
     """构建添加歌曲的 payload，直接存 cover_url，不再转 base64"""
     tiers = compute_tiers(detail["stats"]["view"])
@@ -369,7 +523,7 @@ def build_add_payload(detail):
     return payload
 
 
-# ===== 新增：交互式候选列表筛选 =====
+# ===== 交互式候选列表筛选 =====
 
 def filter_candidates(todo_bvids, args):
     """
@@ -468,11 +622,20 @@ def cmd_add(args):
     print(f"✅ 已登录 {config['site_url']}（{config['username']}）")
     print(f"⚙️  请求间隔: {args.delay}s，最大重试: {args.max_retries} 次，每批提交: {args.batch} 首，最多爬取: {args.limit} 个")
 
+    # ===== 新增：编译 --exclude-regex =====
+    exclude_re = build_exclude_regex(args.exclude_regex)
+
     if args.bvid:
         bvids = args.bvid
     elif args.search:
         print(f"🔍 搜索「{args.search}」...")
-        bvids = discover_by_search(args.search, args.limit, delay=args.delay)
+        # ===== 新增：搜索阶段做星尘相关性过滤 =====
+        bvids = discover_by_search(
+            args.search, args.limit, delay=args.delay,
+            apply_filter=not args.no_regex_filter,
+            exclude_re=exclude_re,
+            debug_filter=args.debug_filter,
+        )
     elif args.uid:
         print(f"🔍 拉取 UID {args.uid} 的投稿列表...")
         bvids = discover_by_uid(args.uid, args.limit, delay=args.delay)
@@ -498,7 +661,7 @@ def cmd_add(args):
         print("没有新视频需要添加")
         return
 
-    # ===== 新增：交互式筛选 =====
+    # ===== 交互式筛选 =====
     print(f"\n📋 共 {len(todo)} 个新视频，将获取详细信息供你筛选...")
     if args.skip_filter:
         print("⏭️ 已跳过交互式筛选（--skip-filter），将直接提交所有候选")
@@ -506,8 +669,8 @@ def cmd_add(args):
     else:
         todo, detail_cache = filter_candidates(todo, args)
         if not todo:
-                   print("已排除所有候选，取消添加")
-                   return
+            print("已排除所有候选，取消添加")
+            return
     # 确认提交
     if not args.yes:
         confirm = input(f"\n确认添加以上 {len(todo)} 首歌曲？[y/N] ").strip().lower()
@@ -563,7 +726,7 @@ def cmd_update(args):
     # ===== 测试模式：直接处理，不拉取 D1 =====
     if args.test:
         print("🧪 测试模式：只更新 cover_url，不覆盖其他字段")
-        
+
         # 如果有 --bvid，直接用指定的 BV 号
         if args.bvid:
             bvids = args.bvid
@@ -579,14 +742,14 @@ def cmd_update(args):
             songs = client.list_songs()
             songs = [s for s in songs if not s.get("cover_url")]
             print(f"📊 需要更新 cover_url 的歌曲: {len(songs)} 首")
-        
+
         if not songs:
             print("没有需要更新的歌曲")
             return
-        
+
         print(f"📊 实际需要更新 {len(songs)} 首歌曲")
         print("开始更新...")
-        
+
         updated = failed = 0
         for i, song in enumerate(songs, 1):
             bvid = song["bvid"]
@@ -599,7 +762,7 @@ def cmd_update(args):
                     print("❌ 获取封面失败")
                     failed += 1
                     continue
-                
+
                 print("提交更新...", end=" ", flush=True)
                 payload = {"cover_url": cover_url}
                 status, resp = client.update_song(song["id"], payload)
@@ -615,7 +778,7 @@ def cmd_update(args):
             except Exception as e:
                 print(f"❌ 未知错误: {e}")
                 failed += 1
-        
+
         print(f"\n完成：更新 {updated}，失败 {failed}")
         return
 
@@ -685,6 +848,7 @@ def cmd_update(args):
 
     print(f"\n完成：更新 {updated}，失败 {failed}")
 
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -703,6 +867,10 @@ def main():
     p_add.add_argument("--batch", type=int, default=30, help="每批提交的歌曲数量（默认 30）")
     p_add.add_argument("--yes", action="store_true", help="跳过确认提示，直接提交")
     p_add.add_argument("--skip-filter", action="store_true", help="跳过交互式筛选（适用于收藏夹等纯净数据源）")
+    # ===== 新增：搜索过滤参数 =====
+    p_add.add_argument("--no-regex-filter", action="store_true", help="关闭搜索结果的星尘相关性正则过滤")
+    p_add.add_argument("--exclude-regex", metavar="PATTERN", default=None, help="额外排除的标题正则（仅 --search 生效）")
+    p_add.add_argument("--debug-filter", action="store_true", help="打印每个候选的命中/未命中原因")
     p_add.set_defaults(func=cmd_add)
 
     p_update = sub.add_parser("update", help="刷新已有歌曲的播放数据（不传 --bvid 则刷新全部）")
@@ -718,4 +886,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main()    

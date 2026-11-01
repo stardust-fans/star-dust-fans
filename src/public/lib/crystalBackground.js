@@ -113,8 +113,12 @@ function link(gl, vs, fs) {
   return p;
 }
 
+// 背景只是柔光装饰：1.5 倍像素密度已经足够，再高只是白白多吃带宽
+// （每帧整屏 clear + 合成，成本随像素面积走）。
+const MAX_RENDER_SCALE = 1.5;
+
 class Renderer {
-  dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+  dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, MAX_RENDER_SCALE));
   ok = false;
 
   constructor(canvas, color, halo, glowAlpha = 0.72, glowRadius = 1.35) {
@@ -361,7 +365,9 @@ export function mountCrystalBackground(host, options) {
   window.addEventListener('click', onClick);
 
   let raf = 0;
+  let running = false;
   const frame = () => {
+    if (!running) return;
     const now = performance.now();
     const w = window.innerWidth, h = window.innerHeight;
 
@@ -386,10 +392,28 @@ export function mountCrystalBackground(host, options) {
 
     raf = requestAnimationFrame(frame);
   };
-  raf = requestAnimationFrame(frame);
+
+  // 页面不可见（切走标签页 / 最小化）就停掉整条渲染循环，回来再续上
+  const start = () => {
+    if (running) return;
+    running = true;
+    raf = requestAnimationFrame(frame);
+  };
+  const stop = () => {
+    running = false;
+    if (raf) cancelAnimationFrame(raf);
+    raf = 0;
+  };
+  const onVisibilityChange = () => {
+    if (document.hidden) stop();
+    else start();
+  };
+  document.addEventListener('visibilitychange', onVisibilityChange);
+  if (!document.hidden) start();
 
   return () => {
-    cancelAnimationFrame(raf);
+    stop();
+    document.removeEventListener('visibilitychange', onVisibilityChange);
     timers.forEach((t) => window.clearTimeout(t));
     window.removeEventListener('click', onClick);
     bgRenderer.dispose();

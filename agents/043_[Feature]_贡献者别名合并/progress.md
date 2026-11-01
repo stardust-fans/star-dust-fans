@@ -1,0 +1,7 @@
+- tool/fetch_contributors.mjs：ALIASES 改为 { name, login? }，normalizeContributors 按主登录名合并并累加提交数，withAliased/FALLBACK 取唯一主身份。
+- test/contributors.test.js：仅更新既有用例的预期值与夹具登录名。
+- node tool/fetch_contributors.mjs：成功，contributors.json 含唯一一行 暝行镌无 / lsy-404，无 wuyilingwei。
+- npm ci：完成。
+- npx vitest run test/contributors.test.js：5 passed。
+- node -e 一次性校验 normalizeContributors：返回 [lsy-404 暝行镌无, CooolLawf 八月p]。
+- 已在 worktree 分支提交。

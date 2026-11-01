@@ -2,7 +2,7 @@
   <div>
     <div class="page-header" style="display:flex; justify-content:space-between; align-items:center;">
       <div>
-        <span class="eyebrow page-eyebrow">03 · Archive</span>
+        <span class="eyebrow page-eyebrow">04 · Archive</span>
         <h1 class="page-title">量贩</h1>
         <p class="page-subtitle">星尘周边 · <template v-if="items.length">共 {{ items.length }} 件</template><template v-else>专辑</template></p>
         <p class="guide-entry">

@@ -2,7 +2,7 @@
   <div>
     <div class="page-header" style="display:flex; justify-content:space-between; align-items:center;">
       <div>
-        <span class="eyebrow page-eyebrow">02 · Archive</span>
+        <span class="eyebrow page-eyebrow">03 · Archive</span>
         <h1 class="page-title">同人</h1>
         <p class="page-subtitle">
           来自吸尘器的爱<template v-if="filteredItems.length"> · 共 {{ filteredItems.length }} 件作品</template>
@@ -26,7 +26,7 @@
         <button
           class="tag-tab"
           :class="{ active: activeTag === '' }"
-          @click="activeTag = ''"
+          @click="selectTag('')"
         >
           全部
         </button>
@@ -35,7 +35,7 @@
           :key="tag.id"
           class="tag-tab"
           :class="{ active: activeTag === tag.name }"
-          @click="activeTag = tag.name"
+          @click="selectTag(tag.name)"
         >
           {{ tag.name }}
         </button>
@@ -56,17 +56,37 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { fetchAPI } from '../../shared/api.js';
 import FanartCard from '../components/FanartCard.vue';
 import EmptyState from '../components/EmptyState.vue';
 import FanartContribute from '../components/FanartContribute.vue';
 
+const route = useRoute();
+const router = useRouter();
 const items = ref([]);
 const tags = ref([]);
 const showModal = ref(false);
 const searchQuery = ref('');
-const activeTag = ref('');
+// 详情页的标签点击会带 ?tag=xxx 过来，直接落到对应筛选
+const activeTag = ref(typeof route.query.tag === 'string' ? route.query.tag : '');
+
+watch(
+  () => route.query.tag,
+  (tag) => {
+    activeTag.value = typeof tag === 'string' ? tag : '';
+  }
+);
+
+// 点标签时同步到地址栏，刷新 / 返回也能保持筛选
+function selectTag(name) {
+  activeTag.value = name;
+  const query = { ...route.query };
+  if (name) query.tag = name;
+  else delete query.tag;
+  router.replace({ path: '/fanart', query });
+}
 
 function getItemTags(item) {
   if (!item.tags) return [];

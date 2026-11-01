@@ -21,6 +21,7 @@ const props = defineProps({
 const containerRef = ref(null);
 const stageRef = ref(null);
 let instance = null;
+let disposed = false;
 
 const MESSAGES = [
   '今天也要元气满满哦～',
@@ -53,7 +54,6 @@ const stageStyle = computed(() => ({
   height: props.size * RATIO + 'px',
 }));
 
-// ===== "摸" 检测状态 =====
 let lastPetX = null;
 let lastPetY = null;
 let petStartTime = 0;
@@ -231,6 +231,7 @@ onMounted(async () => {
 
   try {
     const { loadOml2d } = await import('oh-my-live2d');
+    if (disposed) return;
     instance = loadOml2d({
       models: [
         {
@@ -297,6 +298,7 @@ function pickExpression() {
 }
 
 onBeforeUnmount(() => {
+  disposed = true;
   document.removeEventListener('mousedown', onGlobalMouseDown);
   document.removeEventListener('mousemove', onGlobalMouseMove);
   document.removeEventListener('mouseup', onGlobalMouseUp);
@@ -327,5 +329,9 @@ onBeforeUnmount(() => {
 .live2d-stage {
   width: 100%;
   height: 100%;
+}
+
+@media (max-width: 768px) {
+  .live2d-companion { display: none; }
 }
 </style>

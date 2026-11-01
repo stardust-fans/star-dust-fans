@@ -10,6 +10,16 @@
       粉丝站由下面这些人一起折腾起来的，一直维护到现在。
     </p>
 
+    <section class="lrc-partnership" aria-labelledby="lrc-partnership-title">
+      <h2 id="lrc-partnership-title">LRC × 尘站</h2>
+      <p>
+        与 <a :href="LRC_URL" target="_blank" rel="noopener">LRC · V宇宙词站</a>
+        合作，分享由社群整理的虚拟歌姬专辑歌词。
+        <RouterLink to="/lyrics">浏览与下载歌词 →</RouterLink>
+      </p>
+      <p>歌词数据遵循 CC BY-NC-SA 4.0 许可，来源与制作署名见歌词页。</p>
+    </section>
+
     <table class="credits">
       <caption>制作</caption>
       <thead>
@@ -51,7 +61,6 @@
       <img :src="imageUrl" alt="支持星尘粉丝站" class="sponsor-image" />
     </div>
 
-    <!-- ===== 特别致谢（表格样式，和志愿者名单一致） ===== -->
     <table class="credits">
       <caption>特别致谢</caption>
       <thead>
@@ -79,12 +88,11 @@
 
 <script setup>
 import { ref, onMounted } from 'vue';
-// 名单由 tool/fetch_contributors.mjs 在构建期生成
 import contributors from '../../shared/contributors.json';
+import { LRC_URL } from '../../shared/constants.js';
 
 const imageUrl = '/images/bayuep-support.png';
 
-// 特别致谢数据
 const specialThanks = ref([]);
 
 onMounted(async () => {
@@ -93,10 +101,15 @@ onMounted(async () => {
     const data = await res.json();
     specialThanks.value = data;
   } catch {
-    // 降级：硬编码默认数据
     specialThanks.value = [
       { name: '小土在哪', url: 'https://github.com/XingHui-8183/xiaotuzaina', reason: '项目启发与参考' }
     ];
   }
 });
 </script>
+
+<style scoped>
+.lrc-partnership { margin: 28px 0; padding: 24px; border: 1px solid var(--line-strong); background: var(--cobalt-wash); }
+.lrc-partnership h2 { margin-bottom: 12px; font-family: var(--font-display); font-size: 1.3rem; }
+.lrc-partnership p:last-child { margin-bottom: 0; color: var(--ink-muted); font-size: 0.85rem; }
+</style>

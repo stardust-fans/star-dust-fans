@@ -104,6 +104,117 @@ describe('Public API', () => {
     });
 });
 
+describe('Song library browsing', () => {
+    let adminHeaders;
+
+    beforeAll(async () => {
+        adminHeaders = { Authorization: `Bearer ${await token({ sub: 9002, username: 'test-admin', role: 'admin' })}` };
+        await env.DB.prepare('DELETE FROM songs').run();
+        for (const [id, title, pubdate, views, owner, status] of [
+            [9701, '星尘序曲', 100, 300, 'Producer Alpha', 'published'],
+            [9702, '银河回声', 300, 100, 'Beta', 'published'],
+            [9703, '星尘终章', 300, 200, 'Gamma', 'published'],
+            [9704, '100%_星尘', 200, 200, 'Delta', 'published'],
+            [9705, '星尘隐藏曲', 400, 900, 'Alpha', 'hidden'],
+            [9706, '星尘标记曲', 500, 800, 'Alpha', 'flagged'],
+        ]) {
+            await env.DB.prepare('INSERT INTO songs (id, bvid, title, pubdate, stat_view, owner_name, status) VALUES (?, ?, ?, ?, ?, ?, ?)')
+                .bind(id, `BV${String(id).padStart(10, '0')}`, title, pubdate, views, owner, status).run();
+        }
+        await env.DB.prepare("UPDATE songs SET flag_reason = '待确认授权' WHERE id = 9706").run();
+    });
+
+    it('paginates a stable order across publication dates and play counts', async () => {
+        for (const [sort, ids] of [
+            ['latest', [9703, 9702, 9704, 9701]],
+            ['oldest', [9701, 9704, 9702, 9703]],
+            ['view-desc', [9701, 9704, 9703, 9702]],
+            ['view-asc', [9702, 9703, 9704, 9701]],
+        ]) {
+            const first = await (await req(`/api/songs?limit=2&sort=${sort}`)).json();
+            const second = await (await req(`/api/songs?limit=2&offset=2&sort=${sort}`)).json();
+            expect([...first, ...second].map(song => song.id)).toEqual(ids);
+        }
+        expect(await (await req('/api/songs?offset=4&limit=2')).json()).toEqual([]);
+    });
+
+    it('searches the entire library by title, BV number and case-insensitive uploader name', async () => {
+        for (const [query, ids] of [
+            ['星尘', [9703, 9704, 9701]],
+            ['bv0000009701', [9701]],
+            [' alpha ', [9701]],
+            ['未收录曲', []],
+        ]) {
+            const params = new URLSearchParams({ q: query, sort: 'latest', limit: '1' });
+            const count = await (await req(`/api/songs/count?${params}`)).json();
+            expect(count.total).toBe(ids.length);
+            const all = await (await req(`/api/songs?${params}&offset=1`)).json();
+            expect(all.map(song => song.id)).toEqual(ids.slice(1, 2));
+            const first = await (await req(`/api/songs?${params}`)).json();
+            expect(first.map(song => song.id)).toEqual(ids.slice(0, 1));
+        }
+    });
+
+    it('treats search punctuation as literal text and does not accept SQL fragments', async () => {
+        for (const [query, ids] of [[ '%_', [9704] ], [ "' OR 1=1 --", [] ]]) {
+            const data = await (await req(`/api/songs?q=${encodeURIComponent(query)}`)).json();
+            expect(data.map(song => song.id)).toEqual(ids);
+        }
+    });
+
+    it('keeps unpublished songs private and includes them in authenticated admin search', async () => {
+        expect((await req('/api/admin/songs')).status).toBe(401);
+        expect((await req('/api/admin/songs/count')).status).toBe(401);
+        const data = await (await req('/api/admin/songs?q=alpha&sort=latest', { headers: adminHeaders })).json();
+        expect(data.map(song => song.id)).toEqual([9706, 9705, 9701]);
+        expect(data[0].flag_reason).toBe('待确认授权');
+        expect(await (await req('/api/admin/songs/count?q=alpha', { headers: adminHeaders })).json()).toEqual({ total: 3 });
+        expect(await (await req('/api/songs/count?q=alpha')).json()).toEqual({ total: 1 });
+    });
+
+    it('creates and updates a song with all tags omitted or cleared', async () => {
+        const created = await req('/api/admin/songs', {
+            method: 'POST',
+            headers: { ...adminHeaders, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bvid: 'BV0000009799', title: '无标签歌曲' }),
+        });
+        expect(created.status).toBe(200);
+        const { id } = await created.json();
+        const updated = await req(`/api/admin/songs/${id}`, {
+            method: 'PUT',
+            headers: { ...adminHeaders, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: '无标签歌曲', special_tags: [] }),
+        });
+        expect(updated.status).toBe(200);
+        const data = await (await req('/api/songs?q=无标签歌曲')).json();
+        expect(data).toHaveLength(1);
+        expect(data[0]).toMatchObject({ special_tags: [], is_masterpiece: false, is_legend: false, is_national_team: false, is_gods_descend: false });
+    });
+
+    it('removes deleted songs from admin results and pagination totals', async () => {
+        const before = await (await req('/api/admin/songs/count', { headers: adminHeaders })).json();
+        const deleted = await req('/api/admin/songs/9701', { method: 'DELETE', headers: adminHeaders });
+        expect(deleted.status).toBe(200);
+        const data = await (await req('/api/admin/songs?q=BV0000009701', { headers: adminHeaders })).json();
+        expect(data).toEqual([]);
+        expect(await (await req('/api/admin/songs/count?q=BV0000009701', { headers: adminHeaders })).json()).toEqual({ total: 0 });
+        expect(await (await req('/api/admin/songs/count', { headers: adminHeaders })).json()).toEqual({ total: before.total - 1 });
+    });
+
+    it('allows fanart submissions without selecting tags', async () => {
+        const userToken = await token({ sub: 9001, username: 'test-user', role: 'user' });
+        const response = await req('/api/contributions/fanart', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${userToken}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: '无标签作品', images: ['https://example.test/image.webp'], tags: [] }),
+        });
+        expect(response.status).toBe(201);
+        const { id } = await response.json();
+        const row = await env.DB.prepare('SELECT tags, status FROM fanart WHERE id = ?').bind(id).first();
+        expect(row).toEqual({ tags: null, status: 'pending' });
+    });
+});
+
 describe('Admin auth guard', () => {
     const ADMIN_PATHS = [
         ['POST', '/api/admin/songs'],
@@ -450,5 +561,56 @@ describe('Auth endpoint', () => {
             body: 'not json',
         });
         expect(res.status).toBe(400);
+    });
+});
+
+describe('Admin role permissions', () => {
+    const scopedHeaders = async (sub) => ({
+        Authorization: `Bearer ${await token({ sub, username: 'scoped-admin', role: 'admin' })}`,
+    });
+
+    beforeAll(async () => {
+        // 只有审核权限的普通管理员
+        await env.DB.prepare(
+            "INSERT OR REPLACE INTO admins (id, username, password_hash, role, permissions) VALUES (9010, 'reviewer', 'unused', 'admin', ?)"
+        ).bind(JSON.stringify(['review'])).run();
+    });
+
+    it('lets a scoped admin open its own modules only', async () => {
+        const headers = await scopedHeaders(9010);
+        expect((await req('/api/admin/pending', { headers })).status).toBe(200);
+        expect((await req('/api/admin/songs', { headers })).status).toBe(403);
+        expect((await req('/api/admin/tags', { headers })).status).toBe(403);
+        expect((await req('/api/admin/admins', { headers })).status).toBe(403);
+    });
+
+    it('exposes the permission profile of the current admin', async () => {
+        const headers = await scopedHeaders(9010);
+        const profile = await (await req('/api/admin/me', { headers })).json();
+        expect(profile).toMatchObject({
+            username: 'reviewer',
+            role: 'admin',
+            permissions: ['review'],
+            isSuper: false,
+        });
+    });
+
+    it('applies permission changes without waiting for the token to expire', async () => {
+        const headers = await scopedHeaders(9010);
+        await env.DB.prepare('UPDATE admins SET permissions = ? WHERE id = 9010')
+            .bind(JSON.stringify(['tags']))
+            .run();
+        expect((await req('/api/admin/tags', { headers })).status).toBe(200);
+        expect((await req('/api/admin/pending', { headers })).status).toBe(403);
+
+        await env.DB.prepare('UPDATE admins SET permissions = ? WHERE id = 9010')
+            .bind(JSON.stringify(['review']))
+            .run();
+    });
+
+    it('rejects tokens of admin accounts that no longer exist', async () => {
+        const headers = await scopedHeaders(9999);
+        expect((await req('/api/admin/me', { headers })).status).toBe(401);
+        expect((await req('/api/admin/pending', { headers })).status).toBe(401);
     });
 });

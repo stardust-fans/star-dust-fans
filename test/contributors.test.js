@@ -9,7 +9,7 @@ describe('normalizeContributors', () => {
             { login: 'wuyilingwei', type: 'User', contributions: 48 },
             { login: 'someoneelse', type: 'User', contributions: 3 },
         ])).toEqual([
-            { login: 'wuyilingwei', name: '武乙凌薇' },
+            { login: 'lsy-404', name: '暝行镌无' },
             { login: 'CooolLawf', name: '八月p' },
             { login: 'someoneelse', name: 'someoneelse' },
         ]);
@@ -21,23 +21,23 @@ describe('normalizeContributors', () => {
             { login: 'dependabot[bot]', type: 'Bot', contributions: 99 },
             { login: 'renovate[bot]', type: 'User', contributions: 88 },
         ]);
-        expect(result.map(c => c.login)).toEqual(['wuyilingwei']);
+        expect(result.map(c => c.login)).toEqual(['lsy-404']);
     });
 });
 
 describe('withAliased', () => {
     it('补上贡献者接口里还没出现的别名成员', () => {
-        const result = withAliased([{ login: 'wuyilingwei', name: '武乙凌薇' }]);
-        expect(result.map(c => c.name)).toEqual(['武乙凌薇', '八月p', 'StarryMiko2233']);
+        const result = withAliased([{ login: 'lsy-404', name: '暝行镌无' }]);
+        expect(result.map(c => c.name)).toEqual(['暝行镌无', '八月p', 'StarryMiko2233']);
     });
 
     it('已在名单里的不重复补，大小写不敏感', () => {
         const result = withAliased([
             { login: 'CooolLawf', name: '八月p' },
             { login: 'cjnsasdf', name: 'StarryMiko2233' },
-            { login: 'wuyilingwei', name: '武乙凌薇' },
+            { login: 'lsy-404', name: '暝行镌无' },
         ]);
-        expect(result.map(c => c.login)).toEqual(['CooolLawf', 'cjnsasdf', 'wuyilingwei']);
+        expect(result.map(c => c.login)).toEqual(['CooolLawf', 'cjnsasdf', 'lsy-404']);
     });
 });
 

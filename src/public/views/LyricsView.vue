@@ -1,0 +1,312 @@
+<template>
+  <div class="page-header lyrics-header">
+    <div>
+      <span class="eyebrow page-eyebrow">02 · Archive</span>
+      <h1 class="page-title">歌词</h1>
+      <p class="page-subtitle">
+        把每一句，都收藏 · LRC × 尘站<template v-if="catalog"> · 共 {{ catalog.count }} 张专辑 · {{ catalog.song_count }} 首歌词</template>
+      </p>
+    </div>
+    <div class="lyrics-header-actions">
+      <a v-if="catalog" class="btn-hero-primary" :href="catalog.download_url" download="lrc-lyrics.zip">下载全部歌词 · {{ formatBytes(catalog.download_bytes) }}</a>
+      <a class="btn-hero-secondary" :href="LRC_URL" target="_blank" rel="noopener">V宇宙词站 ↗</a>
+    </div>
+  </div>
+
+  <div v-if="loading" class="loading-state" role="status">正在加载歌词目录…</div>
+  <div v-else-if="error" class="empty-state" role="alert">
+    <p>{{ error }}</p>
+    <button class="btn-hero-secondary" type="button" @click="loadCatalog">重试</button>
+  </div>
+  <template v-else-if="catalog">
+    <div class="lyrics-toolbar">
+      <label class="lyrics-search">
+        <span class="sr-only">搜索专辑</span>
+        <input v-model="query" type="search" maxlength="200" placeholder="搜索专辑、歌姬、出品或曲目" />
+      </label>
+      <label class="lyrics-sort">
+        排序
+        <select v-model="sort">
+          <option value="latest">最新</option>
+          <option value="oldest">最早</option>
+          <option value="name">名称</option>
+        </select>
+      </label>
+    </div>
+    <div class="vocal-tabs" role="group" aria-label="按歌姬筛选">
+      <button type="button" class="vocal-tab" :aria-pressed="vocal === ''" @click="vocal = ''">
+        全部 <span>{{ catalog.count }}</span>
+      </button>
+      <button v-for="option in vocalOptions" :key="option.name" type="button" class="vocal-tab"
+        :aria-pressed="vocal === option.name" @click="vocal = option.name">
+        {{ option.name }} <span>{{ option.count }}</span>
+      </button>
+    </div>
+    <p class="lyrics-results" role="status">共 {{ filteredAlbums.length }} 张专辑</p>
+
+    <MasonryWall v-if="filteredAlbums.length" :items="filteredAlbums" :column-width="280" :gap="20" :key-mapper="album => album.slug">
+      <template #default="{ item: album }">
+        <article class="album-card">
+          <img v-if="album.cover" class="album-cover" :src="album.cover.url" :width="album.cover.width" :height="album.cover.height"
+            :alt="`《${album.name}》封面`" loading="lazy" decoding="async" />
+          <div v-else class="album-cover album-cover-fallback" aria-hidden="true">{{ album.name }}</div>
+          <div class="album-info">
+            <p class="album-meta">{{ releaseDate(album) || '发行日期不适用' }} · {{ album.song_count }} 首</p>
+            <h2><a :href="album.source_url" target="_blank" rel="noopener">{{ album.name }}</a></h2>
+            <p v-if="names(album.produce).length" class="album-credit">出品 · {{ names(album.produce).join('、') }}</p>
+            <div v-if="album.vocal.length" class="tags">
+              <span v-for="(name, index) in album.vocal" :key="index" class="tag" :class="{ stardust: STARDUST.test(name) }">{{ name }}</span>
+            </div>
+            <ul v-if="album.offers.some(offer => offer.available)" class="album-offers" aria-label="可用购买渠道">
+              <li v-for="(offer, index) in album.offers.filter(offer => offer.available)" :key="index">
+                <span class="offer-type">{{ OFFER_TYPES[offer.type] }}</span>
+                <a v-if="offer.url" :href="offer.url" target="_blank" rel="noopener nofollow">{{ offer.label }}</a>
+                <span v-else>{{ offer.label }}</span>
+                <span v-if="offer.prices.length" class="offer-price">{{ offer.prices.join(' / ') }}</span>
+                <span v-if="offer.note" class="offer-note">{{ offer.note }}</span>
+              </li>
+            </ul>
+            <div class="album-actions">
+              <a class="album-download" :href="album.download_url" :download="`${album.folder}.zip`" :aria-label="`下载《${album.name}》专辑歌词包`">专辑 ZIP ↓ · {{ formatBytes(album.download_bytes) }}</a>
+              <a class="link" :href="album.source_url" target="_blank" rel="noopener">专辑资料 ↗</a>
+            </div>
+            <button type="button" class="album-more" aria-haspopup="dialog" @click="selectedAlbum = album">完整信息与单曲下载 →</button>
+          </div>
+        </article>
+      </template>
+    </MasonryWall>
+    <EmptyState v-else message="没有找到匹配的专辑，换个关键词或歌姬试试" />
+    <LyricsAlbumDialog v-if="selectedAlbum" :album="selectedAlbum" @close="selectedAlbum = null" />
+
+    <aside class="lyrics-license" aria-label="数据来源与许可">
+      <p>歌词数据来自 <a :href="catalog.source.repository" target="_blank" rel="noopener">{{ catalog.source.name }}</a>，
+        遵循 <a :href="catalog.source.license_url" target="_blank" rel="noopener">{{ catalog.source.license }}</a> 许可。请保留署名，以非商业方式使用，并以相同方式共享。</p>
+      <p>{{ catalog.source.changes }}</p>
+      <p>数据版本 <a :href="`${catalog.source.repository}/tree/${catalog.source.revision}`" target="_blank" rel="noopener">{{ catalog.source.revision.slice(0, 7) }}</a> ·
+        <a href="/data/lrc/catalog.json" download="lrc-catalog.json">数据目录 JSON</a> ·
+        <a href="/data/lrc/LICENSE.txt" download="LRC-LICENSE.txt">许可文件</a> ·
+        <a href="/data/lrc/ATTRIBUTION.txt" download="LRC-ATTRIBUTION.txt">来源说明</a></p>
+    </aside>
+  </template>
+</template>
+
+<script setup>
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { MasonryWall } from '@yeger/vue-masonry-wall';
+import { LRC_URL } from '../../shared/constants.js';
+import { OFFER_TYPES, formatBytes, names, releaseDate } from '../../shared/lrc.js';
+import EmptyState from '../components/EmptyState.vue';
+import LyricsAlbumDialog from '../components/LyricsAlbumDialog.vue';
+
+const STARDUST_LABEL = '星尘';
+const STARDUST = /星尘|星塵|永夜|stardust|minus/i;
+const MIN_VOCAL_ALBUMS = 5;
+
+const catalog = ref(null);
+const loading = ref(true);
+const error = ref('');
+const query = ref('');
+const search = ref('');
+const vocal = ref(STARDUST_LABEL);
+const sort = ref('latest');
+const selectedAlbum = ref(null);
+let controller;
+let searchTimer;
+
+function matchesVocal(album, name) {
+  return name === STARDUST_LABEL
+    ? album.vocal.some(value => STARDUST.test(value))
+    : album.vocal.some(value => value.includes(name));
+}
+
+// 没有发行日期的专辑在两种日期排序下都排在最后
+function byDate(direction) {
+  return (a, b) => (!releaseDate(a) - !releaseDate(b))
+    || direction * releaseDate(a).localeCompare(releaseDate(b))
+    || a.name.localeCompare(b.name, 'zh-CN');
+}
+
+const sorters = {
+  latest: byDate(-1),
+  oldest: byDate(1),
+  name: (a, b) => a.name.localeCompare(b.name, 'zh-CN'),
+};
+
+const vocalOptions = computed(() => {
+  const albums = catalog.value?.albums || [];
+  const counts = new Map();
+  for (const album of albums) {
+    for (const name of new Set(album.vocal)) {
+      if (!STARDUST.test(name)) counts.set(name, (counts.get(name) || 0) + 1);
+    }
+  }
+  const labels = [STARDUST_LABEL, ...[...counts].filter(([, count]) => count >= MIN_VOCAL_ALBUMS).sort((a, b) => b[1] - a[1]).map(([name]) => name)];
+  return labels.map(name => ({ name, count: albums.filter(album => matchesVocal(album, name)).length }));
+});
+
+const filteredAlbums = computed(() => {
+  const term = search.value.toLocaleLowerCase();
+  return (catalog.value?.albums || [])
+    .filter(album => (!vocal.value || matchesVocal(album, vocal.value))
+      && (!term || [album.name, ...album.vocal, ...album.produce, ...album.songs.map(song => song.title)]
+        .some(value => value.toLocaleLowerCase().includes(term))))
+    .sort(sorters[sort.value]);
+});
+
+// 瀑布流每次换列表都要逐项重排，输入停顿后再筛选
+watch(query, () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => { search.value = query.value.trim(); }, 250);
+});
+
+async function loadCatalog() {
+  controller?.abort();
+  controller = new AbortController();
+  loading.value = true;
+  error.value = '';
+  try {
+    const response = await fetch('/data/lrc/catalog.json', { signal: controller.signal });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    if (!Array.isArray(data.albums) || !data.source?.revision) throw new Error('歌词目录格式异常');
+    catalog.value = data;
+  } catch (cause) {
+    if (cause.name !== 'AbortError') error.value = '歌词目录暂时无法加载，请重试或前往 V宇宙词站下载。';
+  } finally {
+    loading.value = false;
+  }
+}
+
+onMounted(loadCatalog);
+onUnmounted(() => {
+  controller?.abort();
+  clearTimeout(searchTimer);
+});
+</script>
+
+<style scoped>
+.lyrics-header { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; }
+.lyrics-header-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12px; }
+.lyrics-toolbar { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
+.lyrics-search { flex: 1; min-width: 0; }
+.lyrics-search input,
+.lyrics-sort select {
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--paper-raised);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.9rem;
+}
+.lyrics-search input { width: 100%; }
+.lyrics-search input::placeholder { color: var(--ink-muted); }
+.lyrics-sort { display: flex; align-items: center; gap: 8px; color: var(--ink-soft); }
+.lyrics-search input:focus,
+.lyrics-sort select:focus { outline: 2px solid var(--cobalt); outline-offset: 2px; }
+.vocal-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.vocal-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 4px 14px;
+  border: 1px solid var(--line);
+  border-radius: 100px;
+  background: transparent;
+  color: var(--ink-muted);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: border-color 0.2s var(--ease), color 0.2s var(--ease), background 0.2s var(--ease);
+}
+.vocal-tab span { color: var(--ink-faint); font-size: 0.7rem; }
+.vocal-tab:hover { border-color: var(--cobalt-soft); color: var(--ink); }
+.vocal-tab[aria-pressed="true"] { border-color: var(--cobalt); color: var(--cobalt); background: var(--cobalt-wash); }
+.vocal-tab[aria-pressed="true"] span { color: var(--cobalt-soft); }
+.vocal-tab:focus-visible { outline: 2px solid var(--cobalt); outline-offset: 2px; }
+.lyrics-results { margin: 16px 0; color: var(--ink-muted); font-family: var(--font-mono); font-size: 0.75rem; }
+.album-card {
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  transition: border-color 0.25s var(--ease);
+}
+.album-card:hover { border-color: var(--cobalt-soft); }
+.album-cover { display: block; width: 100%; height: auto; background: #0a0a14; border-bottom: 1px solid var(--line); }
+.album-cover-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 3 / 2;
+  padding: 24px;
+  color: var(--ink-faint);
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  line-height: 1.4;
+  text-align: center;
+}
+.album-info { padding: 16px 18px 18px; }
+.album-meta { color: var(--ink-muted); font-family: var(--font-mono); font-size: 0.74rem; margin-bottom: 6px; }
+.album-info h2 { font-family: var(--font-display); font-size: 1.1rem; font-weight: 500; line-height: 1.45; margin-bottom: 8px; }
+.album-info h2 a { color: var(--ink); text-decoration: none; }
+.album-info h2 a:hover { color: var(--cobalt); }
+.album-credit { color: var(--ink-soft); font-size: 0.8rem; margin-bottom: 4px; }
+.album-info .tags { margin: 10px 0 0; }
+.album-info .tag.stardust { color: var(--gold); }
+.album-offers { list-style: none; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.album-offers li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; padding: 3px 0; font-size: 0.8rem; }
+.album-offers a { color: var(--ink); text-underline-offset: 3px; }
+.album-offers a:hover { color: var(--cobalt); }
+.offer-type { padding: 0 6px; border: 1px solid var(--line-strong); border-radius: var(--radius); color: var(--ink-muted); font-size: 0.68rem; }
+.offer-price { color: var(--gold); font-family: var(--font-mono); font-size: 0.76rem; }
+.offer-note { color: var(--ink-muted); font-size: 0.74rem; }
+.album-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+.album-download {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 8px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  text-decoration: none;
+  transition: border-color 0.2s var(--ease), background 0.2s var(--ease);
+}
+.album-download:hover { border-color: var(--cobalt); background: var(--cobalt-wash); }
+.album-more {
+  width: 100%;
+  min-height: 40px;
+  margin-top: 14px;
+  padding: 10px 0 0;
+  border: none;
+  border-top: 1px solid var(--line);
+  background: none;
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 0.82rem;
+  text-align: left;
+  cursor: pointer;
+  transition: color 0.2s var(--ease);
+}
+.album-more:hover { color: var(--cobalt); }
+.album-more:focus-visible { outline: 2px solid var(--cobalt); outline-offset: 2px; }
+.lyrics-license { margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--line); color: var(--ink-muted); font-size: 0.8rem; }
+.lyrics-license a { color: var(--cobalt); text-underline-offset: 4px; }
+.lyrics-license p + p { margin-top: 8px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+@media (max-width: 768px) {
+  .lyrics-header { flex-direction: column; align-items: flex-start; }
+  .lyrics-header-actions { justify-content: flex-start; }
+}
+@media (max-width: 480px) {
+  .lyrics-toolbar { flex-wrap: wrap; }
+  .lyrics-search { flex-basis: 100%; }
+  .lyrics-sort { margin-left: auto; }
+}
+</style>

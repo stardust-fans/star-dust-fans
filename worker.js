@@ -1,8 +1,15 @@
-﻿// worker.js
+// worker.js
 import { handleOidcRequest } from "./src/worker/oidc.js";
 import { handleSamlRequest } from "./src/worker/saml.js";
 import { handleScimRequest } from "./src/worker/scim.js";
 import { isValidDisplayName, isValidUsername, normalizeDisplayName, normalizeUsername, usernameCandidate } from "./src/shared/username.js";
+import {
+    adminHasPermission,
+    adminIsSuper,
+    normalizeAdminRole,
+    parseAdminPermissions,
+    serializeAdminPermissions,
+} from "./src/shared/adminPermissions.js";
 // ===== 附件白名单 =====
 const ATTACHMENT_ALLOWED_EXT = new Set([
   'zip', '7z', 'rar', 'tar', 'gz', 'bz2', 'xz', 'zst',
@@ -12,8 +19,114 @@ const ATTACHMENT_ALLOWED_EXT = new Set([
   'psd', 'clip', 'sai2', 'kra', 'procreate', 'ai', 'sketch',
   'aseprite', 'aup3', 'flp', 'als',
 ]);
-const ATTACHMENT_MAX_SIZE = 150 * 1024 * 1024;
+const ATTACHMENT_MAX_SIZE = 500 * 1024 * 1024;
 const ATTACHMENT_MAX_COUNT = 3;
+// 大文件走 R2 multipart 分片上传：单个请求体远小于 Worker 的请求体/内存上限
+const ATTACHMENT_PART_SIZE = 8 * 1024 * 1024;
+const ATTACHMENT_MAX_PARTS = 256;
+const ATTACHMENT_LIMIT_TEXT = `${Math.round(ATTACHMENT_MAX_SIZE / 1024 / 1024)}MB`;
+
+// 解析 Range 头："bytes=0-1023" / "bytes=1024-" / "bytes=-1024"
+function parseRangeHeader(value) {
+    const match = /^bytes=(\d*)-(\d*)$/.exec(String(value || '').trim());
+    if (!match) return null;
+    const [, rawStart, rawEnd] = match;
+    if (rawStart === '' && rawEnd === '') return null;
+    if (rawStart === '') return { suffix: Number(rawEnd) };
+    const offset = Number(rawStart);
+    if (rawEnd === '') return { offset };
+    const end = Number(rawEnd);
+    if (end < offset) return null;
+    return { offset, length: end - offset + 1 };
+}
+
+// ===== R2 直传：S3 兼容接口的 SigV4 预签名 =====
+// 浏览器拿到签名 URL 后直接 PUT 到 R2，字节不经过 Worker，
+// 因此不受 Worker 请求体（100MB）与内存（128MB）限制。
+const R2_S3_REGION = 'auto';
+const R2_PRESIGN_EXPIRES = 15 * 60;
+
+function toHex(buffer) {
+    return Array.from(new Uint8Array(buffer)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function sha256Hex(value) {
+    const data = typeof value === 'string' ? new TextEncoder().encode(value) : value;
+    return toHex(await crypto.subtle.digest('SHA-256', data));
+}
+
+async function hmacSha256(key, value) {
+    const cryptoKey = await crypto.subtle.importKey(
+        'raw', key, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+    );
+    return new Uint8Array(await crypto.subtle.sign('HMAC', cryptoKey, new TextEncoder().encode(value)));
+}
+
+async function presignR2Put({ accountId, accessKeyId, secretAccessKey, bucket, key, expiresIn = R2_PRESIGN_EXPIRES }) {
+    const host = `${accountId}.r2.cloudflarestorage.com`;
+    const canonicalUri = `/${bucket}/${key.split('/').map((seg) => encodeURIComponent(seg)).join('/')}`;
+    const amzDate = new Date().toISOString().replace(/[:-]|\.\d{3}/g, '');
+    const dateStamp = amzDate.slice(0, 8);
+    const scope = `${dateStamp}/${R2_S3_REGION}/s3/aws4_request`;
+
+    const query = {
+        'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
+        'X-Amz-Credential': `${accessKeyId}/${scope}`,
+        'X-Amz-Date': amzDate,
+        'X-Amz-Expires': String(expiresIn),
+        'X-Amz-SignedHeaders': 'host',
+    };
+    const canonicalQuery = Object.keys(query)
+        .sort()
+        .map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(query[k])}`)
+        .join('&');
+
+    const canonicalRequest = [
+        'PUT',
+        canonicalUri,
+        canonicalQuery,
+        `host:${host}\n`,
+        'host',
+        'UNSIGNED-PAYLOAD',
+    ].join('\n');
+
+    const stringToSign = [
+        'AWS4-HMAC-SHA256',
+        amzDate,
+        scope,
+        await sha256Hex(canonicalRequest),
+    ].join('\n');
+
+    const kDate = await hmacSha256(new TextEncoder().encode(`AWS4${secretAccessKey}`), dateStamp);
+    const kRegion = await hmacSha256(kDate, R2_S3_REGION);
+    const kService = await hmacSha256(kRegion, 's3');
+    const kSigning = await hmacSha256(kService, 'aws4_request');
+    const signature = toHex(await hmacSha256(kSigning, stringToSign));
+
+    return `https://${host}${canonicalUri}?${canonicalQuery}&X-Amz-Signature=${signature}`;
+}
+
+function songFilter(searchParams, includeUnpublished) {
+    const conditions = [includeUnpublished ? "status != 'deleted'" : "status = 'published'"];
+    const params = [];
+    const query = (searchParams.get('q') || '').trim().slice(0, 200);
+    if (query) {
+        conditions.push(`(
+            instr(lower(coalesce(title, '')), lower(?)) > 0
+            OR instr(lower(coalesce(bvid, '')), lower(?)) > 0
+            OR instr(lower(coalesce(owner_name, '')), lower(?)) > 0
+        )`);
+        params.push(query, query, query);
+    }
+    return { where: conditions.join(' AND '), params };
+}
+
+const SONG_SORT_ORDERS = Object.freeze({
+    latest: 'coalesce(pubdate, 0) DESC, id DESC',
+    oldest: 'coalesce(pubdate, 0) ASC, id ASC',
+    'view-desc': 'coalesce(stat_view, 0) DESC, id DESC',
+    'view-asc': 'coalesce(stat_view, 0) ASC, id ASC',
+});
 
 export default {
     async fetch(request, env, ctx) {
@@ -77,6 +190,29 @@ async function handleRequest(request, env, ctx) {
         });
     }
 
+    // ===== 管理员权限校验 =====
+    // admin 是 getAuthenticatedUser 返回的管理员身份：{ sub, username, role, permissions }
+    // role: 'super' | 'admin'；permissions: string[] | null（null = 旧账号，全权）
+    function requirePermission(admin, scope) {
+        if (!admin) return jsonResponse({ error: '未授权' }, 401);
+        if (!adminHasPermission(admin, scope)) {
+            return jsonResponse({ error: '没有该模块的操作权限', scope }, 403);
+        }
+        return null;
+    }
+
+    // 返回给前端的管理员档案（登录 / /api/admin/me 共用）
+    function adminProfile(admin) {
+        return {
+            id: admin.sub,
+            username: admin.username,
+            role: admin.role,
+            permissions: admin.permissions,
+            isSuper: adminIsSuper(admin),
+            allAccess: admin.role === 'super' || admin.permissions === null,
+        };
+    }
+
     const oidcResponse = await handleOidcRequest(
         request,
         env,
@@ -99,8 +235,16 @@ async function handleRequest(request, env, ctx) {
     const isAdmin = await getAuthenticatedUser(request, env, 'admin');
 
     // ===== 1. GET /api/songs =====
-    if (path === '/api/songs' && method === 'GET') {
+    if ((path === '/api/songs' || path === '/api/admin/songs') && method === 'GET') {
+        const adminList = path === '/api/admin/songs';
+        if (adminList) {
+            const denied = requirePermission(isAdmin, 'songs');
+            if (denied) return denied;
+        }
         try {
+            const { where, params } = songFilter(url.searchParams, adminList);
+            const sort = url.searchParams.get('sort') || 'latest';
+            const order = Object.hasOwn(SONG_SORT_ORDERS, sort) ? SONG_SORT_ORDERS[sort] : SONG_SORT_ORDERS.latest;
             const limit = parseInt(url.searchParams.get('limit') || '1000');
             const offset = parseInt(url.searchParams.get('offset') || '0');
             const safeLimit = Number.isNaN(limit) ? 1000 : Math.min(Math.max(limit, 1), 1000);
@@ -111,13 +255,13 @@ async function handleRequest(request, env, ctx) {
                        owner_name, owner_mid, owner_face,
                        stat_view, stat_danmaku, stat_reply, stat_favorite, stat_coin, stat_share, stat_like,
                        is_masterpiece, is_national_team, is_gods_descend, is_legend,
-                       special_tags, collaboration_details, status
+                       special_tags, collaboration_details, status, flag_reason
                 FROM songs
-                WHERE status = 'published'
-                ORDER BY id ASC
+                WHERE ${where}
+                ORDER BY ${order}
                 LIMIT ? OFFSET ?
             `);
-            const result = await stmt.bind(safeLimit, safeOffset).all();
+            const result = await stmt.bind(...params, safeLimit, safeOffset).all();
 
             const songs = (result.results || []).map(row => ({
                 id: row.id,
@@ -148,6 +292,7 @@ async function handleRequest(request, env, ctx) {
                 special_tags: row.special_tags ? JSON.parse(row.special_tags) : [],
                 collaboration_details: row.collaboration_details,
                 status: row.status,
+                ...(adminList ? { flag_reason: row.flag_reason || '' } : {}),
             }));
 
             return jsonResponse(songs);
@@ -210,10 +355,16 @@ async function handleRequest(request, env, ctx) {
     }
 
     // ===== 1.1 GET /api/songs/count =====
-    if (path === '/api/songs/count' && method === 'GET') {
+    if ((path === '/api/songs/count' || path === '/api/admin/songs/count') && method === 'GET') {
+        const adminList = path === '/api/admin/songs/count';
+        if (adminList) {
+            const denied = requirePermission(isAdmin, 'songs');
+            if (denied) return denied;
+        }
         try {
-            const stmt = env.DB.prepare('SELECT COUNT(*) as total FROM songs WHERE status = "published"');
-            const result = await stmt.first();
+            const { where, params } = songFilter(url.searchParams, adminList);
+            const stmt = env.DB.prepare(`SELECT COUNT(*) as total FROM songs WHERE ${where}`);
+            const result = await stmt.bind(...params).first();
             return jsonResponse({ total: result?.total || 0 });
         } catch (error) {
             console.error('❌ /api/songs/count 错误:', error.message);
@@ -323,7 +474,7 @@ async function handleRequest(request, env, ctx) {
             }
 
             const row = username
-                ? await env.DB.prepare('SELECT id, username, password_hash FROM admins WHERE username = ?').bind(username).first()
+                ? await env.DB.prepare('SELECT id, username, password_hash, role, permissions FROM admins WHERE username = ?').bind(username).first()
                 : null;
 
             const passwordOk = row
@@ -337,10 +488,16 @@ async function handleRequest(request, env, ctx) {
                     role: 'admin',
                     exp: Date.now() + 24 * 60 * 60 * 1000,
                 }, env);
+                const profile = adminProfile({
+                    sub: row.id,
+                    username: row.username,
+                    role: normalizeAdminRole(row.role),
+                    permissions: parseAdminPermissions(row.permissions),
+                });
                 ctx.waitUntil(logAuditEvent(env, {
                     eventType: 'login_success', actorAdminId: row.id, actorUsername: row.username, request,
                 }));
-                return jsonResponse({ success: true, token });
+                return jsonResponse({ success: true, token, admin: profile });
             }
 
             ctx.waitUntil(logAuditEvent(env, {
@@ -353,9 +510,16 @@ async function handleRequest(request, env, ctx) {
         }
     }
 
+    // ===== 当前管理员档案（角色 + 权限范围）=====
+    if (path === '/api/admin/me' && method === 'GET') {
+        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        return jsonResponse(adminProfile(isAdmin));
+    }
+
     // ===== 管理员：标签管理 =====
     if (path === '/api/admin/tags' && method === 'GET') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'tags');
+        if (denied) return denied;
         try {
             const result = await env.DB.prepare(
                 'SELECT id, name, sort_order FROM tags ORDER BY sort_order ASC, id ASC'
@@ -367,7 +531,8 @@ async function handleRequest(request, env, ctx) {
     }
 
     if (path === '/api/admin/tags' && method === 'POST') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'tags');
+        if (denied) return denied;
         try {
             const { name, sort_order } = await request.json();
             if (!name || !String(name).trim()) {
@@ -389,7 +554,8 @@ async function handleRequest(request, env, ctx) {
 
     const adminTagMatch = path.match(/^\/api\/admin\/tags\/(\d+)$/);
     if (adminTagMatch && method === 'DELETE') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'tags');
+        if (denied) return denied;
         try {
             const id = adminTagMatch[1];
             await env.DB.prepare('DELETE FROM tags WHERE id = ?').bind(id).run();
@@ -401,10 +567,19 @@ async function handleRequest(request, env, ctx) {
 
     // ===== 3.5 管理员账号管理 =====
     if (path === '/api/admin/admins' && method === 'POST') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'admins');
+        if (denied) return denied;
         try {
-            const { username, password } = await request.json();
-            if (!username || !String(username).trim()) {
+            const body = await request.json();
+            const username = String(body.username || '').trim();
+            const password = body.password;
+            const role = normalizeAdminRole(body.role);
+            // 普通管理员必须带明确的权限数组（空数组 = 无权限）；超级管理员始终全权
+            const permissions = role === 'super'
+                ? null
+                : (Array.isArray(body.permissions) ? body.permissions : []);
+
+            if (!username) {
                 return jsonResponse({ error: '用户名不能为空' }, 400);
             }
             if (!password || String(password).length < 8) {
@@ -418,16 +593,16 @@ async function handleRequest(request, env, ctx) {
 
             const passwordHash = await hashPassword(password);
             const result = await env.DB.prepare(
-                'INSERT INTO admins (username, password_hash) VALUES (?, ?)'
-            ).bind(username, passwordHash).run();
+                'INSERT INTO admins (username, password_hash, role, permissions) VALUES (?, ?, ?, ?)'
+            ).bind(username, passwordHash, role, serializeAdminPermissions(permissions)).run();
 
             ctx.waitUntil(logAuditEvent(env, {
                 eventType: 'create', actorAdminId: isAdmin.sub, actorUsername: isAdmin.username,
                 targetTable: 'admins', targetId: result.meta?.last_row_id,
-                summary: { username }, request,
+                summary: { username, role, permissions }, request,
             }));
 
-            return jsonResponse({ success: true, id: result.meta?.last_row_id });
+            return jsonResponse({ success: true, id: result.meta?.last_row_id, role, permissions });
         } catch (error) {
             console.error('❌ POST /api/admin/admins 错误:', error.message);
             return jsonResponse({ error: error.message }, 500);
@@ -435,19 +610,91 @@ async function handleRequest(request, env, ctx) {
     }
 
     if (path === '/api/admin/admins' && method === 'GET') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'admins');
+        if (denied) return denied;
         try {
-            const result = await env.DB.prepare('SELECT id, username, created_at FROM admins ORDER BY id ASC').all();
-            return jsonResponse(result.results || []);
+            const result = await env.DB.prepare(
+                'SELECT id, username, role, permissions, created_at FROM admins ORDER BY id ASC'
+            ).all();
+            const list = (result.results || []).map((row) => ({
+                id: row.id,
+                username: row.username,
+                role: normalizeAdminRole(row.role),
+                permissions: parseAdminPermissions(row.permissions),
+                allAccess: normalizeAdminRole(row.role) === 'super' || row.permissions === null,
+                isSelf: isAdmin.sub === row.id,
+                created_at: row.created_at,
+            }));
+            return jsonResponse(list);
         } catch (error) {
             console.error('❌ GET /api/admin/admins 错误:', error.message);
             return jsonResponse({ error: error.message }, 500);
         }
     }
 
+    const adminUpdateMatch = path.match(/^\/api\/admin\/admins\/(\d+)$/);
+    if (adminUpdateMatch && method === 'PUT') {
+        const denied = requirePermission(isAdmin, 'admins');
+        if (denied) return denied;
+        try {
+            const id = parseInt(adminUpdateMatch[1], 10);
+            const body = await request.json();
+            const target = await env.DB.prepare(
+                'SELECT id, username, role, permissions FROM admins WHERE id = ?'
+            ).bind(id).first();
+            if (!target) {
+                return jsonResponse({ error: '账号不存在' }, 404);
+            }
+
+            const targetRole = normalizeAdminRole(target.role);
+            const targetPermissions = parseAdminPermissions(target.permissions);
+            const nextRole = body.role !== undefined ? normalizeAdminRole(body.role) : targetRole;
+            // 超级管理员始终全权；普通管理员不传 permissions 时沿用原值（旧账号 null = 全权保留）
+            const nextPermissions = nextRole === 'super'
+                ? null
+                : (Array.isArray(body.permissions) ? body.permissions : targetPermissions);
+
+            // 允许改自己的角色和权限，只要改完还有别人（或自己）保有全权即可
+            const targetIsSuper = adminIsSuper({ role: targetRole, permissions: targetPermissions });
+            const nextIsSuper = nextRole === 'super' || nextPermissions === null;
+            if (targetIsSuper && !nextIsSuper) {
+                const superRow = await env.DB.prepare(
+                    "SELECT COUNT(*) AS n FROM admins WHERE role = 'super' OR permissions IS NULL"
+                ).first();
+                if ((superRow?.n || 0) <= 1) {
+                    return jsonResponse({ error: '至少要保留一个超级管理员' }, 400);
+                }
+            }
+
+            const updates = ['role = ?', 'permissions = ?'];
+            const params = [nextRole, serializeAdminPermissions(nextPermissions)];
+            if (body.password !== undefined) {
+                if (!body.password || String(body.password).length < 8) {
+                    return jsonResponse({ error: '密码至少 8 位' }, 400);
+                }
+                updates.push('password_hash = ?');
+                params.push(await hashPassword(String(body.password)));
+            }
+            params.push(id);
+            await env.DB.prepare(`UPDATE admins SET ${updates.join(', ')} WHERE id = ?`).bind(...params).run();
+
+            ctx.waitUntil(logAuditEvent(env, {
+                eventType: 'update', actorAdminId: isAdmin.sub, actorUsername: isAdmin.username,
+                targetTable: 'admins', targetId: id,
+                summary: { username: target.username, role: nextRole, permissions: nextPermissions }, request,
+            }));
+
+            return jsonResponse({ success: true, role: nextRole, permissions: nextPermissions });
+        } catch (error) {
+            console.error('❌ PUT /api/admin/admins 错误:', error.message);
+            return jsonResponse({ error: error.message }, 500);
+        }
+    }
+
     const adminDeleteMatch = path.match(/^\/api\/admin\/admins\/(\d+)$/);
     if (adminDeleteMatch && method === 'DELETE') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'admins');
+        if (denied) return denied;
         try {
             const id = parseInt(adminDeleteMatch[1], 10);
             if (isAdmin.sub === id) {
@@ -459,7 +706,16 @@ async function handleRequest(request, env, ctx) {
                 return jsonResponse({ error: '不能删除最后一个管理员账号' }, 400);
             }
 
-            const target = await env.DB.prepare('SELECT username FROM admins WHERE id = ?').bind(id).first();
+            const target = await env.DB.prepare('SELECT username, role, permissions FROM admins WHERE id = ?').bind(id).first();
+            if (target && adminIsSuper({ role: normalizeAdminRole(target.role), permissions: parseAdminPermissions(target.permissions) })) {
+                const superRow = await env.DB.prepare(
+                    "SELECT COUNT(*) AS n FROM admins WHERE role = 'super' OR permissions IS NULL"
+                ).first();
+                if ((superRow?.n || 0) <= 1) {
+                    return jsonResponse({ error: '至少要保留一个超级管理员' }, 400);
+                }
+            }
+
             const result = await env.DB.prepare('DELETE FROM admins WHERE id = ?').bind(id).run();
             if (result.meta?.changes === 0) {
                 return jsonResponse({ error: '账号不存在' }, 404);
@@ -588,7 +844,8 @@ async function handleRequest(request, env, ctx) {
 
     // ===== 3.6 GET /api/admin/audit-logs =====
     if (path === '/api/admin/audit-logs' && method === 'GET') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'audit');
+        if (denied) return denied;
         try {
             const eventType = url.searchParams.get('event_type');
             const actor = url.searchParams.get('actor');
@@ -614,7 +871,8 @@ async function handleRequest(request, env, ctx) {
 
     // ===== 4. POST /api/admin/songs =====
     if (path === '/api/admin/songs' && method === 'POST') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'songs');
+        if (denied) return denied;
         try {
             const body = await request.json();
             const { bvid, special_tags, collaboration_details, status, flag_reason,
@@ -701,7 +959,8 @@ async function handleRequest(request, env, ctx) {
     // ===== 5. PUT /api/admin/songs/:id =====
     const putMatch = path.match(/^\/api\/admin\/songs\/(\d+)$/);
     if (putMatch && method === 'PUT') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'songs');
+        if (denied) return denied;
         try {
             const id = putMatch[1];
             const body = await request.json();
@@ -798,7 +1057,8 @@ async function handleRequest(request, env, ctx) {
     // ===== 6. DELETE /api/admin/songs/:id =====
     const deleteMatch = path.match(/^\/api\/admin\/songs\/(\d+)$/);
     if (deleteMatch && method === 'DELETE') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'songs');
+        if (denied) return denied;
         try {
             const id = deleteMatch[1];
             const target = await env.DB.prepare('SELECT title FROM songs WHERE id = ?').bind(id).first();
@@ -882,7 +1142,7 @@ async function handleRequest(request, env, ctx) {
             }
 
             if (file.size > ATTACHMENT_MAX_SIZE) {
-                return jsonResponse({ error: '文件大小不能超过 150MB' }, 400);
+                return jsonResponse({ error: `文件大小不能超过 ${ATTACHMENT_LIMIT_TEXT}` }, 400);
             }
 
             const originalName = file.name || 'attachment';
@@ -921,6 +1181,259 @@ async function handleRequest(request, env, ctx) {
 
         } catch (error) {
             console.error('❌ /api/upload-attachment 错误:', error.message);
+            return jsonResponse({ error: error.message }, 500);
+        }
+    }
+
+    // ===== 大文件分片上传（R2 multipart）=====
+    // 单请求体远小于 Worker 上限，500MB 以内的附件都能传
+    if (path === '/api/upload-attachment/multipart/init' && method === 'POST') {
+        const userId = await getAuthenticatedUserId(request, env);
+        if (!userId) {
+            return jsonResponse({ error: '请先登录' }, 401);
+        }
+
+        try {
+            const body = await request.json();
+            const originalName = String(body?.name || '').slice(0, 200);
+            const size = Number(body?.size);
+            const ext = originalName.split('.').pop()?.toLowerCase() || '';
+
+            if (!ATTACHMENT_ALLOWED_EXT.has(ext)) {
+                return jsonResponse({ error: `不允许上传 .${ext} 类型的文件` }, 400);
+            }
+            if (!Number.isFinite(size) || size <= 0) {
+                return jsonResponse({ error: '文件大小不合法' }, 400);
+            }
+            if (size > ATTACHMENT_MAX_SIZE) {
+                return jsonResponse({ error: `文件大小不能超过 ${ATTACHMENT_LIMIT_TEXT}` }, 400);
+            }
+
+            const key = `attachments/${crypto.randomUUID()}.${ext}`;
+            const upload = await env.R2_BUCKET.createMultipartUpload(key, {
+                httpMetadata: {
+                    contentType: String(body?.type || 'application/octet-stream').slice(0, 100),
+                    contentDisposition: `attachment; filename="${encodeURIComponent(originalName)}"`,
+                },
+            });
+
+            return jsonResponse({
+                success: true,
+                key,
+                uploadId: upload.uploadId,
+                partSize: ATTACHMENT_PART_SIZE,
+                name: originalName,
+            });
+        } catch (error) {
+            console.error('❌ multipart init 错误:', error.message);
+            return jsonResponse({ error: error.message }, 500);
+        }
+    }
+
+    if (path === '/api/upload-attachment/multipart/part' && method === 'PUT') {
+        const userId = await getAuthenticatedUserId(request, env);
+        if (!userId) {
+            return jsonResponse({ error: '请先登录' }, 401);
+        }
+
+        try {
+            const key = url.searchParams.get('key') || '';
+            const uploadId = url.searchParams.get('uploadId') || '';
+            const partNumber = Number(url.searchParams.get('partNumber'));
+
+            if (!key.startsWith('attachments/') || key.includes('..') || !uploadId) {
+                return jsonResponse({ error: '分片参数不合法' }, 400);
+            }
+            if (!Number.isInteger(partNumber) || partNumber < 1 || partNumber > ATTACHMENT_MAX_PARTS) {
+                return jsonResponse({ error: '分片序号不合法' }, 400);
+            }
+
+            const buffer = await request.arrayBuffer();
+            if (buffer.byteLength === 0) {
+                return jsonResponse({ error: '分片内容为空' }, 400);
+            }
+            if (buffer.byteLength > ATTACHMENT_PART_SIZE) {
+                return jsonResponse({ error: '分片过大' }, 413);
+            }
+
+            const upload = env.R2_BUCKET.resumeMultipartUpload(key, uploadId);
+            const part = await upload.uploadPart(partNumber, buffer);
+
+            return jsonResponse({ success: true, partNumber: part.partNumber, etag: part.etag });
+        } catch (error) {
+            console.error('❌ multipart part 错误:', error.message);
+            return jsonResponse({ error: error.message }, 500);
+        }
+    }
+
+    if (path === '/api/upload-attachment/multipart/complete' && method === 'POST') {
+        const userId = await getAuthenticatedUserId(request, env);
+        if (!userId) {
+            return jsonResponse({ error: '请先登录' }, 401);
+        }
+
+        try {
+            const body = await request.json();
+            const key = String(body?.key || '');
+            const uploadId = String(body?.uploadId || '');
+            const parts = Array.isArray(body?.parts) ? body.parts : [];
+
+            if (!key.startsWith('attachments/') || key.includes('..') || !uploadId) {
+                return jsonResponse({ error: '参数不合法' }, 400);
+            }
+            if (parts.length === 0 || parts.length > ATTACHMENT_MAX_PARTS) {
+                return jsonResponse({ error: '分片数量不合法' }, 400);
+            }
+
+            const uploadedParts = parts
+                .map((p) => ({ partNumber: Number(p?.partNumber), etag: String(p?.etag || '') }))
+                .filter((p) => Number.isInteger(p.partNumber) && p.partNumber > 0 && p.etag)
+                .sort((a, b) => a.partNumber - b.partNumber);
+
+            if (uploadedParts.length !== parts.length) {
+                return jsonResponse({ error: '分片信息不完整' }, 400);
+            }
+
+            const upload = env.R2_BUCKET.resumeMultipartUpload(key, uploadId);
+            const object = await upload.complete(uploadedParts);
+
+            const originalName = String(body?.name || key.split('/').pop() || 'attachment').slice(0, 200);
+            const declaredSize = Number(body?.size);
+
+            return jsonResponse({
+                success: true,
+                url: `https://stardustinfinity.top/${key}`,
+                key,
+                hash: null,
+                name: originalName,
+                size: object?.size ?? (Number.isFinite(declaredSize) ? declaredSize : null),
+            });
+        } catch (error) {
+            console.error('❌ multipart complete 错误:', error.message);
+            return jsonResponse({ error: error.message }, 500);
+        }
+    }
+
+    if (path === '/api/upload-attachment/multipart/abort' && method === 'POST') {
+        const userId = await getAuthenticatedUserId(request, env);
+        if (!userId) {
+            return jsonResponse({ error: '请先登录' }, 401);
+        }
+
+        try {
+            const body = await request.json();
+            const key = String(body?.key || '');
+            const uploadId = String(body?.uploadId || '');
+            if (!key.startsWith('attachments/') || !uploadId) {
+                return jsonResponse({ error: '参数不合法' }, 400);
+            }
+            const upload = env.R2_BUCKET.resumeMultipartUpload(key, uploadId);
+            await upload.abort();
+            return jsonResponse({ success: true });
+        } catch (error) {
+            console.error('❌ multipart abort 错误:', error.message);
+            return jsonResponse({ error: error.message }, 500);
+        }
+    }
+
+    // ===== R2 直传：签发预签名 PUT 地址 =====
+    // 浏览器直接 PUT 到 R2，字节不经过 Worker，单文件可到 500MB
+    if (path === '/api/upload-attachment/presign' && method === 'POST') {
+        const userId = await getAuthenticatedUserId(request, env);
+        if (!userId) {
+            return jsonResponse({ error: '请先登录' }, 401);
+        }
+
+        try {
+            const body = await request.json();
+            const originalName = String(body?.name || '').slice(0, 200);
+            const size = Number(body?.size);
+            const ext = originalName.split('.').pop()?.toLowerCase() || '';
+
+            if (!ATTACHMENT_ALLOWED_EXT.has(ext)) {
+                return jsonResponse({ error: `不允许上传 .${ext} 类型的文件` }, 400);
+            }
+            if (!Number.isFinite(size) || size <= 0) {
+                return jsonResponse({ error: '文件大小不合法' }, 400);
+            }
+            if (size > ATTACHMENT_MAX_SIZE) {
+                return jsonResponse({ error: `文件大小不能超过 ${ATTACHMENT_LIMIT_TEXT}` }, 400);
+            }
+
+            const accountId = env.R2_ACCOUNT_ID;
+            const accessKeyId = env.R2_ACCESS_KEY_ID;
+            const secretAccessKey = env.R2_SECRET_ACCESS_KEY;
+            const bucket = env.R2_BUCKET_NAME || 'stardust-uploads';
+
+            if (!accountId || !accessKeyId || !secretAccessKey) {
+                // 没有配置直传凭据：告诉前端回退到分片上传
+                return jsonResponse({
+                    error: '未配置 R2 直传凭据（R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY）',
+                    code: 'DIRECT_UPLOAD_DISABLED',
+                }, 501);
+            }
+
+            const key = `attachments/${crypto.randomUUID()}.${ext}`;
+            const uploadUrl = await presignR2Put({
+                accountId, accessKeyId, secretAccessKey, bucket, key,
+            });
+
+            return jsonResponse({
+                success: true,
+                mode: 'direct',
+                uploadUrl,
+                key,
+                name: originalName,
+                size,
+                expiresIn: R2_PRESIGN_EXPIRES,
+            });
+        } catch (error) {
+            console.error('❌ presign 错误:', error.message);
+            return jsonResponse({ error: error.message }, 500);
+        }
+    }
+
+    // ===== R2 直传：确认对象已落桶 =====
+    if (path === '/api/upload-attachment/confirm' && method === 'POST') {
+        const userId = await getAuthenticatedUserId(request, env);
+        if (!userId) {
+            return jsonResponse({ error: '请先登录' }, 401);
+        }
+
+        try {
+            const body = await request.json();
+            const key = String(body?.key || '');
+            if (!key.startsWith('attachments/') || key.includes('..')) {
+                return jsonResponse({ error: '参数不合法' }, 400);
+            }
+
+            const ext = key.split('.').pop()?.toLowerCase() || '';
+            if (!ATTACHMENT_ALLOWED_EXT.has(ext)) {
+                return jsonResponse({ error: `不允许上传 .${ext} 类型的文件` }, 400);
+            }
+
+            const head = await env.R2_BUCKET.head(key);
+            if (!head) {
+                return jsonResponse({ error: '文件还没传完' }, 409);
+            }
+            if (head.size > ATTACHMENT_MAX_SIZE) {
+                await env.R2_BUCKET.delete(key);
+                return jsonResponse({ error: `文件大小不能超过 ${ATTACHMENT_LIMIT_TEXT}` }, 400);
+            }
+
+            const name = String(body?.name || key.split('/').pop()).slice(0, 200);
+
+            return jsonResponse({
+                success: true,
+                mode: 'direct',
+                url: `https://stardustinfinity.top/${key}`,
+                key,
+                hash: null,
+                name,
+                size: head.size,
+            });
+        } catch (error) {
+            console.error('❌ confirm 错误:', error.message);
             return jsonResponse({ error: error.message }, 500);
         }
     }
@@ -1419,27 +1932,93 @@ async function handleRequest(request, env, ctx) {
         }
     }
 
-    // ===== 公开访问 R2 图片 =====
-    if (path.startsWith('/uploads/') && method === 'GET') {
+    // ===== 公开访问 R2 对象（图片 / 附件）=====
+    if ((path.startsWith('/uploads/') || path.startsWith('/attachments/')) && (method === 'GET' || method === 'HEAD')) {
         try {
-            const object = await env.R2_BUCKET.get(path.slice(1));
-            if (!object) {
+            const key = path.slice(1);
+            const isAttachment = path.startsWith('/attachments/');
+            const defaultType = isAttachment ? 'application/octet-stream' : 'image/jpeg';
+            const range = parseRangeHeader(request.headers.get('Range'));
+
+            // 普通 GET（绝大多数图片请求）：一次 get 就够，保持原有开销
+            if (!range && method === 'GET') {
+                const object = await env.R2_BUCKET.get(key);
+                if (!object || !object.body) {
+                    return new Response('Not Found', { status: 404 });
+                }
+                const headers = new Headers({
+                    'Content-Type': object.httpMetadata?.contentType || defaultType,
+                    'Accept-Ranges': 'bytes',
+                    'Cache-Control': isAttachment
+                        ? 'public, max-age=31536000, immutable'
+                        : 'public, max-age=86400',
+                });
+                if (object.httpMetadata?.contentDisposition) {
+                    headers.set('Content-Disposition', object.httpMetadata.contentDisposition);
+                }
+                return new Response(object.body, { status: 200, headers });
+            }
+
+            const head = await env.R2_BUCKET.head(key);
+            if (!head) {
                 return new Response('Not Found', { status: 404 });
             }
-            return new Response(object.body, {
-                headers: {
-                    'Content-Type': object.httpMetadata?.contentType || 'image/jpeg',
-                    'Cache-Control': 'public, max-age=86400',
-                },
+
+            const headers = new Headers({
+                'Content-Type': head.httpMetadata?.contentType || defaultType,
+                'Accept-Ranges': 'bytes',
+                'Cache-Control': isAttachment
+                    ? 'public, max-age=31536000, immutable'
+                    : 'public, max-age=86400',
+                'ETag': head.httpEtag,
+                'Last-Modified': head.uploaded.toUTCString(),
             });
+            if (head.httpMetadata?.contentDisposition) {
+                headers.set('Content-Disposition', head.httpMetadata.contentDisposition);
+            }
+
+            // Range 请求：视频等大文件可拖动进度
+            if (range) {
+                const start = range.offset !== undefined
+                    ? range.offset
+                    : Math.max(0, head.size - (range.suffix || 0));
+                const maxLength = head.size - start;
+                const length = range.length !== undefined
+                    ? Math.min(range.length, maxLength)
+                    : maxLength;
+
+                if (start >= head.size || start < 0 || length <= 0) {
+                    return new Response('Range Not Satisfiable', {
+                        status: 416,
+                        headers: { 'Content-Range': `bytes */${head.size}` },
+                    });
+                }
+
+                headers.set('Content-Range', `bytes ${start}-${start + length - 1}/${head.size}`);
+                if (method === 'HEAD') {
+                    headers.set('Content-Length', String(length));
+                    return new Response(null, { status: 206, headers });
+                }
+
+                const object = await env.R2_BUCKET.get(key, { range: { offset: start, length } });
+                if (!object || !object.body) {
+                    return new Response('Not Found', { status: 404 });
+                }
+                return new Response(object.body, { status: 206, headers });
+            }
+
+            headers.set('Content-Length', String(head.size));
+            return new Response(null, { status: 200, headers });
         } catch (error) {
+            console.error('❌ R2 对象读取失败:', error.message);
             return new Response('Error', { status: 500 });
         }
     }
 
     // ===== 获取待审核列表 =====
     if (path === '/api/admin/pending' && method === 'GET') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'review');
+        if (denied) return denied;
         try {
             const fanartStmt = env.DB.prepare(`
                 SELECT id, 'fanart' as type, title, author, description, image_url, created_at
@@ -1463,7 +2042,8 @@ async function handleRequest(request, env, ctx) {
     // ===== 审核通过 =====
     const approveMatch = path.match(/^\/api\/admin\/pending\/(fanart|shop)\/(\d+)$/);
     if (approveMatch && method === 'PUT') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'review');
+        if (denied) return denied;
         try {
             const type = approveMatch[1];
             const id = approveMatch[2];
@@ -1508,7 +2088,8 @@ async function handleRequest(request, env, ctx) {
     // ===== 审核驳回 =====
     const rejectMatch = path.match(/^\/api\/admin\/pending\/(fanart|shop)\/(\d+)$/);
     if (rejectMatch && method === 'DELETE') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'review');
+        if (denied) return denied;
         try {
             const type = rejectMatch[1];
             const id = rejectMatch[2];
@@ -1554,7 +2135,8 @@ async function handleRequest(request, env, ctx) {
 
     // ===== 7. 吸尘器日报 API =====
     if (path === '/api/admin/daily' && method === 'GET') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'daily');
+        if (denied) return denied;
         try {
             const stmt = env.DB.prepare('SELECT * FROM daily ORDER BY publish_date DESC, id DESC');
             const result = await stmt.all();
@@ -1566,7 +2148,8 @@ async function handleRequest(request, env, ctx) {
     }
 
     if (path === '/api/admin/daily' && method === 'POST') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'daily');
+        if (denied) return denied;
         try {
             const { title, content, source_url, cover_url, publish_date, status } = await request.json();
             const stmt = env.DB.prepare(`
@@ -1589,7 +2172,8 @@ async function handleRequest(request, env, ctx) {
 
     const dailyPutMatch = path.match(/^\/api\/admin\/daily\/(\d+)$/);
     if (dailyPutMatch && method === 'PUT') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'daily');
+        if (denied) return denied;
         try {
             const id = dailyPutMatch[1];
             const { title, content, source_url, cover_url, publish_date, status } = await request.json();
@@ -1613,7 +2197,8 @@ async function handleRequest(request, env, ctx) {
 
     const dailyDeleteMatch = path.match(/^\/api\/admin\/daily\/(\d+)$/);
     if (dailyDeleteMatch && method === 'DELETE') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'daily');
+        if (denied) return denied;
         try {
             const id = dailyDeleteMatch[1];
             const target = await env.DB.prepare('SELECT title FROM daily WHERE id = ?').bind(id).first();
@@ -1633,7 +2218,8 @@ async function handleRequest(request, env, ctx) {
 
     // ===== 8. 同人作品 API =====
     if (path === '/api/admin/fanart' && method === 'GET') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'fanart');
+        if (denied) return denied;
         try {
             const stmt = env.DB.prepare('SELECT * FROM fanart ORDER BY created_at DESC');
             const result = await stmt.all();
@@ -1645,7 +2231,8 @@ async function handleRequest(request, env, ctx) {
     }
 
     if (path === '/api/admin/fanart' && method === 'POST') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'fanart');
+        if (denied) return denied;
         try {
             const { title, author, description, image_url, bilibili_url, source_url, type, status, tags, attachments } = await request.json();
             const tagsJson = Array.isArray(tags) && tags.length > 0 ? JSON.stringify(tags.slice(0, 10)) : null;
@@ -1672,7 +2259,8 @@ async function handleRequest(request, env, ctx) {
 
     const fanartPutMatch = path.match(/^\/api\/admin\/fanart\/(\d+)$/);
     if (fanartPutMatch && method === 'PUT') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'fanart');
+        if (denied) return denied;
         try {
             const id = fanartPutMatch[1];
             const { title, author, description, image_url, bilibili_url, source_url, type, status, tags, attachments } = await request.json();
@@ -1700,7 +2288,8 @@ async function handleRequest(request, env, ctx) {
 
     const fanartDeleteMatch = path.match(/^\/api\/admin\/fanart\/(\d+)$/);
     if (fanartDeleteMatch && method === 'DELETE') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'fanart');
+        if (denied) return denied;
         try {
             const id = fanartDeleteMatch[1];
             const target = await env.DB.prepare('SELECT title FROM fanart WHERE id = ?').bind(id).first();
@@ -1720,7 +2309,8 @@ async function handleRequest(request, env, ctx) {
 
     // ===== 9. 量贩商品 API =====
     if (path === '/api/admin/shop' && method === 'GET') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'shop');
+        if (denied) return denied;
         try {
             const stmt = env.DB.prepare('SELECT * FROM shop ORDER BY created_at DESC');
             const result = await stmt.all();
@@ -1732,7 +2322,8 @@ async function handleRequest(request, env, ctx) {
     }
 
     if (path === '/api/admin/shop' && method === 'POST') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'shop');
+        if (denied) return denied;
         try {
             const { title, description, price, image_url, bilibili_url, xianyu_url, other_url, status } = await request.json();
             const stmt = env.DB.prepare(`
@@ -1755,7 +2346,8 @@ async function handleRequest(request, env, ctx) {
 
     const shopPutMatch = path.match(/^\/api\/admin\/shop\/(\d+)$/);
     if (shopPutMatch && method === 'PUT') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'shop');
+        if (denied) return denied;
         try {
             const id = shopPutMatch[1];
             const { title, description, price, image_url, bilibili_url, xianyu_url, other_url, status } = await request.json();
@@ -2114,7 +2706,8 @@ async function handleRequest(request, env, ctx) {
 
     // ===== 管理特别感谢（写入 R2） =====
     if (path === '/api/admin/thanks' && method === 'PUT') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'thanks');
+        if (denied) return denied;
         try {
             const body = await request.json();
             const data = body.data;
@@ -2139,7 +2732,8 @@ async function handleRequest(request, env, ctx) {
 
     const shopDeleteMatch = path.match(/^\/api\/admin\/shop\/(\d+)$/);
     if (shopDeleteMatch && method === 'DELETE') {
-        if (!isAdmin) return jsonResponse({ error: '未授权' }, 401);
+        const denied = requirePermission(isAdmin, 'shop');
+        if (denied) return denied;
         try {
             const id = shopDeleteMatch[1];
             const target = await env.DB.prepare('SELECT title FROM shop WHERE id = ?').bind(id).first();
@@ -2339,6 +2933,22 @@ async function getAuthenticatedUser(request, env, expectedRole) {
         if (!user || user.active === 0 || user.deleted_at) return null;
         return { ...payload, username: user.username, display_name: user.display_name };
     }
+
+    // 管理员：每次请求回查账号，删除账号或调整权限可以立即生效（不必等 token 过期）
+    if (expectedRole === 'admin') {
+        const row = await env.DB.prepare(
+            'SELECT id, username, role, permissions FROM admins WHERE id = ?'
+        ).bind(payload.sub).first();
+        if (!row) return null;
+        return {
+            sub: payload.sub,
+            exp: payload.exp,
+            username: row.username,
+            role: normalizeAdminRole(row.role),
+            permissions: parseAdminPermissions(row.permissions),
+        };
+    }
+
     return payload;
 }
 

@@ -34,10 +34,12 @@ export const LEGEND_VIEW_THRESHOLD = 1000000; // 传说曲：播放量 ≥ 100�
 export const DEFAULT_FANART_TAGS = ['表情包', '同人', '原创曲', '翻唱曲', '教程', 'MMD'];
 export const OMEW_URL = "https://omew.stardustinfinity.top";
 export const OMEW_SSO_URL = `${OMEW_URL}/api/auth/oidc/start?return_to=%2F`;
+export const LRC_URL = "https://lrc.leisiyu.dev";
 
 export const PAGE_TITLE_MAP = {
   home: "星尘 · 永远闪耀",
   videos: "视频 · 星尘粉丝站",
+  lyrics: "歌词 · LRC × 星尘粉丝站",
   fanart: "同人 · 星尘粉丝站",
   shop: "量贩 · 星尘粉丝站",
   daily: "吸尘器日报 · 星尘粉丝站",

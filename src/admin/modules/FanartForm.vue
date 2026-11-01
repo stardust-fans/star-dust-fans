@@ -28,10 +28,18 @@
     <div class="form-row">
       <label>类型</label>
       <select v-model="type">
-        <option value="illust">插画</option>
-        <option value="video">视频</option>
-        <option value="fiction">小说</option>
-        <option value="music">音乐</option>
+        <optgroup v-if="officialTags.length > 0" label="官方分类">
+          <option v-for="tag in officialTags" :key="tag.id" :value="tag.name">
+            {{ tag.name }}
+          </option>
+        </optgroup>
+        <optgroup label="其他格式">
+          <option value="illust">插画</option>
+          <option value="video">视频</option>
+          <option value="fiction">小说</option>
+          <option value="music">音乐</option>
+        </optgroup>
+        <option v-if="extraType" :value="extraType">{{ extraType }}</option>
       </select>
     </div>
     <div class="form-row">
@@ -51,7 +59,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useAdminApi } from '../composables/useAdminApi.js';
 import { useToast } from '../composables/useToast.js';
 
@@ -72,6 +80,32 @@ const sourceUrl = ref(props.editing?.source_url || '');
 const type = ref(props.editing?.type || 'illust');
 const status = ref(props.editing?.status || 'published');
 const saving = ref(false);
+
+// ===== 类型：官方分类（tags 表，sort_order < 999）+ 内置格式 =====
+const BUILTIN_TYPES = ['illust', 'video', 'fiction', 'music'];
+const officialTags = ref([]);
+const editingType = props.editing?.type || '';
+
+// 编辑已有作品时，若它的 type 不在候选项里（自定义标签等），补一个选项，避免被静默改掉
+const extraType = computed(() => {
+  if (!editingType) return '';
+  if (BUILTIN_TYPES.includes(editingType)) return '';
+  if (officialTags.value.some((tag) => tag.name === editingType)) return '';
+  return editingType;
+});
+
+async function loadTags() {
+  try {
+    const data = await adminFetch('/tags');
+    const list = Array.isArray(data) ? data : [];
+    officialTags.value = list.filter((tag) => Number(tag.sort_order) < 999);
+  } catch (error) {
+    // 拿不到标签时退回内置格式，不影响编辑
+    officialTags.value = [];
+  }
+}
+
+onMounted(loadTags);
 
 async function handleSave() {
   const t = title.value.trim();

@@ -5,17 +5,18 @@ VOCALOID 中文虚拟歌姬「星尘」的非官方粉丝站，运行在 stardus
 - 网站链接：https://stardustinfinity.top/
 ## 功能
 
-- 歌曲库：收录歌曲信息与统计数据快照，附加圈内人工评价标记（殿堂曲 / 传说曲 / 国家队 / 众神下凡 / 自定义标签）
+- 歌曲库：分页浏览，按标题、BV 号或 UP 主搜索，支持发布日期和播放量排序；收录歌曲信息与统计数据快照，评价标记和自定义标签均可选
 - 同人作品展示
 - 周边量贩信息
 - 社群日报
+- LRC 合作歌词库：独立构建的专辑目录、专辑包、单曲 LRC 与完整歌词包下载
 - 管理后台：歌曲 / 日报 / 同人 / 量贩内容管理，多管理员账号，操作审计日志
 
 ## 技术栈
 
 - 运行时：[Cloudflare Workers](https://developers.cloudflare.com/workers/)，ES modules，无后端框架
 - 数据库：[Cloudflare D1](https://developers.cloudflare.com/d1/)
-- 前端：[Vue 3](https://vuejs.org/) + [Vite](https://vitejs.dev/)（`@cloudflare/vite-plugin`），两个独立构建入口——公开站与管理后台，均使用 hash 路由
+- 前端：[Vue 3](https://vuejs.org/) + [Vite](https://vitejs.dev/)（`@cloudflare/vite-plugin`），两个独立构建入口——公开站使用 history 路由，管理后台使用 hash 路由
 - 静态资源：Workers Static Assets
 - 认证：本地 HMAC 会话、PBKDF2-HMAC-SHA256 密码哈希，以及 RS256 OpenID Connect Provider
 - 测试：[Vitest](https://vitest.dev/) + `@cloudflare/vitest-pool-workers`
@@ -34,6 +35,12 @@ npm run deploy         # wrangler deploy 部署 Worker
 ```
 
 数据库结构定义见 `tool/schema.sql`；增量迁移脚本在 `migrations/`，通过 `wrangler d1 migrations apply` 应用。
+
+### LRC 歌词数据
+
+`npm run build` 会从 [LRC · V宇宙词站](https://lrc.leisiyu.dev) 的[公开仓库](https://github.com/lsy-404/LRC)获取歌词目录、专辑包与封面，并固定到同一个上游提交。数据独立输出到 `static/data/lrc/`，随静态资源发布，不写入歌曲数据库；下载来源不完整时构建会失败。
+
+本地开发前运行 `npm run build:lrc` 生成数据，然后打开 `/lyrics`。该页提供专辑 ZIP、单曲 LRC、完整歌词 ZIP 和 JSON 数据目录；完整包包含许可与来源说明。LRC 数据遵循 [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)，保留原始歌词与制作署名。
 
 ## OpenID Connect、SAML 与 SCIM
 
@@ -68,8 +75,45 @@ SAML 2.0 入口提供 IdP 元数据、HTTP-Redirect/HTTP-POST SSO、带 XML Sign
 | `src/public/` | 公开站 Vue 应用 |
 | `src/admin/` | 管理后台 Vue 应用 |
 | `src/shared/` | 公开站与后台共用的格式化 / 常量 / API 封装 |
-| `tool/` | 本机辅助脚本（B 站信息抓取、密码哈希生成等），不参与线上构建 |
+| `tool/` | 构建数据生成及本机辅助脚本（贡献者、LRC 歌词、B 站信息抓取等） |
 | `migrations/` | D1 数据库迁移脚本 |
+
+## 附件上传（R2 直传）
+
+投稿页的附件（zip / psd / mp4 …，最多 3 个，每个 ≤ **500MB**）按三级策略上传，前一级不可用时自动降级：
+
+| 顺序 | 路径 | 说明 |
+| :-- | :-- | :-- |
+| 1 | **R2 直传** | Worker 只签发预签名 PUT 地址（`POST /api/upload-attachment/presign`），文件由浏览器**直接** PUT 到 `https://<account>.r2.cloudflarestorage.com`。字节不经过 Worker，因此不受 Worker 请求体（100MB）与内存（128MB）限制 |
+| 2 | 分片上传 | 没配直传凭据（`presign` 返回 501）或直传失败时，>20MB 的文件按 8MB 分片经 Worker 上传（R2 multipart） |
+| 3 | 单请求 | ≤20MB 的文件仍走原来的 `POST /api/upload-attachment` |
+
+上传完成后调用 `POST /api/upload-attachment/confirm` 确认对象确实落桶，再把 `{ url, name, size }` 写进作品记录。
+
+### 启用直传
+
+1. Cloudflare 控制台 → **R2 → Manage R2 API Tokens → Create API token**，权限选 *Object Read & Write*，拿到 **Access Key ID** 与 **Secret Access Key**。
+2. 把凭据设为 Worker secret（不要写进 `wrangler.jsonc`）：
+
+   ```bash
+   npx wrangler secret put R2_ACCESS_KEY_ID
+   npx wrangler secret put R2_SECRET_ACCESS_KEY
+   ```
+
+   本地开发写进 `.dev.vars` 即可。
+3. 给存储桶配 CORS（浏览器直传必须），仓库里的 `cors.json` 可直接用：
+
+   ```bash
+   npx wrangler r2 bucket cors set stardust-uploads --file cors.json
+   ```
+
+   > `cors.json` 必须是 R2 API 的 `{"rules":[…]}` 格式（不是 AWS S3 的 `CORSRules`，wrangler 会直接报错）；非交互环境加 `--force`。
+
+`R2_ACCOUNT_ID` 与 `R2_BUCKET_NAME` 是公开变量，已写在 `wrangler.jsonc` 的 `vars` 里。没配凭据时前端自动走分片上传，功能不受影响。
+
+### 读取附件
+
+`/attachments/*` 由 Worker 从 R2 读取（已加入 `run_worker_first`），支持 `HEAD` 与 `Range`（视频可拖动进度），附件带 `immutable` 长缓存。
 
 ## CI/CD
 
