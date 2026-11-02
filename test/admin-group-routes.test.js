@@ -85,7 +85,8 @@ describe('permission group protected routes', () => {
         }));
         expect(before.permissions).toEqual(expect.arrayContaining(['review:read', 'review:write']));
         expect(before.permissions).not.toContain('manage:write');
-        expect(after.permissions).toEqual(expect.arrayContaining(['review:read', 'review:write', 'manage:write', 'comments:write']));
+        expect(after.permissions).toEqual(expect.arrayContaining(['review:read', 'review:write', 'manage:write']));
+        expect(after.permissions).not.toContain('comments:write');
     });
 
     it('allows management reads to read accounts and groups but rejects every mutation', async () => {
