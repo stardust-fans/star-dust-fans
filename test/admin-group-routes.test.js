@@ -8,6 +8,7 @@ const groups = [
     { id: 'readers', name: 'Readers', permissions: ['manage:read'] },
     { id: 'song-editors', name: 'Song Editors', permissions: ['songs:write'] },
     { id: 'backup-managers', name: 'Backup Managers', permissions: ['manage:write'] },
+    { id: 'comment-moderators', name: 'Comment Moderators', permissions: ['comments:write'] },
 ];
 
 const accounts = [
@@ -15,25 +16,27 @@ const accounts = [
     { id: 9202, username: 'reviewer', password_hash: 'unused', groupIds: ['reviewers'], created_at: '2026-11-01T00:00:00.000Z' },
     { id: 9203, username: 'reader', password_hash: 'unused', groupIds: ['readers'], created_at: '2026-11-01T00:00:00.000Z' },
     { id: 9204, username: 'song-editor', password_hash: 'unused', groupIds: ['song-editors', 'backup-managers'], created_at: '2026-11-01T00:00:00.000Z' },
+    { id: 9205, username: 'moderator', password_hash: 'unused', groupIds: ['comment-moderators'], created_at: '2026-11-01T00:00:00.000Z' },
 ];
 
-const makeStore = (overrides = {}) => ({ nextId: 9205, groups, accounts, ...overrides });
+const makeStore = (overrides = {}) => ({ nextId: 9206, groups, accounts, ...overrides });
 const encode = (value) => btoa(String.fromCharCode(...new TextEncoder().encode(value)))
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const encodeBytes = (bytes) => btoa(String.fromCharCode(...bytes))
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
-async function token(sub) {
-    const body = encode(JSON.stringify({ sub, role: 'admin', exp: Date.now() + 60_000 }));
+async function token(sub, role = 'admin') {
+    const body = encode(JSON.stringify({ sub, role, exp: Date.now() + 60_000 }));
     const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(env.TOKEN_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
     const signature = encodeBytes(new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(body))));
     return `${body}.${signature}`;
 }
 
-async function req(path, { method = 'GET', body, accountId, store = makeStore() } = {}) {
+async function req(path, { method = 'GET', body, accountId, userId, store = makeStore() } = {}) {
     const headers = new Headers();
     if (body !== undefined) headers.set('Content-Type', 'application/json');
     if (accountId !== undefined) headers.set('Authorization', `Bearer ${await token(accountId)}`);
+    if (userId !== undefined) headers.set('Authorization', `Bearer ${await token(userId, 'user')}`);
     const request = new Request(`http://localhost${path}`, {
         method,
         headers,
@@ -46,11 +49,12 @@ async function req(path, { method = 'GET', body, accountId, store = makeStore() 
     return response;
 }
 
-beforeAll(() => {
+beforeAll(async () => {
     env.TOKEN_SECRET = 'test-secret';
     env.CF_API_TOKEN = 'test-cloudflare-token';
     env.CF_ACCOUNT_ID = 'test-account';
     env.WORKER_NAME = 'test-worker';
+    await env.DB.prepare("INSERT OR IGNORE INTO users (id, username, email, password_hash) VALUES (9301, 'comment-owner', 'comment-owner@example.com', 'unused'), (9302, 'other-comment-owner', 'other-comment-owner@example.com', 'unused')").run();
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ success: true }), { status: 200 })));
 });
 
@@ -158,6 +162,39 @@ describe('permission group protected routes', () => {
             expect(response.status).toBeGreaterThanOrEqual(400);
             expect(response.status).toBeLessThan(500);
         }
+    });
+
+    it('prevents an administrator from deleting their own account even when another manager exists', async () => {
+        const response = await req('/api/admin/admins/9201', { method: 'DELETE', accountId: 9201 });
+        expect(response.status).toBe(400);
+        expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('allows a comments:write administrator to delete a comment', async () => {
+        const inserted = await env.DB.prepare(
+            'INSERT INTO comments (user_id, target_type, target_id, content) VALUES (?, ?, ?, ?)'
+        ).bind(9301, 'song', 99501, 'moderated comment').run();
+
+        const response = await req(`/api/comments/${inserted.meta.last_row_id}`, { method: 'DELETE', accountId: 9205 });
+        expect(response.status).toBe(200);
+        const comment = await env.DB.prepare('SELECT status FROM comments WHERE id = ?').bind(inserted.meta.last_row_id).first();
+        expect(comment.status).toBe('deleted');
+    });
+
+    it('lets a user delete their own comment while keeping another user’s comment protected', async () => {
+        const own = await env.DB.prepare(
+            'INSERT INTO comments (user_id, target_type, target_id, content) VALUES (?, ?, ?, ?)'
+        ).bind(9301, 'song', 99502, 'own comment').run();
+        const other = await env.DB.prepare(
+            'INSERT INTO comments (user_id, target_type, target_id, content) VALUES (?, ?, ?, ?)'
+        ).bind(9302, 'song', 99502, 'someone else’s comment').run();
+
+        const ownDelete = await req(`/api/comments/${own.meta.last_row_id}`, { method: 'DELETE', userId: 9301 });
+        expect(ownDelete.status).toBe(200);
+        const otherDelete = await req(`/api/comments/${other.meta.last_row_id}`, { method: 'DELETE', userId: 9301 });
+        expect(otherDelete.status).toBe(403);
+        const otherComment = await env.DB.prepare('SELECT status FROM comments WHERE id = ?').bind(other.meta.last_row_id).first();
+        expect(otherComment.status).toBe('published');
     });
 
     it('strips a deleted group from accounts and removes its grants on subsequent requests', async () => {
