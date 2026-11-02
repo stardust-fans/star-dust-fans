@@ -2,10 +2,10 @@
   <div id="module-songs" class="module-content">
     <div class="panel-header">
       <h2><i class="fas fa-music"></i> 歌曲管理</h2>
-      <button class="btn btn-primary" @click="openCreate"><i class="fas fa-plus"></i> 添加歌曲</button>
+      <button v-if="canWrite" class="btn btn-primary" @click="openCreate"><i class="fas fa-plus"></i> 添加歌曲</button>
     </div>
 
-    <SongForm v-if="formVisible" :key="editingSong?.id || 'new'" :editing="editingSong" @saved="handleSaved" @cancel="closeForm" />
+    <SongForm v-if="canWrite && formVisible" :key="editingSong?.id || 'new'" :editing="editingSong" @saved="handleSaved" @cancel="closeForm" />
 
     <div class="song-toolbar">
       <label class="song-search">
@@ -71,7 +71,7 @@
               </div>
             </td>
             <td><StatusBadge :status="song.status || 'published'" :label-map="SONG_STATUS_LABELS" /></td>
-            <td><RowActions @edit="openEdit(song)" @delete="handleDelete(song.id)" /></td>
+            <td><RowActions v-if="canWrite" @edit="openEdit(song)" @delete="handleDelete(song.id)" /></td>
           </tr>
         </tbody>
       </table>
@@ -81,7 +81,8 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
+import { useAdminAuth } from '../composables/useAdminAuth.js';
 import { useAdminApi } from '../composables/useAdminApi.js';
 import { useToast } from '../composables/useToast.js';
 import { useSongList } from '../../shared/useSongList.js';
@@ -93,6 +94,8 @@ import RowActions from '../components/RowActions.vue';
 import SongForm from './SongForm.vue';
 
 const { adminFetch } = useAdminApi();
+const { can } = useAdminAuth();
+const canWrite = computed(() => can('songs:write'));
 const { showToast } = useToast();
 
 const { songs, total, page, pageCount, query, sort, loading, error, reload } = useSongList({

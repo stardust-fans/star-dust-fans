@@ -2,7 +2,7 @@
   <div class="module-container">
     <div class="module-header">
       <h2>标签管理</h2>
-      <div class="module-actions">
+      <div v-if="canWrite" class="module-actions">
         <input
           v-model="newTagName"
           type="text"
@@ -29,7 +29,7 @@
           <td>{{ tag.name }}</td>
           <td>{{ tag.sort_order }}</td>
           <td>
-            <button class="btn btn-danger btn-sm" @click="removeTag(tag)">删除</button>
+            <button v-if="canWrite" class="btn btn-danger btn-sm" @click="removeTag(tag)">删除</button>
           </td>
         </tr>
       </tbody>
@@ -38,11 +38,14 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed } from 'vue';
+import { useAdminAuth } from '../composables/useAdminAuth.js';
 import { useAdminApi } from '../composables/useAdminApi.js';
 import { useToast } from '../composables/useToast.js';
 
 const { adminFetch } = useAdminApi();
+const { can } = useAdminAuth();
+const canWrite = computed(() => can('tags:write'));
 const { showToast } = useToast();
 
 const tags = ref([]);
