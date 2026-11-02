@@ -97,12 +97,16 @@
       </div>
       <div class="form-row"><label>名称</label><input v-model="groupForm.name" /></div>
       <div class="form-row">
-        <label>权限</label>
-        <div class="choices">
-          <label v-for="permission in ADMIN_PERMISSIONS" :key="permission.key"
-            ><input v-model="groupForm.permissions" type="checkbox" :value="permission.key" />
-            {{ permission.label }}</label
-          >
+        <label>模块权限</label>
+        <div class="resource-access">
+          <label v-for="resource in ADMIN_RESOURCES" :key="resource.key" class="resource-row">
+            <span>{{ resource.label }}</span>
+            <select :value="resourceLevel(resource)" @change="setResourceLevel(resource, $event.target.value)">
+              <option value="none">无</option>
+              <option value="read">只读</option>
+              <option v-if="!resource.readOnly" value="write">读写</option>
+            </select>
+          </label>
         </div>
       </div>
       <p class="hint">修改权限包含该资源的读取权限。</p>
@@ -144,7 +148,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useAdminApi } from '../composables/useAdminApi.js';
 import { useAdminAuth } from '../composables/useAdminAuth.js';
 import { useToast } from '../composables/useToast.js';
-import { ADMIN_PERMISSIONS, adminHasPermission } from '../../shared/adminPermissions.js';
+import { ADMIN_PERMISSIONS, ADMIN_RESOURCES, adminHasPermission } from '../../shared/adminPermissions.js';
 import { ADMIN_GROUP_PRESETS } from '../../shared/adminGroupPresets.js';
 const { adminFetch } = useAdminApi();
 const { can, fetchMe } = useAdminAuth();
@@ -165,6 +169,17 @@ const permLabel = (key) => ADMIN_PERMISSIONS.find((p) => p.key === key)?.label |
 const presetSummary = (preset) => ADMIN_PERMISSIONS.filter((permission) =>
   adminHasPermission({ permissions: preset.permissions }, permission.key)
 ).map((permission) => permission.label).join('、') || '无后台权限';
+function resourceLevel(resource) {
+  const permissions = groupForm.value.permissions;
+  if (permissions.includes(`${resource.key}:write`)) return 'write';
+  if (permissions.includes(`${resource.key}:read`)) return 'read';
+  return 'none';
+}
+function setResourceLevel(resource, level) {
+  const prefix = `${resource.key}:`;
+  groupForm.value.permissions = groupForm.value.permissions.filter((permission) => !permission.startsWith(prefix));
+  if (level !== 'none') groupForm.value.permissions.push(`${resource.key}:${level}`);
+}
 function selectPreset(id) {
   selectedPresetId.value = id;
   const preset = selectedPreset.value;
@@ -300,6 +315,16 @@ onMounted(load);
   display: inline-flex;
   align-items: center;
   gap: 5px;
+}
+.resource-access {
+  display: grid;
+  gap: 8px;
+}
+.resource-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
 }
 .hint {
   color: var(--ink-soft);

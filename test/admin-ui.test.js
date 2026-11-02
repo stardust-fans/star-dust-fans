@@ -85,6 +85,7 @@ describe('admin permission interface', () => {
       expect(text(mounted.root)).toContain(expected);
       for (const label of ['添加', '新增', '编辑', '删除', '通过', '驳回']) expect(button(mounted.root, label)).toBeUndefined();
       expect(text(mounted.root)).not.toContain('从预设创建');
+      expect(find(mounted.root, n => n.type === 'select')).toHaveLength(0);
       mounted.unmount();
     }
   });
@@ -98,15 +99,26 @@ describe('admin permission interface', () => {
     const mounted = mount(AdminsModule); await settle();
     button(mounted.root, '新增权限组').props.onClick(); await settle();
     const select = find(mounted.root, n => n.type === 'select')[0];
-    select.props.onChange({ target: { value: 'songs-admins' } }); await settle();
-    expect(text(mounted.root)).toContain('歌曲数据 · 读取');
-    expect(text(mounted.root)).toContain('歌曲数据 · 修改');
+    select.props.onChange({ target: { value: 'regional' } }); await settle();
+    expect(text(mounted.root)).toContain('区域管理员');
+    const songRow = find(mounted.root, n => n.type === 'label' && text(n).includes('歌曲数据'))[0];
+    const songSelect = find(songRow, n => n.type === 'select')[0];
+    const changeLevel = async value => { songSelect.props.onChange({ target: { value } }); await settle(); };
+    await changeLevel('read');
+    expect(songSelect.props.value).toBe('read');
+    await changeLevel('write');
+    expect(songSelect.props.value).toBe('write');
+    await changeLevel('none');
+    expect(songSelect.props.value).toBe('none');
+    await changeLevel('write');
+    const auditRow = find(mounted.root, n => n.type === 'label' && text(n).includes('安全记录'))[0];
+    expect(text(auditRow)).not.toContain('读写');
     expect(state.fetch.mock.calls.filter(([, opts]) => opts?.method)).toHaveLength(0);
     button(mounted.root, '保存').props.onClick(); await settle();
     const writes = state.fetch.mock.calls.filter(([, opts]) => opts?.method === 'POST');
     expect(writes).toHaveLength(1);
     expect(writes[0][0]).toBe('/admin/groups');
-    expect(JSON.parse(writes[0][1].body)).toEqual({ id: 'songs-admins', name: '歌曲区管理员', permissions: ['songs:write'] });
+    expect(JSON.parse(writes[0][1].body)).toEqual({ id: 'regional', name: '区域管理员', permissions: ['songs:write'] });
     mounted.unmount();
   });
 
@@ -124,6 +136,25 @@ describe('admin permission interface', () => {
     const idInput = find(mounted.root, n => n.type === 'input' && n.props.placeholder === '权限组标识')[0];
     expect(idInput.value).toBe('');
     expect(state.fetch.mock.calls.filter(([, opts]) => opts?.method)).toHaveLength(0);
+    mounted.unmount();
+  });
+
+  it('replaces and removes permissions when editing an existing group', async () => {
+    state.auth = profile(['manage:write']);
+    state.fetch.mockImplementation(async path => path === '/admin/groups'
+      ? [{ id: 'g', name: '编辑组', permissions: ['songs:read', 'daily:write'] }] : []);
+    const mounted = mount(AdminsModule); await settle();
+    button(mounted.root, '编辑').props.onClick(); await settle();
+    const row = label => find(mounted.root, n => n.type === 'label' && text(n).includes(label))[0];
+    const songs = find(row('歌曲数据'), n => n.type === 'select')[0];
+    const daily = find(row('吸尘器日报'), n => n.type === 'select')[0];
+    expect(songs.props.value).toBe('read');
+    expect(daily.props.value).toBe('write');
+    songs.props.onChange({ target: { value: 'write' } });
+    daily.props.onChange({ target: { value: 'none' } }); await settle();
+    button(mounted.root, '保存').props.onClick(); await settle();
+    const [, options] = state.fetch.mock.calls.find(([path, opts]) => path === '/admin/groups/g' && opts?.method === 'PUT');
+    expect(JSON.parse(options.body)).toEqual({ name: '编辑组', permissions: ['songs:write'] });
     mounted.unmount();
   });
 
