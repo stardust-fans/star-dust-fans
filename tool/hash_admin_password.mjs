@@ -1,4 +1,4 @@
-import { ADMIN_PERMISSION_KEYS } from '../src/shared/adminPermissions.js';
+import { ADMIN_GROUP_PRESETS } from '../src/shared/adminGroupPresets.js';
 
 const PBKDF2_ITERATIONS = 50_000;
 
@@ -73,7 +73,7 @@ if (!username || process.argv.length > 3) {
 }
 console.log(JSON.stringify({
     nextId: 2,
-    groups: [{ id: 'owners', name: '站点管理', permissions: ADMIN_PERMISSION_KEYS }],
+    groups: ADMIN_GROUP_PRESETS.map(({ id, name, permissions }) => ({ id, name, permissions: [...permissions] })),
     accounts: [{
         id: 1, username, password_hash: hash, groupIds: ['owners'],
         created_at: new Date().toISOString(),
