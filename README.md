@@ -36,6 +36,32 @@ npm run deploy         # wrangler deploy 部署 Worker
 
 数据库结构定义见 `tool/schema.sql`；增量迁移脚本在 `migrations/`，通过 `wrangler d1 migrations apply` 应用。
 
+### 管理员账号
+
+管理员账号、密码哈希、角色和模块权限统一保存在 `ADMIN_ACCOUNTS` Workers Secret，登录和鉴权直接读取当前请求的 env。普通用户和内容数据继续使用 D1。
+
+首次安装时，运行 `node tool/hash_admin_password.mjs [用户名]`，交互输入至少 8 位密码；标准输出是初始超级管理员的 JSON，可保存到安全位置后配置为 `ADMIN_ACCOUNTS` Secret。密码不接受命令行参数。JSON 结构为：
+
+```json
+{
+  "nextId": 2,
+  "accounts": [{
+    "id": 1,
+    "username": "admin",
+    "password_hash": "<脚本生成的 PBKDF2 哈希>",
+    "role": "super",
+    "permissions": [],
+    "created_at": "2026-11-01T00:00:00.000Z"
+  }]
+}
+```
+
+`nextId` 是下一次创建账号使用的整数 ID，删除账号后也不回退；所有账号的 `permissions` 都是显式数组，超级管理员由 `role: "super"` 表示。既有站点启用前，应先配置包含全部管理员的 Secret，保留原 ID 和密码哈希，并明确每个账号的角色与权限。首次安装脚本只生成一个账号。
+
+后台增删改账号还需要 `CF_API_TOKEN` Secret（目标账户的 Workers Scripts Write 权限）、`CF_ACCOUNT_ID` 和 `WORKER_NAME`（与部署名称一致，例如 `stardust`）。通过 Cloudflare 控制台配置；本地开发使用 `.dev.vars`。这些凭据和 `ADMIN_ACCOUNTS` 不应写入源码、公开部署变量或日志。
+
+保存操作通过 [Cloudflare Workers Secrets API](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/secrets/methods/update/) 更新整个 `ADMIN_ACCOUNTS` Secret，成功后由新部署的 env 生效。请等更改显示后再执行下一次账号操作；多个管理员同时保存时，后一次写入会覆盖先前快照。本地 env 文件不会被远程 Secret 写入修改。
+
 ### LRC 歌词数据
 
 `npm run build` 会从 [LRC · V宇宙词站](https://lrc.leisiyu.dev) 的[公开仓库](https://github.com/lsy-404/LRC)获取歌词目录、专辑包与封面，并固定到同一个上游提交。数据独立输出到 `static/data/lrc/`，随静态资源发布，不写入歌曲数据库；下载来源不完整时构建会失败。
