@@ -25,6 +25,7 @@ export function readAdminStore(env) {
     if (!account || !Number.isSafeInteger(account.id) || account.id < 1 || account.id >= store.nextId ||
         typeof account.username !== 'string' || !account.username.trim() ||
         typeof account.password_hash !== 'string' || !account.password_hash ||
+        Object.hasOwn(account, 'role') || Object.hasOwn(account, 'permissions') ||
         !Array.isArray(account.groupIds) || account.groupIds.some(id => !groupIds.has(id)) ||
         new Set(account.groupIds).size !== account.groupIds.length ||
         typeof account.created_at !== 'string' || !account.created_at ||
