@@ -2,7 +2,6 @@
 //
 // 权限粒度 = 后台侧边栏的一个模块。超级管理员（role='super'）拥有全部权限，
 // 并能管理其他管理员账号；普通管理员（role='admin'）只能操作 permissions 里列出的模块。
-// 兼容旧数据：permissions 为 NULL 的账号视为"全部权限"（升级前的管理员都是全权的）。
 
 export const ADMIN_PERMISSIONS = [
   { key: 'review', label: '投稿审核', desc: '审核通过 / 驳回同人与量贩投稿' },
@@ -42,38 +41,17 @@ export function normalizeAdminRole(role) {
   return role === 'super' ? 'super' : 'admin';
 }
 
-// 解析数据库里的 permissions 字段：NULL 表示"全部权限"（旧账号）
-export function parseAdminPermissions(raw) {
-  if (raw === null || raw === undefined || raw === '') return null;
-  try {
-    const list = JSON.parse(raw);
-    if (!Array.isArray(list)) return [];
-    const valid = list.filter((key) => ADMIN_PERMISSION_KEYS.includes(key));
-    return Array.from(new Set(valid));
-  } catch {
-    return [];
-  }
-}
-
-export function serializeAdminPermissions(permissions) {
-  if (permissions === null || permissions === undefined) return null;
-  if (!Array.isArray(permissions)) return null;
-  const valid = permissions.filter((key) => ADMIN_PERMISSION_KEYS.includes(key));
-  return JSON.stringify(Array.from(new Set(valid)));
-}
-
 // 是否拥有某模块权限
 export function adminHasPermission(admin, scope) {
   if (!admin) return false;
   if (SUPER_ONLY_PERMISSIONS.includes(scope)) {
-    // 仅超级管理员（或旧的全权账号）可以管理管理员账号
-    return admin.role === 'super' || admin.permissions === null;
+    // 仅超级管理员可以管理管理员账号
+    return admin.role === 'super';
   }
   if (admin.role === 'super') return true;
-  if (admin.permissions === null) return true;
   return Array.isArray(admin.permissions) && admin.permissions.includes(scope);
 }
 
 export function adminIsSuper(admin) {
-  return Boolean(admin) && (admin.role === 'super' || admin.permissions === null);
+  return Boolean(admin) && admin.role === 'super';
 }
