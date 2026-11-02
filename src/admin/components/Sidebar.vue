@@ -15,8 +15,8 @@
     <div class="sidebar-footer">
       <div v-if="admin" class="sidebar-user">
         <span class="sidebar-user-name">{{ admin.username }}</span>
-        <span class="sidebar-user-role" :class="{ 'is-super': isSuperAdmin }">
-          {{ isSuperAdmin ? '超级管理员' : '普通管理员' }}
+        <span class="sidebar-user-role">
+          {{ admin.groups?.map(group => group.name).join('、') || '未分配权限组' }}
         </span>
       </div>
       <button class="btn btn-outline btn-sm" style="width:100%;" @click="backToSite">
@@ -40,7 +40,7 @@ defineProps({
 });
 defineEmits(['close-sidebar']);
 
-const { logout, can, admin, isSuperAdmin } = useAdminAuth();
+const { logout, can, admin } = useAdminAuth();
 const { showToast } = useToast();
 
 function backToSite() {

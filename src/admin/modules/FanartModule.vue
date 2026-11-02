@@ -2,10 +2,10 @@
   <div id="module-fanart" class="module-content">
     <div class="panel-header">
       <h2><i class="fas fa-palette"></i> 同人作品</h2>
-      <button class="btn btn-primary" @click="openCreate"><i class="fas fa-plus"></i> 添加作品</button>
+      <button v-if="canWrite" class="btn btn-primary" @click="openCreate"><i class="fas fa-plus"></i> 添加作品</button>
     </div>
 
-    <FanartForm v-if="formVisible" :editing="editingItem" @saved="handleSaved" @cancel="closeForm" />
+    <FanartForm v-if="canWrite && formVisible" :editing="editingItem" @saved="handleSaved" @cancel="closeForm" />
 
     <div class="table-wrapper">
       <table>
@@ -35,7 +35,7 @@
                 {{ item.status === 'published' ? '已发布' : '隐藏' }}
               </span>
             </td>
-            <td><RowActions @edit="openEdit(item)" @delete="handleDelete(item.id)" /></td>
+            <td><RowActions v-if="canWrite" @edit="openEdit(item)" @delete="handleDelete(item.id)" /></td>
           </tr>
         </tbody>
       </table>
@@ -44,7 +44,8 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed } from 'vue';
+import { useAdminAuth } from '../composables/useAdminAuth.js';
 import { useAdminApi } from '../composables/useAdminApi.js';
 import { useToast } from '../composables/useToast.js';
 import { FANART_TYPE_LABELS } from '../../shared/constants.js';
@@ -52,6 +53,8 @@ import RowActions from '../components/RowActions.vue';
 import FanartForm from './FanartForm.vue';
 
 const { adminFetch } = useAdminApi();
+const { can } = useAdminAuth();
+const canWrite = computed(() => can('fanart:write'));
 const { showToast } = useToast();
 
 const items = ref([]);

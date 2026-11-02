@@ -51,7 +51,7 @@
             </td>
             <td>{{ formatDate(item.created_at) }}</td>
             <td>
-              <div class="actions">
+              <div v-if="canWrite" class="actions">
                 <button class="edit-btn" @click="approve(item)">通过</button>
                 <button class="delete-btn" @click="openRejectModal(item)">驳回</button>
               </div>
@@ -62,7 +62,7 @@
     </div>
 
     <!-- 驳回弹窗 -->
-    <div v-if="showRejectModal" class="modal-overlay" @click.self="showRejectModal = false">
+    <div v-if="canWrite && showRejectModal" class="modal-overlay" @click.self="showRejectModal = false">
       <div class="modal-content">
         <h3>驳回投稿</h3>
         <p class="modal-hint">请输入驳回理由（将发送给投稿人）</p>
@@ -108,10 +108,13 @@
 
 <script setup>
 import { ref, onMounted, computed } from 'vue';
+import { useAdminAuth } from '../composables/useAdminAuth.js';
 import { useAdminApi } from '../composables/useAdminApi.js';
 import { useToast } from '../composables/useToast.js';
 
 const { adminFetch } = useAdminApi();
+const { can } = useAdminAuth();
+const canWrite = computed(() => can('review:write'));
 const { showToast } = useToast();
 
 const items = ref([]);

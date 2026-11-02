@@ -2,10 +2,10 @@
   <div id="module-daily" class="module-content">
     <div class="panel-header">
       <h2><i class="fas fa-newspaper"></i> 吸尘器日报</h2>
-      <button class="btn btn-primary" @click="openCreate"><i class="fas fa-plus"></i> 添加日报</button>
+      <button v-if="canWrite" class="btn btn-primary" @click="openCreate"><i class="fas fa-plus"></i> 添加日报</button>
     </div>
 
-    <DailyForm v-if="formVisible" :editing="editingItem" @saved="handleSaved" @cancel="closeForm" />
+    <DailyForm v-if="canWrite && formVisible" :editing="editingItem" @saved="handleSaved" @cancel="closeForm" />
 
     <div class="table-wrapper">
       <table>
@@ -28,7 +28,7 @@
                 {{ item.status === 'published' ? '已发布' : '隐藏' }}
               </span>
             </td>
-            <td><RowActions @edit="openEdit(item)" @delete="handleDelete(item.id)" /></td>
+            <td><RowActions v-if="canWrite" @edit="openEdit(item)" @delete="handleDelete(item.id)" /></td>
           </tr>
         </tbody>
       </table>
@@ -37,13 +37,16 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed } from 'vue';
+import { useAdminAuth } from '../composables/useAdminAuth.js';
 import { useAdminApi } from '../composables/useAdminApi.js';
 import { useToast } from '../composables/useToast.js';
 import RowActions from '../components/RowActions.vue';
 import DailyForm from './DailyForm.vue';
 
 const { adminFetch } = useAdminApi();
+const { can } = useAdminAuth();
+const canWrite = computed(() => can('daily:write'));
 const { showToast } = useToast();
 
 const items = ref([]);
