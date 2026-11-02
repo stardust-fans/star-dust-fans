@@ -12,10 +12,13 @@ import DailyModule from '../src/admin/modules/DailyModule.vue';
 import PendingModule from '../src/admin/modules/PendingModule.vue';
 import AdminsModule from '../src/admin/modules/AdminsModule.vue';
 
+globalThis.Document = class Document {};
+globalThis.ShadowRoot = class ShadowRoot {};
 function node(type, text = '') {
   return { type, text, children: [], props: {}, listeners: {}, parent: null,
     addEventListener(name, callback) { this.listeners[name] = callback; },
     removeEventListener(name) { delete this.listeners[name]; },
+    getRootNode() { return {}; },
     dispatch(name) { this.listeners[name]?.({ target: this }); },
   };
 }
@@ -81,8 +84,47 @@ describe('admin permission interface', () => {
       const mounted = mount(component); await settle();
       expect(text(mounted.root)).toContain(expected);
       for (const label of ['添加', '新增', '编辑', '删除', '通过', '驳回']) expect(button(mounted.root, label)).toBeUndefined();
+      expect(text(mounted.root)).not.toContain('从预设创建');
       mounted.unmount();
     }
+  });
+
+  it('creates an unsaved group from a preset and submits it once', async () => {
+    state.auth = profile(['manage:write']);
+    state.fetch.mockImplementation(async (path, options) => {
+      if (options?.method === 'POST') return {};
+      return path === '/admin/groups' ? [] : [];
+    });
+    const mounted = mount(AdminsModule); await settle();
+    button(mounted.root, '新增权限组').props.onClick(); await settle();
+    const select = find(mounted.root, n => n.type === 'select')[0];
+    select.props.onChange({ target: { value: 'songs-admins' } }); await settle();
+    expect(text(mounted.root)).toContain('歌曲数据 · 读取');
+    expect(text(mounted.root)).toContain('歌曲数据 · 修改');
+    expect(state.fetch.mock.calls.filter(([, opts]) => opts?.method)).toHaveLength(0);
+    button(mounted.root, '保存').props.onClick(); await settle();
+    const writes = state.fetch.mock.calls.filter(([, opts]) => opts?.method === 'POST');
+    expect(writes).toHaveLength(1);
+    expect(writes[0][0]).toBe('/admin/groups');
+    expect(JSON.parse(writes[0][1].body)).toEqual({ id: 'songs-admins', name: '歌曲区管理员', permissions: ['songs:write'] });
+    mounted.unmount();
+  });
+
+  it('requires a new ID when cloning an existing preset and defaults new accounts to ordinary', async () => {
+    state.auth = profile(['manage:write']);
+    state.fetch.mockImplementation(async path => path === '/admin/groups' ? [{ id: 'ordinary', name: '普通用户', permissions: [] }] : []);
+    const mounted = mount(AdminsModule); await settle();
+    button(mounted.root, '新增账户').props.onClick(); await settle();
+    const accountCheckbox = find(mounted.root, n => n.type === 'input' && n.props.type === 'checkbox')[0];
+    expect(accountCheckbox.checked).toBe(true);
+    button(mounted.root, '新增权限组').props.onClick(); await settle();
+    find(mounted.root, n => n.type === 'select')[0].props.onChange({ target: { value: 'ordinary' } }); await settle();
+    expect(text(mounted.root)).toContain('无后台权限');
+    expect(text(mounted.root)).toContain('请填写新标识');
+    const idInput = find(mounted.root, n => n.type === 'input' && n.props.placeholder === '权限组标识')[0];
+    expect(idInput.value).toBe('');
+    expect(state.fetch.mock.calls.filter(([, opts]) => opts?.method)).toHaveLength(0);
+    mounted.unmount();
   });
 
   it('assigns multiple selected groups when saving an account', async () => {
