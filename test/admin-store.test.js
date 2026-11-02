@@ -16,7 +16,14 @@ describe('admin secret store', () => {
         expect(readAdminStore({ ADMIN_ACCOUNTS: JSON.stringify(validStore) })).toEqual(validStore);
     });
 
-    it.each([undefined, '{broken', JSON.stringify({ ...validStore, nextId: 2 })])(
+    it.each([
+        undefined,
+        '{broken',
+        JSON.stringify({ ...validStore, nextId: 2 }),
+        JSON.stringify({ ...validStore, accounts: validStore.accounts.map((account, index) => index === 1 ? { ...account, permissions: null } : account) }),
+        JSON.stringify({ ...validStore, accounts: validStore.accounts.map((account, index) => index === 1 ? { ...account, permissions: ['review', 'unknown'] } : account) }),
+        JSON.stringify({ ...validStore, accounts: validStore.accounts.map((account, index) => index === 1 ? { ...account, permissions: ['review', 'review'] } : account) }),
+    ])(
         'rejects missing or invalid secret configuration', (secret) => {
             let failure;
             try {
