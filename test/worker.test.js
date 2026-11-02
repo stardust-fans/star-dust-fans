@@ -619,7 +619,7 @@ describe('Admin role permissions', () => {
 
 describe('Admin account secret CRUD', () => {
     it('creates, updates, lists, and deletes administrator accounts through the secret writer', async () => {
-        const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true }), { status: 200 }));
+        const fetchMock = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ success: true }), { status: 200 }));
         vi.stubGlobal('fetch', fetchMock);
         const headers = { Authorization: `Bearer ${await token({ sub: 9002, username: 'test-admin', role: 'admin' })}`, 'Content-Type': 'application/json' };
         const cloudflareEnv = {
@@ -628,6 +628,14 @@ describe('Admin account secret CRUD', () => {
             CF_ACCOUNT_ID: 'test-account',
             WORKER_NAME: 'test-worker',
         };
+
+        const demoteSuper = await req('/api/admin/admins/9002', {
+            method: 'PUT', headers, body: JSON.stringify({ role: 'admin', permissions: ['review'] }),
+        }, cloudflareEnv);
+        expect(demoteSuper.status).toBe(400);
+        const deleteSuper = await req('/api/admin/admins/9002', { method: 'DELETE', headers }, cloudflareEnv);
+        expect(deleteSuper.status).toBe(400);
+        expect(fetchMock).not.toHaveBeenCalled();
 
         const createdResponse = await req('/api/admin/admins', {
             method: 'POST', headers,
@@ -653,15 +661,53 @@ describe('Admin account secret CRUD', () => {
         const updatedStore = JSON.parse(JSON.parse(fetchMock.mock.calls.at(-1)[1].body).text);
         expect(updatedStore.accounts.find(account => account.id === created.id).permissions).toEqual(['tags']);
 
-        const listResponse = await req('/api/admin/admins', { headers }, { ...cloudflareEnv, ADMIN_ACCOUNTS: JSON.stringify(updatedStore) });
-        expect((await listResponse.json()).find(account => account.id === created.id)).toMatchObject({
+        const listedAccounts = await (await req('/api/admin/admins', { headers }, { ...cloudflareEnv, ADMIN_ACCOUNTS: JSON.stringify(updatedStore) })).json();
+        expect(listedAccounts.find(account => account.id === created.id)).toMatchObject({
             username: 'created-reviewer', role: 'admin', permissions: ['tags'], allAccess: false,
         });
+        expect(listedAccounts.find(account => account.id === created.id)).not.toHaveProperty('password_hash');
+
+        const loginResponse = await req('/api/admin/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: 'created-reviewer', password: 'secure-password' }),
+        }, { ...cloudflareEnv, ADMIN_ACCOUNTS: JSON.stringify(updatedStore) });
+        expect(loginResponse.status).toBe(200);
+        const loggedIn = await loginResponse.json();
+        expect(loggedIn.admin).toMatchObject({ username: 'created-reviewer', permissions: ['tags'] });
 
         const deletedResponse = await req(`/api/admin/admins/${created.id}`, { method: 'DELETE', headers }, { ...cloudflareEnv, ADMIN_ACCOUNTS: JSON.stringify(updatedStore) });
         expect(deletedResponse.status).toBe(200);
         expect(await deletedResponse.json()).toEqual({ success: true });
         const deletedStore = JSON.parse(JSON.parse(fetchMock.mock.calls.at(-1)[1].body).text);
         expect(deletedStore.accounts.some(account => account.id === created.id)).toBe(false);
+        const revoked = await req('/api/admin/me', {
+            headers: { Authorization: `Bearer ${loggedIn.token}` },
+        }, { ...cloudflareEnv, ADMIN_ACCOUNTS: JSON.stringify(deletedStore) });
+        expect(revoked.status).toBe(401);
+    });
+
+    it('does not claim success, write audit success, or mutate the secret when a write fails', async () => {
+        vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response(JSON.stringify({ success: false }), { status: 500 })));
+        const headers = { Authorization: `Bearer ${await token({ sub: 9002, username: 'test-admin', role: 'admin' })}`, 'Content-Type': 'application/json' };
+        const requestEnv = {
+            ...env,
+            CF_API_TOKEN: 'test-cloudflare-token',
+            CF_ACCOUNT_ID: 'test-account',
+            WORKER_NAME: 'test-worker',
+        };
+        const initialSecret = requestEnv.ADMIN_ACCOUNTS;
+        const before = await env.DB.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE event_type = 'create' AND target_table = 'admins' AND summary LIKE '%failed-reviewer%'").first();
+
+        const response = await req('/api/admin/admins', {
+            method: 'POST', headers,
+            body: JSON.stringify({ username: 'failed-reviewer', password: 'secure-password', role: 'admin', permissions: ['review'] }),
+        }, requestEnv);
+
+        expect(response.status).toBe(502);
+        expect(await response.json()).toMatchObject({ error: expect.any(String) });
+        expect(requestEnv.ADMIN_ACCOUNTS).toBe(initialSecret);
+        const after = await env.DB.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE event_type = 'create' AND target_table = 'admins' AND summary LIKE '%failed-reviewer%'").first();
+        expect(after.n).toBe(before.n);
     });
 });
