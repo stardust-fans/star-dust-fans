@@ -20,7 +20,11 @@ beforeAll(async () => {
     await env.DB.prepare("INSERT OR IGNORE INTO users (id, username, email, password_hash) VALUES (9001, 'test-user', 'test-user@example.com', 'unused')").run();
     env.ADMIN_ACCOUNTS = JSON.stringify({
         nextId: 9003,
-        groups: [{ id: 'owners', name: 'Owners', permissions: ADMIN_PERMISSION_KEYS }],
+        groups: [
+            { id: 'owners', name: 'Owners', permissions: ADMIN_PERMISSION_KEYS },
+            { id: 'reviewers', name: 'Reviewers', permissions: ['review:read', 'review:write'] },
+            { id: 'tag-editors', name: 'Tag Editors', permissions: ['tags:write'] },
+        ],
         accounts: [{ id: 9002, username: 'test-admin', password_hash: 'unused', groupIds: ['owners'], created_at: '2026-11-01T00:00:00.000Z' }],
     });
 });
