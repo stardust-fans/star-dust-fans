@@ -1,3 +1,5 @@
+import { ADMIN_PERMISSION_KEYS } from '../src/shared/adminPermissions.js';
+
 const PBKDF2_ITERATIONS = 50_000;
 
 const { subtle } = await import('node:crypto').then(m => m.webcrypto);
@@ -71,8 +73,9 @@ if (!username || process.argv.length > 3) {
 }
 console.log(JSON.stringify({
     nextId: 2,
+    groups: [{ id: 'owners', name: '站点管理', permissions: ADMIN_PERMISSION_KEYS }],
     accounts: [{
-        id: 1, username, password_hash: hash, role: 'super',
-        permissions: [], created_at: new Date().toISOString(),
+        id: 1, username, password_hash: hash, groupIds: ['owners'],
+        created_at: new Date().toISOString(),
     }],
 }));
