@@ -3,7 +3,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import worker from '../worker.js';
 
 const groups = [
-    { id: 'owners', name: 'Owners', permissions: ['manage:read', 'manage:write', 'comments:write'] },
+    { id: 'owners', name: 'Owners', permissions: ['manage:read', 'manage:write'] },
     { id: 'reviewers', name: 'Reviewers', permissions: ['review:read', 'review:write'] },
     { id: 'readers', name: 'Readers', permissions: ['manage:read'] },
     { id: 'song-editors', name: 'Song Editors', permissions: ['songs:write'] },
@@ -48,6 +48,9 @@ async function req(path, { method = 'GET', body, accountId, store = makeStore() 
 
 beforeAll(() => {
     env.TOKEN_SECRET = 'test-secret';
+    env.CF_API_TOKEN = 'test-cloudflare-token';
+    env.CF_ACCOUNT_ID = 'test-account';
+    env.WORKER_NAME = 'test-worker';
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ success: true }), { status: 200 })));
 });
 
@@ -62,7 +65,7 @@ describe('permission group protected routes', () => {
             username: 'owner',
             groupIds: ['owners'],
             groups: [{ id: 'owners', name: 'Owners' }],
-            permissions: expect.arrayContaining(['manage:read', 'manage:write', 'comments:read', 'comments:write']),
+            permissions: ['manage:read', 'manage:write'],
         });
     });
 

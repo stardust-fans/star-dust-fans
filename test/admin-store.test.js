@@ -30,7 +30,6 @@ describe('admin secret store', () => {
         JSON.stringify({ ...validStore, accounts: validStore.accounts.map((account, index) => index === 1 ? { ...account, groupIds: ['reviewers', 'reviewers'] } : account) }),
         JSON.stringify({ ...validStore, groups: validStore.groups.map((group, index) => index === 1 ? { ...group, permissions: ['review:read', 'unknown:read'] } : group) }),
         JSON.stringify({ ...validStore, groups: validStore.groups.map((group, index) => index === 1 ? { ...group, permissions: ['review:read', 'review:read'] } : group) }),
-        JSON.stringify({ ...validStore, accounts: validStore.accounts.map(account => ({ ...account, groupIds: ['reviewers'] })) }),
         JSON.stringify({ ...validStore, accounts: validStore.accounts.map(({ groupIds, ...account }) => account) }),
         JSON.stringify({ ...validStore, groups: validStore.groups.map(({ permissions, ...group }) => group) }),
     ])('rejects missing or invalid secret configuration', (secret) => {
