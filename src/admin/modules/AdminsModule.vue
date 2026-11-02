@@ -60,7 +60,7 @@
         </div>
         <small class="form-hint">
           例如只勾「投稿审核」，该账号就只能审核投稿，看不到其他模块；一个都不勾则登录后没有可操作页面。
-          <template v-if="isEditingSelf">这是你自己的账号，改完立即生效。</template>
+          <template v-if="isEditingSelf">这是你自己的账号，权限变更将在配置更新后生效。</template>
         </small>
         <p v-if="isEditingSelf" class="warn-text">
           ⚠️ 把自己降成普通管理员后，你会失去「管理员账户」页面，只能靠另一个超级管理员改回来。
@@ -96,13 +96,13 @@
               <span v-if="row.isSelf" class="badge-self">我</span>
             </td>
             <td>
-              <span class="role-badge" :class="{ super: row.role === 'super' || row.allAccess }">
-                {{ row.role === 'super' || row.allAccess ? '超级管理员' : '普通管理员' }}
+              <span class="role-badge" :class="{ super: row.role === 'super' }">
+                {{ row.role === 'super' ? '超级管理员' : '普通管理员' }}
               </span>
             </td>
             <td>
-              <span v-if="row.allAccess" class="perm-tag all">全部</span>
-              <template v-else-if="Array.isArray(row.permissions) && row.permissions.length">
+              <span v-if="row.role === 'super'" class="perm-tag all">全部</span>
+              <template v-else-if="row.permissions.length">
                 <span v-for="key in row.permissions" :key="key" class="perm-tag">
                   {{ permLabel(key) }}
                 </span>
@@ -134,7 +134,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { useAdminApi } from '../composables/useAdminApi.js';
 import { useToast } from '../composables/useToast.js';
-import { ADMIN_PERMISSION_KEYS, ADMIN_PERMISSIONS, ADMIN_ROLES } from '../../shared/adminPermissions.js';
+import { ADMIN_PERMISSIONS, ADMIN_ROLES } from '../../shared/adminPermissions.js';
 
 const { adminFetch } = useAdminApi();
 const { showToast } = useToast();
@@ -169,10 +169,7 @@ function openEdit(row) {
     username: row.username,
     password: '',
     role: row.role,
-    // 旧的全权账号（permissions = NULL）默认全选，避免一保存就把权限清空
-    permissions: Array.isArray(row.permissions)
-      ? [...row.permissions]
-      : ADMIN_PERMISSION_KEYS.slice(),
+    permissions: [...row.permissions],
   };
   formVisible.value = true;
 }
@@ -213,7 +210,7 @@ async function handleSave() {
 
   const payload = {
     role: form.value.role,
-    permissions: form.value.role === 'super' ? null : form.value.permissions,
+    permissions: form.value.role === 'super' ? [] : form.value.permissions,
   };
   if (password) payload.password = password;
 
