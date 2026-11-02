@@ -195,7 +195,6 @@ async function handleRequest(request, env, ctx) {
 
     // ===== 管理员权限校验 =====
     // admin 是 getAuthenticatedUser 返回的管理员身份：{ sub, username, role, permissions }
-    // role: 'super' | 'admin'；permissions: string[] | null（null = 旧账号，全权）
     function requirePermission(admin, scope) {
         if (!admin) return jsonResponse({ error: '未授权' }, 401);
         if (!adminHasPermission(admin, scope)) {
@@ -2836,7 +2835,7 @@ async function getAuthenticatedUser(request, env, expectedRole) {
         return { ...payload, username: user.username, display_name: user.display_name };
     }
 
-    // 管理员：每次请求回查账号，删除账号或调整权限可以立即生效（不必等 token 过期）
+    // 每次请求读取当前环境中的管理员配置。
     if (expectedRole === 'admin') {
         let row;
         try { row = readAdminStore(env).accounts.find(account => account.id === payload.sub); } catch { return null; }
