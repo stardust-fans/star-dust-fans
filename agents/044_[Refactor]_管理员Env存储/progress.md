@@ -9,3 +9,4 @@
 - 更新首次管理员初始化工具与配置说明，不自动迁移旧管理员数据。
 - 合并测试修复提交 f7066c4，npm test：117/117 通过；npm run build 成功。
 - 初始化工具通过正向与短密码检查；完整 diff 检查按既有 CRLF 行尾设置通过。
+- 推送 refactor/admin-env-storage，创建草稿 PR https://github.com/stardust-fans/star-dust-fans/pull/112。未配置或修改任何生产 Secret，未部署。
