@@ -20,3 +20,4 @@
 | 043 | [Feature] 贡献者别名合并 | 贡献者名单将 lsy-404 与 wuyilingwei 合并为一行，署名「暝行镌无」，链接 @lsy-404 | Rosmontis 要求两个账号统一署名 | completed |
 | 044 | [Refactor] 管理员Env存储 | 管理员账号、角色和权限采用可写 Workers Secret（草稿 PR 已交付，生产配置待就绪） | 复用 EdgeSonic env 存储模式 | completed |
 | 045 | [Feature] 多权限组读写授权 | 支持多个权限组和模块 read/write，统一 UI 与后端授权（草稿 PR 已更新，生产配置待就绪） | 用户要求可组合权限且隐藏无权入口 | completed |
+| 046 | [Feature] 后台权限组预设 | 完整配置普通用户及各模块管理员等权限组预设（草稿 PR 更新，生产配置待就绪） | 用户要求在权限组内完成常用授权设定 | completed |

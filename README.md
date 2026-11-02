@@ -42,14 +42,34 @@ npm run deploy         # wrangler deploy 部署 Worker
 
 权限使用 `资源:动作`：例如 `songs:read`、`songs:write`、`manage:read`、`manage:write`。写权限包含同资源读权限；`manage` 只管理账号和权限组，内容管理权限需另行分配。后台可自定义权限组名称、勾选权限并给账号分配多个组。无读取权限时不显示模块入口，无写入权限时不显示修改控件；后端独立拒绝越权请求。
 
-首次安装运行 `node tool/hash_admin_password.mjs [用户名]`，交互输入至少 8 位密码；标准输出为初始账号及拥有所有权限的管理组 JSON。将结果配置为 `ADMIN_ACCOUNTS` Secret。密码不接受命令行参数。存储结构为：
+初始化提供以下 13 个后台权限组预设。它们是可编辑的普通权限组，账号可以组合加入多个组；“区域”按功能模块划分。
+
+| 权限组 | 默认权限 |
+| :-- | :-- |
+| 普通用户 | 无后台权限 |
+| 只读观察员 | 歌曲、日报、同人、量贩、标签、致谢的读取权限 |
+| 歌曲区管理员 | `songs:write` |
+| 日报区管理员 | `daily:write` |
+| 同人区管理员 | `fanart:write` |
+| 量贩区管理员 | `shop:write` |
+| 投稿审核员 | `review:write` |
+| 标签管理员 | `tags:write` |
+| 致谢维护员 | `thanks:write` |
+| 评论管理员 | `comments:write`，可删除评论 |
+| 安全审计员 | `audit:read` |
+| 账号与权限管理员 | `manage:write`，不授予内容模块权限 |
+| 站点管理员 | 全部已定义权限 |
+
+例如，同人区管理员加入“投稿审核员”组后，可同时维护同人内容和审核投稿。只读观察员不默认获得待审内容、安全记录或账号管理的读取权限。新建后台账号默认选择已存在的“普通用户”组；该预设与公开站的注册账号体系分别管理。
+
+首次安装运行 `node tool/hash_admin_password.mjs [用户名]`，交互输入至少 8 位密码；标准输出为全部预设组和初始账号，初始账号只加入“站点管理员”组。将结果配置为 `ADMIN_ACCOUNTS` Secret。密码不接受命令行参数。下方是简化的存储结构示例：
 
 ```json
 {
   "nextId": 2,
   "groups": [{
     "id": "owners",
-    "name": "站点管理",
+    "name": "站点管理员",
     "permissions": ["manage:write", "songs:write"]
   }],
   "accounts": [{
@@ -63,6 +83,8 @@ npm run deploy         # wrangler deploy 部署 Worker
 ```
 
 `nextId` 单调递增，不复用删除账号的 ID。组 ID 使用小写字母开头的字母、数字、下划线或连字符，最长 64 字符。所有成员引用必须指向有效组；账号或组的修改必须保留至少一个拥有 `manage:write` 的账号。删除组会移除账号中的对应成员关系。既有站点启用前，先配置完整账号和权限组，保留原 ID 与密码哈希。
+
+管理页面可以从预设复制新权限组，调整名称与权限后显式保存；选择预设不会立即写入，也不会覆盖已有组。预设定义不会自动重置已经保存的权限配置。
 
 后台保存还需要 `CF_API_TOKEN` Secret（目标账户的 Workers Scripts Write 权限）、`CF_ACCOUNT_ID` 和 `WORKER_NAME`（与部署名称一致，例如 `stardust`）。通过 Cloudflare 控制台配置；本地开发使用 `.dev.vars`。凭据、账号 Secret 不写入源码、公开变量或日志。
 
