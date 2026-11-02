@@ -580,6 +580,7 @@ async function handleRequest(request, env, ctx) {
             const store = readAdminStore(env);
             const target = store.accounts.find(row => row.id === id);
             if (!target) return jsonResponse({ error: '账号不存在' }, 404);
+            if (method === 'DELETE' && isAdmin.sub === id) return jsonResponse({ error: '不能删除自己' }, 400);
             if (method === 'DELETE') store.accounts = store.accounts.filter(row => row.id !== id);
             else {
                 const body = await request.json();
