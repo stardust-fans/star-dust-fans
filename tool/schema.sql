@@ -82,15 +82,6 @@ CREATE TABLE IF NOT EXISTS shop (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS admins (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username VARCHAR(50) NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'admin',
-    permissions TEXT DEFAULT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
 CREATE TABLE IF NOT EXISTS audit_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     event_type VARCHAR(20) NOT NULL,
@@ -326,3 +317,101 @@ CREATE TABLE IF NOT EXISTS saml_pending_requests (
 
 CREATE INDEX IF NOT EXISTS idx_saml_pending_requests_expiry
 ON saml_pending_requests (expires_at);
+
+CREATE TABLE IF NOT EXISTS comments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    target_type VARCHAR(20) NOT NULL,
+    target_id INTEGER NOT NULL,
+    parent_id INTEGER DEFAULT NULL,
+    content TEXT NOT NULL,
+    status VARCHAR(20) DEFAULT 'published',
+    metadata TEXT DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (parent_id) REFERENCES comments(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_comments_target ON comments (target_type, target_id, status);
+CREATE INDEX IF NOT EXISTS idx_comments_user ON comments (user_id);
+CREATE INDEX IF NOT EXISTS idx_comments_parent ON comments (parent_id);
+CREATE INDEX IF NOT EXISTS idx_comments_created_at ON comments (created_at DESC);
+
+
+CREATE TABLE IF NOT EXISTS likes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    target_type VARCHAR(20) NOT NULL,
+    target_id INTEGER NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    UNIQUE(user_id, target_type, target_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_likes_target ON likes (target_type, target_id);
+CREATE INDEX IF NOT EXISTS idx_likes_user ON likes (user_id);
+
+
+CREATE TABLE IF NOT EXISTS forum_boards (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name VARCHAR(50) NOT NULL,
+    slug VARCHAR(50) NOT NULL UNIQUE,
+    description TEXT DEFAULT NULL,
+    icon VARCHAR(50) DEFAULT NULL,
+    sort_order INTEGER DEFAULT 0,
+    status VARCHAR(20) DEFAULT 'active',
+    metadata TEXT DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_forum_boards_status ON forum_boards (status, sort_order);
+
+
+CREATE TABLE IF NOT EXISTS forum_threads (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    board_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    title VARCHAR(200) NOT NULL,
+    content TEXT NOT NULL,
+    is_pinned INTEGER DEFAULT 0,
+    is_locked INTEGER DEFAULT 0,
+    view_count INTEGER DEFAULT 0,
+    reply_count INTEGER DEFAULT 0,
+    like_count INTEGER DEFAULT 0,
+    last_reply_at TIMESTAMP DEFAULT NULL,
+    last_reply_user_id INTEGER DEFAULT NULL,
+    status VARCHAR(20) DEFAULT 'published',
+    metadata TEXT DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (board_id) REFERENCES forum_boards(id),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_forum_threads_board ON forum_threads (board_id, status, is_pinned DESC, last_reply_at DESC);
+CREATE INDEX IF NOT EXISTS idx_forum_threads_user ON forum_threads (user_id);
+CREATE INDEX IF NOT EXISTS idx_forum_threads_last_reply ON forum_threads (last_reply_at DESC);
+
+
+CREATE TABLE IF NOT EXISTS forum_posts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    thread_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    parent_id INTEGER DEFAULT NULL,
+    content TEXT NOT NULL,
+    floor_number INTEGER DEFAULT NULL,
+    like_count INTEGER DEFAULT 0,
+    status VARCHAR(20) DEFAULT 'published',
+    metadata TEXT DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (thread_id) REFERENCES forum_threads(id),
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (parent_id) REFERENCES forum_posts(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_forum_posts_thread ON forum_posts (thread_id, status, created_at ASC);
+CREATE INDEX IF NOT EXISTS idx_forum_posts_user ON forum_posts (user_id);
+CREATE INDEX IF NOT EXISTS idx_forum_posts_parent ON forum_posts (parent_id);

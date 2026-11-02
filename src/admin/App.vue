@@ -5,11 +5,11 @@
     <p>正在加载权限信息…</p>
   </div>
 
-  <div v-else-if="!hasAnyAccess" class="admin-gate">
+  <div v-else-if="!admin || !hasAnyAccess" class="admin-gate">
     <h2>没有可用权限</h2>
     <p>
       当前账号「{{ admin?.username }}」还没有被分配任何模块权限，
-      请联系超级管理员在「管理员账户」里为你勾选。
+      请联系权限管理员分配权限组。
     </p>
     <button class="btn btn-outline" @click="handleLogout">退出登录</button>
   </div>
@@ -18,7 +18,8 @@
     <Sidebar :sidebar-open="sidebarOpen" @close-sidebar="closeSidebar" />
     <div class="main-content">
       <TopBar @toggle-sidebar="toggleSidebar" />
-      <router-view />
+      <router-view v-if="routeAllowed" />
+      <div v-else class="admin-gate"><h2>没有此页面的访问权限</h2><p>请从侧边栏选择有权访问的页面。</p></div>
     </div>
   </template>
 
@@ -26,8 +27,8 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { ref, computed } from 'vue';
+import { useRoute } from 'vue-router';
 import { useAdminAuth } from './composables/useAdminAuth.js';
 import { NAV_ITEMS, scopeOfRoute } from './navItems.js';
 import { useToast } from './composables/useToast.js';
@@ -36,10 +37,9 @@ import Sidebar from './components/Sidebar.vue';
 import TopBar from './components/TopBar.vue';
 import ToastContainer from './components/ToastContainer.vue';
 
-const { isAuthenticated, admin, profileLoaded, can, fetchMe, logout } = useAdminAuth();
+const { isAuthenticated, admin, profileLoaded, can, logout } = useAdminAuth();
 const { showToast } = useToast();
 const route = useRoute();
-const router = useRouter();
 
 const sidebarOpen = ref(false);
 
@@ -58,17 +58,11 @@ function handleLogout() {
   showToast('已退出', 'info');
 }
 
-onMounted(async () => {
-  // 带着本地 token 刷新页面时，补拉一次权限档案，并把没权限的落地页挪走
-  if (!isAuthenticated.value || profileLoaded.value) return;
-  await fetchMe();
-  if (!admin.value) return;
+const routeAllowed = computed(() => {
   const scope = scopeOfRoute(route.name);
-  if (scope && !can(scope)) {
-    const fallback = NAV_ITEMS.find((item) => can(item.scope));
-    if (fallback) router.replace({ name: fallback.key });
-  }
+  return Boolean(admin.value && scope && can(scope));
 });
+
 </script>
 
 <style scoped>

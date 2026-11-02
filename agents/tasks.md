@@ -18,3 +18,6 @@
 | 041 | [Feature] 歌曲分页搜索与可选标签 | 前后台歌曲列表按页加载并搜索，明确标签可选并验证无标签保存 | 歌曲库需要分页和搜索，投稿及管理标签不应成为必选项 | completed |
 | 042 | [Feature] LRC歌词页改版 | 歌词页重做：封面瀑布流、搜索与歌姬筛选、按发行日期排序，默认选中星尘；卡片默认显示可用购买与价格，完整信息与单曲下载收进展开；封面随构建自托管，LRC 地址迁到 lrc.leisiyu.dev（第一、二轮已随 stardust-fans/star-dust-fans#105 合并；详情弹窗待发布） | Rosmontis 要求按最新排布重新设计 LRC 界面并默认选中星尘 | running |
 | 043 | [Feature] 贡献者别名合并 | 贡献者名单将 lsy-404 与 wuyilingwei 合并为一行，署名「暝行镌无」，链接 @lsy-404 | Rosmontis 要求两个账号统一署名 | completed |
+| 044 | [Refactor] 管理员Env存储 | 管理员账号、角色和权限采用可写 Workers Secret（草稿 PR 已交付，生产配置待就绪） | 复用 EdgeSonic env 存储模式 | completed |
+| 045 | [Feature] 多权限组读写授权 | 支持多个权限组和模块 read/write，统一 UI 与后端授权（草稿 PR 已更新，生产配置待就绪） | 用户要求可组合权限且隐藏无权入口 | completed |
+| 046 | [Feature] 后台权限组预设 | 完整配置普通用户及各模块管理员等权限组预设（草稿 PR 更新，生产配置待就绪） | 用户要求在权限组内完成常用授权设定 | completed |

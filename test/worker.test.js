@@ -1,5 +1,6 @@
 import { env, createExecutionContext, waitOnExecutionContext, SELF } from 'cloudflare:test';
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, vi, afterEach } from 'vitest';
+import { ADMIN_PERMISSION_KEYS } from '../src/shared/adminPermissions.js';
 import worker from '../worker.js';
 
 const encode = (value) => btoa(String.fromCharCode(...new TextEncoder().encode(value)))
@@ -17,16 +18,26 @@ async function token(payload) {
 beforeAll(async () => {
     env.TOKEN_SECRET = 'test-secret';
     await env.DB.prepare("INSERT OR IGNORE INTO users (id, username, email, password_hash) VALUES (9001, 'test-user', 'test-user@example.com', 'unused')").run();
-    await env.DB.prepare("INSERT OR IGNORE INTO admins (id, username, password_hash) VALUES (9002, 'test-admin', 'unused')").run();
+    env.ADMIN_ACCOUNTS = JSON.stringify({
+        nextId: 9003,
+        groups: [
+            { id: 'owners', name: 'Owners', permissions: ADMIN_PERMISSION_KEYS },
+            { id: 'reviewers', name: 'Reviewers', permissions: ['review:read', 'review:write'] },
+            { id: 'tag-editors', name: 'Tag Editors', permissions: ['tags:write'] },
+        ],
+        accounts: [{ id: 9002, username: 'test-admin', password_hash: 'unused', groupIds: ['owners'], created_at: '2026-11-01T00:00:00.000Z' }],
+    });
 });
 
-async function req(path, options = {}) {
+async function req(path, options = {}, requestEnv = env) {
     const request = new Request(`http://localhost${path}`, options);
     const ctx = createExecutionContext();
-    const response = await worker.fetch(request, env, ctx);
+    const response = await worker.fetch(request, requestEnv, ctx);
     await waitOnExecutionContext(ctx);
     return response;
 }
+
+afterEach(() => vi.unstubAllGlobals());
 
 // 与 worker.js 的 hashPassword 输出同一格式：pbkdf2-sha256$迭代$盐$哈希
 async function passwordHash(password, iterations = 50000) {
@@ -564,53 +575,158 @@ describe('Auth endpoint', () => {
     });
 });
 
-describe('Admin role permissions', () => {
+describe('Admin permission groups', () => {
     const scopedHeaders = async (sub) => ({
         Authorization: `Bearer ${await token({ sub, username: 'scoped-admin', role: 'admin' })}`,
     });
-
-    beforeAll(async () => {
-        // 只有审核权限的普通管理员
-        await env.DB.prepare(
-            "INSERT OR REPLACE INTO admins (id, username, password_hash, role, permissions) VALUES (9010, 'reviewer', 'unused', 'admin', ?)"
-        ).bind(JSON.stringify(['review'])).run();
+    const scopedEnv = (groupIds = ['reviewers']) => ({
+        ...env,
+        ADMIN_ACCOUNTS: JSON.stringify({
+            nextId: 9011,
+            groups: [
+                { id: 'owners', name: 'Owners', permissions: ADMIN_PERMISSION_KEYS },
+                { id: 'reviewers', name: 'Reviewers', permissions: ['review:read', 'review:write'] },
+                { id: 'tag-editors', name: 'Tag Editors', permissions: ['tags:write'] },
+            ],
+            accounts: [
+                { id: 9002, username: 'test-admin', password_hash: 'unused', groupIds: ['owners'], created_at: '2026-11-01T00:00:00.000Z' },
+                { id: 9010, username: 'reviewer', password_hash: 'unused', groupIds, created_at: '2026-11-01T00:00:00.000Z' },
+            ],
+        }),
     });
 
     it('lets a scoped admin open its own modules only', async () => {
         const headers = await scopedHeaders(9010);
-        expect((await req('/api/admin/pending', { headers })).status).toBe(200);
-        expect((await req('/api/admin/songs', { headers })).status).toBe(403);
-        expect((await req('/api/admin/tags', { headers })).status).toBe(403);
-        expect((await req('/api/admin/admins', { headers })).status).toBe(403);
+        const requestEnv = scopedEnv();
+        expect((await req('/api/admin/pending', { headers }, requestEnv)).status).toBe(200);
+        expect((await req('/api/admin/songs', { headers }, requestEnv)).status).toBe(403);
+        expect((await req('/api/admin/tags', { headers }, requestEnv)).status).toBe(403);
+        expect((await req('/api/admin/admins', { headers }, requestEnv)).status).toBe(403);
     });
 
     it('exposes the permission profile of the current admin', async () => {
         const headers = await scopedHeaders(9010);
-        const profile = await (await req('/api/admin/me', { headers })).json();
+        const profile = await (await req('/api/admin/me', { headers }, scopedEnv())).json();
         expect(profile).toMatchObject({
+            id: 9010,
             username: 'reviewer',
-            role: 'admin',
-            permissions: ['review'],
-            isSuper: false,
+            groupIds: ['reviewers'],
+            groups: [{ id: 'reviewers', name: 'Reviewers' }],
+            permissions: ['review:read', 'review:write'],
         });
     });
 
     it('applies permission changes without waiting for the token to expire', async () => {
         const headers = await scopedHeaders(9010);
-        await env.DB.prepare('UPDATE admins SET permissions = ? WHERE id = 9010')
-            .bind(JSON.stringify(['tags']))
-            .run();
-        expect((await req('/api/admin/tags', { headers })).status).toBe(200);
-        expect((await req('/api/admin/pending', { headers })).status).toBe(403);
-
-        await env.DB.prepare('UPDATE admins SET permissions = ? WHERE id = 9010')
-            .bind(JSON.stringify(['review']))
-            .run();
+        expect((await req('/api/admin/tags', { headers }, scopedEnv(['tag-editors']))).status).toBe(200);
+        expect((await req('/api/admin/pending', { headers }, scopedEnv(['tag-editors']))).status).toBe(403);
     });
 
     it('rejects tokens of admin accounts that no longer exist', async () => {
         const headers = await scopedHeaders(9999);
-        expect((await req('/api/admin/me', { headers })).status).toBe(401);
-        expect((await req('/api/admin/pending', { headers })).status).toBe(401);
+        expect((await req('/api/admin/me', { headers }, scopedEnv())).status).toBe(401);
+        expect((await req('/api/admin/pending', { headers }, scopedEnv())).status).toBe(401);
+    });
+});
+
+describe('Admin account secret CRUD', () => {
+    it('creates, updates, lists, and deletes administrator accounts through the secret writer', async () => {
+        const fetchMock = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ success: true }), { status: 200 }));
+        vi.stubGlobal('fetch', fetchMock);
+        const headers = { Authorization: `Bearer ${await token({ sub: 9002, username: 'test-admin', role: 'admin' })}`, 'Content-Type': 'application/json' };
+        const cloudflareEnv = {
+            ...env,
+            CF_API_TOKEN: 'test-cloudflare-token',
+            CF_ACCOUNT_ID: 'test-account',
+            WORKER_NAME: 'test-worker',
+        };
+
+        const removeManagerRights = await req('/api/admin/admins/9002', {
+            method: 'PUT', headers, body: JSON.stringify({ groupIds: ['reviewers'] }),
+        }, cloudflareEnv);
+        expect(removeManagerRights.status).toBe(400);
+        const deleteSuper = await req('/api/admin/admins/9002', { method: 'DELETE', headers }, cloudflareEnv);
+        expect(deleteSuper.status).toBe(400);
+        expect(fetchMock).not.toHaveBeenCalled();
+
+        const createdResponse = await req('/api/admin/admins', {
+            method: 'POST', headers,
+            body: JSON.stringify({ username: 'created-reviewer', password: 'secure-password', groupIds: ['reviewers'] }),
+        }, cloudflareEnv);
+        expect(createdResponse.status).toBe(200);
+        const created = await createdResponse.json();
+        expect(created).toMatchObject({
+            success: true, id: 9003, username: 'created-reviewer', groupIds: ['reviewers'],
+            groups: [{ id: 'reviewers', name: 'Reviewers' }], permissions: ['review:read', 'review:write'],
+        });
+        const postedStore = JSON.parse(JSON.parse(fetchMock.mock.calls.at(-1)[1].body).text);
+        expect(postedStore.nextId).toBe(9004);
+        expect(postedStore.accounts.find(account => account.id === created.id)).toMatchObject({
+            username: 'created-reviewer', groupIds: ['reviewers'],
+        });
+        expect(postedStore.accounts.find(account => account.id === created.id).password_hash).not.toBe('secure-password');
+
+        const updatedEnv = { ...cloudflareEnv, ADMIN_ACCOUNTS: JSON.stringify(postedStore) };
+        const updatedResponse = await req(`/api/admin/admins/${created.id}`, {
+            method: 'PUT', headers,
+            body: JSON.stringify({ groupIds: ['tag-editors'] }),
+        }, updatedEnv);
+        expect(updatedResponse.status).toBe(200);
+        expect(await updatedResponse.json()).toMatchObject({
+            success: true, groupIds: ['tag-editors'], groups: [{ id: 'tag-editors', name: 'Tag Editors' }],
+            permissions: ['tags:read', 'tags:write'],
+        });
+        const updatedStore = JSON.parse(JSON.parse(fetchMock.mock.calls.at(-1)[1].body).text);
+        expect(updatedStore.accounts.find(account => account.id === created.id).groupIds).toEqual(['tag-editors']);
+
+        const listedAccounts = await (await req('/api/admin/admins', { headers }, { ...cloudflareEnv, ADMIN_ACCOUNTS: JSON.stringify(updatedStore) })).json();
+        expect(listedAccounts.find(account => account.id === created.id)).toMatchObject({
+            username: 'created-reviewer', groupIds: ['tag-editors'],
+            groups: [{ id: 'tag-editors', name: 'Tag Editors' }], permissions: ['tags:read', 'tags:write'], isSelf: false,
+        });
+        expect(listedAccounts.find(account => account.id === created.id)).not.toHaveProperty('password_hash');
+
+        const loginResponse = await req('/api/admin/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: 'created-reviewer', password: 'secure-password' }),
+        }, { ...cloudflareEnv, ADMIN_ACCOUNTS: JSON.stringify(updatedStore) });
+        expect(loginResponse.status).toBe(200);
+        const loggedIn = await loginResponse.json();
+        expect(loggedIn.admin).toMatchObject({ username: 'created-reviewer', groupIds: ['tag-editors'], permissions: ['tags:read', 'tags:write'] });
+
+        const deletedResponse = await req(`/api/admin/admins/${created.id}`, { method: 'DELETE', headers }, { ...cloudflareEnv, ADMIN_ACCOUNTS: JSON.stringify(updatedStore) });
+        expect(deletedResponse.status).toBe(200);
+        expect(await deletedResponse.json()).toEqual({ success: true });
+        const deletedStore = JSON.parse(JSON.parse(fetchMock.mock.calls.at(-1)[1].body).text);
+        expect(deletedStore.accounts.some(account => account.id === created.id)).toBe(false);
+        const revoked = await req('/api/admin/me', {
+            headers: { Authorization: `Bearer ${loggedIn.token}` },
+        }, { ...cloudflareEnv, ADMIN_ACCOUNTS: JSON.stringify(deletedStore) });
+        expect(revoked.status).toBe(401);
+    });
+
+    it('does not claim success, write audit success, or mutate the secret when a write fails', async () => {
+        vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response(JSON.stringify({ success: false }), { status: 500 })));
+        const headers = { Authorization: `Bearer ${await token({ sub: 9002, username: 'test-admin', role: 'admin' })}`, 'Content-Type': 'application/json' };
+        const requestEnv = {
+            ...env,
+            CF_API_TOKEN: 'test-cloudflare-token',
+            CF_ACCOUNT_ID: 'test-account',
+            WORKER_NAME: 'test-worker',
+        };
+        const initialSecret = requestEnv.ADMIN_ACCOUNTS;
+        const before = await env.DB.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE event_type = 'create' AND target_table = 'admins' AND summary LIKE '%failed-reviewer%'").first();
+
+        const response = await req('/api/admin/admins', {
+            method: 'POST', headers,
+            body: JSON.stringify({ username: 'failed-reviewer', password: 'secure-password', groupIds: ['reviewers'] }),
+        }, requestEnv);
+
+        expect(response.status).toBe(502);
+        expect(await response.json()).toMatchObject({ error: expect.any(String) });
+        expect(requestEnv.ADMIN_ACCOUNTS).toBe(initialSecret);
+        const after = await env.DB.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE event_type = 'create' AND target_table = 'admins' AND summary LIKE '%failed-reviewer%'").first();
+        expect(after.n).toBe(before.n);
     });
 });

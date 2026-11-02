@@ -2,11 +2,11 @@
   <div id="module-thanks" class="module-content">
     <div class="panel-header">
       <h2><i class="fas fa-heart"></i> 特别感谢</h2>
-      <button class="btn btn-primary" @click="openCreate"><i class="fas fa-plus"></i> 添加致谢</button>
+      <button v-if="canWrite" class="btn btn-primary" @click="openCreate"><i class="fas fa-plus"></i> 添加致谢</button>
     </div>
 
     <ThanksForm
-      v-if="formVisible"
+      v-if="canWrite && formVisible"
       :editing="editingItem"
       @saved="handleSaved"
       @cancel="closeForm"
@@ -42,7 +42,7 @@
               <span v-else>—</span>
             </td>
             <td>
-              <RowActions
+              <RowActions v-if="canWrite"
                 @edit="openEdit(item, index)"
                 @delete="handleDelete(index)"
               />
@@ -59,13 +59,16 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed } from 'vue';
+import { useAdminAuth } from '../composables/useAdminAuth.js';
 import { useAdminApi } from '../composables/useAdminApi.js';
 import { useToast } from '../composables/useToast.js';
 import RowActions from '../components/RowActions.vue';
 import ThanksForm from './ThanksForm.vue';
 
 const { adminFetch } = useAdminApi();
+const { can } = useAdminAuth();
+const canWrite = computed(() => can('thanks:write'));
 const { showToast } = useToast();
 
 const items = ref([]);
@@ -79,9 +82,7 @@ async function loadData() {
   loading.value = true;
   loadError.value = false;
   try {
-    const res = await fetch('/special-thanks.json');
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    const data = await adminFetch('/admin/thanks');
     items.value = Array.isArray(data) ? data : [];
   } catch (error) {
     console.error('加载特别感谢失败:', error);

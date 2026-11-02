@@ -1,127 +1,137 @@
 <template>
   <div class="module-content">
     <div class="panel-header">
-      <h2><i class="fas fa-user-gear"></i> 管理员账户</h2>
-      <button class="btn btn-primary" @click="openCreate">
-        <i class="fas fa-plus"></i> 新增账户
-      </button>
+      <h2>管理员账户</h2>
+      <button v-if="canWrite" class="btn btn-primary" @click="editAccount()">新增账户</button>
     </div>
-
-    <p class="module-hint">
-      <strong>超级管理员</strong>拥有全部权限，也可以管理这里的账号；
-      <strong>普通管理员</strong>只能看到被勾选的模块，未勾选任何模块则登录后无可操作页面。
-    </p>
-
-    <div v-if="formVisible" class="form-panel">
-      <h3>{{ editing ? `编辑「${form.username}」` : '新增管理员' }}</h3>
-
+    <div v-if="canWrite && accountForm" class="form-panel">
+      <h3>{{ accountId ? '编辑账户' : '新增账户' }}</h3>
       <div class="form-row">
-        <label>用户名</label>
-        <input v-model="form.username" type="text" :disabled="Boolean(editing)" placeholder="用户名" />
+        <label>用户名</label><input v-model="accountForm.username" :disabled="!!accountId" />
       </div>
-
       <div class="form-row">
-        <label>{{ editing ? '重置密码（留空不修改）' : '密码' }}</label>
-        <input
-          v-model="form.password"
+        <label>{{ accountId ? '重置密码（留空不修改）' : '密码' }}</label
+        ><input
+          v-model="accountForm.password"
           type="password"
           autocomplete="new-password"
           placeholder="至少 8 位"
         />
       </div>
-
       <div class="form-row">
-        <label>角色</label>
-        <select v-model="form.role">
-          <option v-for="role in ADMIN_ROLES" :key="role.key" :value="role.key">
-            {{ role.label }}
-          </option>
-        </select>
-        <small class="form-hint">{{ roleDesc }}</small>
-      </div>
-
-      <div v-if="form.role === 'admin'" class="form-row form-row-block">
-        <label>权限范围</label>
-        <div class="perm-grid">
-          <label
-            v-for="perm in ADMIN_PERMISSIONS"
-            :key="perm.key"
-            class="perm-item"
-            :class="{ checked: form.permissions.includes(perm.key) }"
+        <label>权限组</label>
+        <div class="choices">
+          <label v-for="group in groups" :key="group.id"
+            ><input v-model="accountForm.groupIds" type="checkbox" :value="group.id" />
+            {{ group.name }}</label
           >
-            <input
-              v-model="form.permissions"
-              type="checkbox"
-              :value="perm.key"
-            />
-            <span class="perm-label">{{ perm.label }}</span>
-            <small class="perm-desc">{{ perm.desc }}</small>
-          </label>
         </div>
-        <small class="form-hint">
-          例如只勾「投稿审核」，该账号就只能审核投稿，看不到其他模块；一个都不勾则登录后没有可操作页面。
-          <template v-if="isEditingSelf">这是你自己的账号，改完立即生效。</template>
-        </small>
-        <p v-if="isEditingSelf" class="warn-text">
-          ⚠️ 把自己降成普通管理员后，你会失去「管理员账户」页面，只能靠另一个超级管理员改回来。
-        </p>
       </div>
-
       <div class="form-actions">
-        <button class="btn btn-primary" :disabled="saving" @click="handleSave">
-          <i class="fas fa-check"></i> {{ editing ? '保存' : '创建' }}
-        </button>
-        <button class="btn btn-outline" @click="closeForm">取消</button>
+        <button class="btn btn-primary" :disabled="saving" @click="saveAccount">保存</button
+        ><button class="btn btn-outline" @click="accountForm = null">取消</button>
       </div>
     </div>
-
     <div class="table-wrapper">
       <table>
         <thead>
           <tr>
             <th>用户名</th>
-            <th>角色</th>
-            <th>权限范围</th>
+            <th>权限组</th>
+            <th>有效权限</th>
             <th>创建时间</th>
-            <th>操作</th>
+            <th v-if="canWrite">操作</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-if="loading"><td colspan="5" class="loading-state">加载中...</td></tr>
-          <tr v-else-if="loadError"><td colspan="5" style="text-align:center;color:#666;">加载失败</td></tr>
-          <tr v-else-if="admins.length === 0"><td colspan="5" class="empty-state">暂无账户</td></tr>
-          <tr v-else v-for="row in admins" :key="row.id">
-            <td>
-              <strong>{{ row.username }}</strong>
-              <span v-if="row.isSelf" class="badge-self">我</span>
+          <tr v-if="loading">
+            <td colspan="5">加载中…</td>
+          </tr>
+          <tr v-else-if="loadError">
+            <td colspan="5">加载失败</td>
+          </tr>
+          <tr v-else-if="!admins.length">
+            <td colspan="5">暂无账户</td>
+          </tr>
+          <tr v-for="row in admins" :key="row.id">
+            <td>{{ row.username }} <small v-if="row.isSelf">（我）</small></td>
+            <td>{{ row.groups.map((g) => g.name).join('、') || '无' }}</td>
+            <td>{{ row.permissions.map(permLabel).join('、') || '无' }}</td>
+            <td>{{ row.created_at }}</td>
+            <td v-if="canWrite">
+              <button class="btn btn-outline btn-sm" @click="editAccount(row)">编辑</button>
+              <button
+                class="btn btn-danger btn-sm"
+                :disabled="row.isSelf"
+                @click="deleteAccount(row)"
+              >
+                删除
+              </button>
             </td>
-            <td>
-              <span class="role-badge" :class="{ super: row.role === 'super' || row.allAccess }">
-                {{ row.role === 'super' || row.allAccess ? '超级管理员' : '普通管理员' }}
-              </span>
-            </td>
-            <td>
-              <span v-if="row.allAccess" class="perm-tag all">全部</span>
-              <template v-else-if="Array.isArray(row.permissions) && row.permissions.length">
-                <span v-for="key in row.permissions" :key="key" class="perm-tag">
-                  {{ permLabel(key) }}
-                </span>
-              </template>
-              <span v-else class="perm-tag none">无</span>
-            </td>
-            <td><small style="color:#888;">{{ row.created_at }}</small></td>
-            <td>
-              <div class="actions">
-                <button class="edit-btn" @click="openEdit(row)">编辑</button>
-                <button
-                  class="delete-btn"
-                  :disabled="row.isSelf || admins.length <= 1"
-                  :title="row.isSelf ? '不能删除自己' : '删除'"
-                  @click="handleDelete(row)"
-                >
-                  删除
-                </button>
-              </div>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="panel-header group-header">
+      <h2>权限组</h2>
+      <button v-if="canWrite" class="btn btn-primary" @click="editGroup()">新增权限组</button>
+    </div>
+    <div v-if="canWrite && groupForm" class="form-panel">
+      <h3>{{ groupId ? '编辑权限组' : '新增权限组' }}</h3>
+      <div v-if="!groupId" class="form-row">
+        <label for="group-preset">从预设创建</label>
+        <select id="group-preset" :value="selectedPresetId" @change="selectPreset($event.target.value)">
+          <option value="">不使用预设</option>
+          <option v-for="preset in ADMIN_GROUP_PRESETS" :key="preset.id" :value="preset.id">
+            {{ preset.name }}{{ groups.some((group) => group.id === preset.id) ? '（标识已存在，需填写新标识）' : '' }}
+          </option>
+        </select>
+      </div>
+      <template v-if="!groupId && selectedPreset">
+        <p class="hint">{{ selectedPreset.description }}</p>
+        <p class="hint">预设权限：{{ presetSummary(selectedPreset) }}</p>
+        <p v-if="groups.some((group) => group.id === selectedPreset.id)" class="hint">该预设标识已存在，请填写新标识后保存为新权限组。</p>
+      </template>
+      <div v-if="!groupId" class="form-row">
+        <label>标识</label><input v-model="groupForm.id" placeholder="权限组标识" />
+      </div>
+      <div class="form-row"><label>名称</label><input v-model="groupForm.name" /></div>
+      <div class="form-row">
+        <label>权限</label>
+        <div class="choices">
+          <label v-for="permission in ADMIN_PERMISSIONS" :key="permission.key"
+            ><input v-model="groupForm.permissions" type="checkbox" :value="permission.key" />
+            {{ permission.label }}</label
+          >
+        </div>
+      </div>
+      <p class="hint">修改权限包含该资源的读取权限。</p>
+      <div class="form-actions">
+        <button class="btn btn-primary" :disabled="saving" @click="saveGroup">保存</button
+        ><button class="btn btn-outline" @click="groupForm = null">取消</button>
+      </div>
+    </div>
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>名称</th>
+            <th>标识</th>
+            <th>权限</th>
+            <th v-if="canWrite">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-if="!loading && !groups.length">
+            <td colspan="4">暂无权限组</td>
+          </tr>
+          <tr v-for="group in groups" :key="group.id">
+            <td>{{ group.name }}</td>
+            <td>{{ group.id }}</td>
+            <td>{{ group.permissions.map(permLabel).join('、') || '无' }}</td>
+            <td v-if="canWrite">
+              <button class="btn btn-outline btn-sm" @click="editGroup(group)">编辑</button>
+              <button class="btn btn-danger btn-sm" @click="deleteGroup(group)">删除</button>
             </td>
           </tr>
         </tbody>
@@ -129,267 +139,171 @@
     </div>
   </div>
 </template>
-
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { useAdminApi } from '../composables/useAdminApi.js';
+import { useAdminAuth } from '../composables/useAdminAuth.js';
 import { useToast } from '../composables/useToast.js';
-import { ADMIN_PERMISSION_KEYS, ADMIN_PERMISSIONS, ADMIN_ROLES } from '../../shared/adminPermissions.js';
-
+import { ADMIN_PERMISSIONS, adminHasPermission } from '../../shared/adminPermissions.js';
+import { ADMIN_GROUP_PRESETS } from '../../shared/adminGroupPresets.js';
 const { adminFetch } = useAdminApi();
+const { can, fetchMe } = useAdminAuth();
 const { showToast } = useToast();
-
-const admins = ref([]);
-const loading = ref(true);
-const loadError = ref(false);
-const formVisible = ref(false);
-const saving = ref(false);
-const editing = ref(null);
-
-const form = ref({ username: '', password: '', role: 'admin', permissions: [] });
-
-const isEditingSelf = computed(() => Boolean(editing.value?.isSelf));
-const roleDesc = computed(
-  () => ADMIN_ROLES.find((role) => role.key === form.value.role)?.desc || ''
-);
-
-function permLabel(key) {
-  return ADMIN_PERMISSIONS.find((perm) => perm.key === key)?.label || key;
-}
-
-function openCreate() {
-  editing.value = null;
-  form.value = { username: '', password: '', role: 'admin', permissions: [] };
-  formVisible.value = true;
-}
-
-function openEdit(row) {
-  editing.value = row;
-  form.value = {
-    username: row.username,
-    password: '',
-    role: row.role,
-    // 旧的全权账号（permissions = NULL）默认全选，避免一保存就把权限清空
-    permissions: Array.isArray(row.permissions)
-      ? [...row.permissions]
-      : ADMIN_PERMISSION_KEYS.slice(),
+const canWrite = computed(() => can('manage:write'));
+const admins = ref([]),
+  groups = ref([]),
+  loading = ref(true),
+  loadError = ref(false),
+  saving = ref(false);
+const accountForm = ref(null),
+  accountId = ref(null),
+  groupForm = ref(null),
+  groupId = ref(null);
+const selectedPresetId = ref('');
+const selectedPreset = computed(() => ADMIN_GROUP_PRESETS.find((preset) => preset.id === selectedPresetId.value));
+const permLabel = (key) => ADMIN_PERMISSIONS.find((p) => p.key === key)?.label || key;
+const presetSummary = (preset) => ADMIN_PERMISSIONS.filter((permission) =>
+  adminHasPermission({ permissions: preset.permissions }, permission.key)
+).map((permission) => permission.label).join('、') || '无后台权限';
+function selectPreset(id) {
+  selectedPresetId.value = id;
+  const preset = selectedPreset.value;
+  if (!preset) return;
+  groupForm.value = {
+    id: groups.value.some((group) => group.id === preset.id) ? '' : preset.id,
+    name: preset.name,
+    permissions: [...preset.permissions],
   };
-  formVisible.value = true;
 }
-
-function closeForm() {
-  formVisible.value = false;
-  editing.value = null;
-}
-
-async function loadAdmins() {
+async function load() {
   loading.value = true;
   loadError.value = false;
   try {
-    admins.value = await adminFetch('/admin/admins');
+    [admins.value, groups.value] = await Promise.all([
+      adminFetch('/admin/admins'),
+      adminFetch('/admin/groups'),
+    ]);
   } catch (error) {
     loadError.value = true;
-    showToast('❌ ' + error.message, 'error');
+    showToast(error.message, 'error');
   } finally {
     loading.value = false;
   }
 }
-
-async function handleSave() {
-  const password = form.value.password;
-
-  if (!editing.value && !form.value.username.trim()) {
-    showToast('请输入用户名', 'error');
-    return;
-  }
-  if (!editing.value && (!password || password.length < 8)) {
-    showToast('密码至少 8 位', 'error');
-    return;
-  }
-  if (editing.value && password && password.length < 8) {
-    showToast('密码至少 8 位', 'error');
-    return;
-  }
-
-  const payload = {
-    role: form.value.role,
-    permissions: form.value.role === 'super' ? null : form.value.permissions,
+function editAccount(row) {
+  accountId.value = row?.id || null;
+  accountForm.value = {
+    username: row?.username || '',
+    password: '',
+    groupIds: [...(row?.groupIds || (groups.value.some((group) => group.id === 'ordinary') ? ['ordinary'] : []))],
   };
-  if (password) payload.password = password;
-
+}
+function editGroup(group) {
+  groupId.value = group?.id || null;
+  selectedPresetId.value = '';
+  groupForm.value = {
+    id: group?.id || '',
+    name: group?.name || '',
+    permissions: [...(group?.permissions || [])],
+  };
+}
+async function saveAccount() {
+  const f = accountForm.value;
   if (
-    editing.value?.isSelf &&
-    form.value.role !== 'super' &&
-    !confirm('确定降低自己的权限？降级后你将无法再打开「管理员账户」，需要另一个超级管理员帮你改回来。')
+    !f.username.trim() ||
+    (!accountId.value && f.password.length < 8) ||
+    (f.password && f.password.length < 8)
   ) {
+    showToast('请输入用户名和至少 8 位的密码', 'error');
     return;
   }
-
+  const payload = { groupIds: f.groupIds };
+  if (f.password) payload.password = f.password;
+  if (!accountId.value) payload.username = f.username.trim();
   saving.value = true;
   try {
-    if (editing.value) {
-      await adminFetch(`/admin/admins/${editing.value.id}`, {
-        method: 'PUT',
-        body: JSON.stringify(payload),
-      });
-      showToast('已保存', 'success');
-    } else {
-      await adminFetch('/admin/admins', {
-        method: 'POST',
-        body: JSON.stringify({
-          username: form.value.username.trim(),
-          password,
-          ...payload,
-        }),
-      });
-      showToast('账户已创建', 'success');
-    }
-    closeForm();
-    loadAdmins();
+    await adminFetch(
+      accountId.value ? `/admin/admins/${encodeURIComponent(accountId.value)}` : '/admin/admins',
+      { method: accountId.value ? 'PUT' : 'POST', body: JSON.stringify(payload) }
+    );
+    accountForm.value = null;
+    await fetchMe();
+    if (can('manage:read')) await load();
+    showToast('已保存', 'success');
   } catch (error) {
-    showToast('❌ ' + error.message, 'error');
+    showToast(error.message, 'error');
   } finally {
     saving.value = false;
   }
 }
-
-async function handleDelete(row) {
-  if (!confirm(`确认删除账户「${row.username}」？此操作不可撤销。`)) return;
+async function saveGroup() {
+  const f = groupForm.value;
+  if (!f.name.trim() || (!groupId.value && !f.id.trim())) {
+    showToast('请输入权限组标识和名称', 'error');
+    return;
+  }
+  if (!groupId.value && groups.value.some((group) => group.id === f.id.trim())) {
+    showToast('权限组标识已存在，请填写新标识', 'error');
+    return;
+  }
+  const payload = { name: f.name.trim(), permissions: f.permissions };
+  if (!groupId.value) payload.id = f.id.trim();
+  saving.value = true;
   try {
-    await adminFetch(`/admin/admins/${row.id}`, { method: 'DELETE' });
-    showToast('已删除', 'info');
-    loadAdmins();
+    await adminFetch(
+      groupId.value ? `/admin/groups/${encodeURIComponent(groupId.value)}` : '/admin/groups',
+      { method: groupId.value ? 'PUT' : 'POST', body: JSON.stringify(payload) }
+    );
+    groupForm.value = null;
+    await fetchMe();
+    if (can('manage:read')) await load();
+    showToast('已保存', 'success');
   } catch (error) {
-    showToast('❌ ' + error.message, 'error');
+    showToast(error.message, 'error');
+  } finally {
+    saving.value = false;
   }
 }
-
-onMounted(loadAdmins);
+async function deleteAccount(row) {
+  if (!confirm(`确认删除账户「${row.username}」？`)) return;
+  try {
+    await adminFetch(`/admin/admins/${encodeURIComponent(row.id)}`, { method: 'DELETE' });
+    await load();
+    showToast('已删除', 'success');
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+async function deleteGroup(group) {
+  if (!confirm(`确认删除权限组「${group.name}」？账户将移除此组。`)) return;
+  try {
+    await adminFetch(`/admin/groups/${encodeURIComponent(group.id)}`, { method: 'DELETE' });
+    await fetchMe();
+    if (can('manage:read')) await load();
+    showToast('已删除', 'success');
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+onMounted(load);
 </script>
-
 <style scoped>
-.module-hint {
-  margin: 0 0 18px;
-  font-size: 0.82rem;
-  line-height: 1.8;
-  color: #9aa0b5;
+.group-header {
+  margin-top: 32px;
 }
-
-.form-hint {
-  display: block;
-  margin-top: 6px;
-  font-size: 0.76rem;
-  color: #8a90a6;
-}
-
-.warn-text {
-  margin-top: 8px;
-  font-size: 0.76rem;
-  line-height: 1.7;
-  color: #e8a76f;
-}
-
-.form-row-block {
-  align-items: stretch;
-}
-
-.perm-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-  gap: 10px;
-  margin-top: 8px;
-}
-
-.perm-item {
+.choices {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 10px 12px;
-  border: 1px solid #2a2d3f;
-  border-radius: 6px;
-  background: #14161f;
-  cursor: pointer;
-  transition: border-color 0.2s;
+  flex-wrap: wrap;
+  gap: 10px 18px;
 }
-
-.perm-item.checked {
-  border-color: #9999ff;
-  box-shadow: inset 0 0 0 1px rgba(153, 153, 255, 0.35);
+.choices label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
-
-.perm-item input {
-  margin-bottom: 4px;
-  accent-color: #9999ff;
-}
-
-.perm-label {
-  font-size: 0.86rem;
-  color: #e7e8f2;
-}
-
-.perm-desc {
-  font-size: 0.72rem;
-  line-height: 1.5;
-  color: #8a90a6;
-}
-
-.role-badge {
-  display: inline-block;
-  padding: 2px 10px;
-  border-radius: 100px;
-  font-size: 0.74rem;
-  border: 1px solid #2a2d3f;
-  color: #b9bce0;
-}
-
-.role-badge.super {
-  border-color: rgba(232, 199, 111, 0.6);
-  color: #e8c76f;
-  background: rgba(232, 199, 111, 0.08);
-}
-
-.badge-self {
-  margin-left: 6px;
-  padding: 1px 7px;
-  border-radius: 100px;
-  font-size: 0.68rem;
-  color: #9999ff;
-  border: 1px solid rgba(153, 153, 255, 0.45);
-}
-
-.perm-tag {
-  display: inline-block;
-  margin: 2px 4px 2px 0;
-  padding: 1px 8px;
-  border-radius: 4px;
-  font-size: 0.72rem;
-  color: #b9bce0;
-  background: rgba(153, 153, 255, 0.1);
-}
-
-.perm-tag.all {
-  color: #e8c76f;
-  background: rgba(232, 199, 111, 0.1);
-}
-
-.perm-tag.none {
-  color: #8a90a6;
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.edit-btn {
-  margin-right: 8px;
-  padding: 3px 10px;
-  border: 1px solid #2a2d3f;
-  border-radius: 4px;
-  background: transparent;
-  color: #b9bce0;
-  font-size: 0.76rem;
-  cursor: pointer;
-}
-
-.edit-btn:hover {
-  border-color: #9999ff;
-  color: #9999ff;
+.hint {
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  margin: 12px 0;
 }
 </style>

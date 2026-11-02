@@ -4,14 +4,12 @@ import { adminHasPermission } from '../../shared/adminPermissions.js';
 
 // 模块级单例状态：所有引入本组合式函数的组件共享同一份登录态与权限
 const token = ref(localStorage.getItem('adminToken') || '');
-// 当前管理员档案：{ id, username, role, permissions, isSuper, allAccess }
+
 const admin = ref(null);
 const profileLoaded = ref(false);
 
 const isAuthenticated = computed(() => !!token.value);
-const isSuperAdmin = computed(
-    () => !!admin.value && (admin.value.role === 'super' || admin.value.permissions === null)
-);
+
 
 async function fetchMe() {
     if (!token.value) {
@@ -77,7 +75,6 @@ export function useAdminAuth() {
         admin,
         profileLoaded,
         isAuthenticated,
-        isSuperAdmin,
         can,
         login,
         logout,

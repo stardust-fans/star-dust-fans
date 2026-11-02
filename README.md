@@ -36,6 +36,60 @@ npm run deploy         # wrangler deploy 部署 Worker
 
 数据库结构定义见 `tool/schema.sql`；增量迁移脚本在 `migrations/`，通过 `wrangler d1 migrations apply` 应用。
 
+### 管理员账号与权限组
+
+管理员账号、密码哈希、权限组及其成员关系统一保存在 `ADMIN_ACCOUNTS` Workers Secret。账号可加入多个组，有效权限是各组权限的并集。
+
+权限使用 `资源:动作`：例如 `songs:read`、`songs:write`、`manage:read`、`manage:write`。写权限包含同资源读权限；`manage` 只管理账号和权限组，内容管理权限需另行分配。后台可自定义权限组名称、勾选权限并给账号分配多个组。无读取权限时不显示模块入口，无写入权限时不显示修改控件；后端独立拒绝越权请求。
+
+初始化提供以下 13 个后台权限组预设。它们是可编辑的普通权限组，账号可以组合加入多个组；“区域”按功能模块划分。
+
+| 权限组 | 默认权限 |
+| :-- | :-- |
+| 普通用户 | 无后台权限 |
+| 只读观察员 | 歌曲、日报、同人、量贩、标签、致谢的读取权限 |
+| 歌曲区管理员 | `songs:write` |
+| 日报区管理员 | `daily:write` |
+| 同人区管理员 | `fanart:write` |
+| 量贩区管理员 | `shop:write` |
+| 投稿审核员 | `review:write` |
+| 标签管理员 | `tags:write` |
+| 致谢维护员 | `thanks:write` |
+| 评论管理员 | `comments:write`，可删除评论 |
+| 安全审计员 | `audit:read` |
+| 账号与权限管理员 | `manage:write`，不授予内容模块权限 |
+| 站点管理员 | 全部已定义权限 |
+
+例如，同人区管理员加入“投稿审核员”组后，可同时维护同人内容和审核投稿。只读观察员不默认获得待审内容、安全记录或账号管理的读取权限。新建后台账号默认选择已存在的“普通用户”组；该预设与公开站的注册账号体系分别管理。
+
+首次安装运行 `node tool/hash_admin_password.mjs [用户名]`，交互输入至少 8 位密码；标准输出为全部预设组和初始账号，初始账号只加入“站点管理员”组。将结果配置为 `ADMIN_ACCOUNTS` Secret。密码不接受命令行参数。下方是简化的存储结构示例：
+
+```json
+{
+  "nextId": 2,
+  "groups": [{
+    "id": "owners",
+    "name": "站点管理员",
+    "permissions": ["manage:write", "songs:write"]
+  }],
+  "accounts": [{
+    "id": 1,
+    "username": "admin",
+    "password_hash": "<脚本生成的 PBKDF2 哈希>",
+    "groupIds": ["owners"],
+    "created_at": "2026-11-01T00:00:00.000Z"
+  }]
+}
+```
+
+`nextId` 单调递增，不复用删除账号的 ID。组 ID 使用小写字母开头的字母、数字、下划线或连字符，最长 64 字符。所有成员引用必须指向有效组；账号或组的修改必须保留至少一个拥有 `manage:write` 的账号。删除组会移除账号中的对应成员关系。既有站点启用前，先配置完整账号和权限组，保留原 ID 与密码哈希。
+
+管理页面可以从预设复制新权限组，调整名称与权限后显式保存；选择预设不会立即写入，也不会覆盖已有组。预设定义不会自动重置已经保存的权限配置。
+
+后台保存还需要 `CF_API_TOKEN` Secret（目标账户的 Workers Scripts Write 权限）、`CF_ACCOUNT_ID` 和 `WORKER_NAME`（与部署名称一致，例如 `stardust`）。通过 Cloudflare 控制台配置；本地开发使用 `.dev.vars`。凭据、账号 Secret 不写入源码、公开变量或日志。
+
+保存通过 [Cloudflare Workers Secrets API](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/secrets/methods/update/) 更新整个 Secret，随新部署的 env 生效。请等更改显示后再进行下一次保存；并发保存时，后写入覆盖先前快照。本地 env 文件不会随远程 Secret 更新。
+
 ### LRC 歌词数据
 
 `npm run build` 会从 [LRC · V宇宙词站](https://lrc.leisiyu.dev) 的[公开仓库](https://github.com/lsy-404/LRC)获取歌词目录、专辑包与封面，并固定到同一个上游提交。数据独立输出到 `static/data/lrc/`，随静态资源发布，不写入歌曲数据库；下载来源不完整时构建会失败。
@@ -117,7 +171,11 @@ SAML 2.0 入口提供 IdP 元数据、HTTP-Redirect/HTTP-POST SSO、带 XML Sign
 
 ## CI/CD
 
-GitHub Actions 在 Pull Request 上自动构建、测试，并在评论中给出预览部署链接与数据库变更提示；合并到 `main` 后自动应用 D1 迁移并部署到生产环境。
+GitHub Actions 在 Pull Request 上构建、检查代码与静态 SQL、运行测试，并发布缩略评论和预览链接。只有明确失败和明显性能回退才展开细节；完整结果留在 Checks 和报告 artifact。
+
+静态 SQL 通过 SQLite 查询计划编译校验，不执行查询或数据修改；动态拼接语句由行为测试覆盖。性能基线取最近已合并主分支的成功报告：同一测试耗时至少增至 3 倍且增加 250 ms，或共有测试总耗时至少翻倍且增加 1 秒才报告；相同 SQL 从索引检索退化为全表扫描也会报告。没有基线时显示尚无基线，不推断性能结论。
+
+敏感路径改动会自动请求其他贡献者评审。主分支合并后自动应用 D1 迁移并部署。
 
 ## 声明
 

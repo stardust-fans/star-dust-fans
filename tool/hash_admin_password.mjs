@@ -1,20 +1,15 @@
-// 一次性本地脚本：为管理员账号生成 PBKDF2-HMAC-SHA256 密码哈希串，
-// 用于手动 bootstrap（wrangler d1 execute 插入 admins 表）。
-// 用法：node tool/hash_admin_password.mjs   （交互式从 stdin 读密码，不接受命令行参数，避免落进 shell history）
-//
-// 迭代次数必须与 worker.js 的 PBKDF2_ITERATIONS 保持一致（见 agents/decisions.md 的实测记录）。
+import { ADMIN_GROUP_PRESETS } from '../src/shared/adminGroupPresets.js';
+
 const PBKDF2_ITERATIONS = 50_000;
 
 const { subtle } = await import('node:crypto').then(m => m.webcrypto);
 
 function readPasswordFromStdin() {
     return new Promise((resolve) => {
-        process.stdout.write('输入密码（不会回显）: ');
+        process.stderr.write('输入密码（不会回显）: ');
         const stdin = process.stdin;
 
         if (!stdin.isTTY) {
-            // 非交互场景（管道/重定向）：不做掩码，仅读取整行——用于脚本化测试，
-            // 真实 bootstrap 操作应在真实终端里跑，走下面的掩码分支。
             let raw = '';
             stdin.setEncoding('utf8');
             stdin.on('data', (chunk) => { raw += chunk; });
@@ -33,7 +28,7 @@ function readPasswordFromStdin() {
                 stdin.setRawMode(false);
                 stdin.pause();
                 stdin.removeListener('data', onData);
-                process.stdout.write('\n');
+                process.stderr.write('\n');
                 resolve(input);
                 return;
             }
@@ -66,12 +61,21 @@ async function hashPassword(password, iterations = PBKDF2_ITERATIONS) {
 }
 
 const password = await readPasswordFromStdin();
-if (!password) {
-    console.error('密码不能为空');
+if (password.length < 8) {
+    console.error('密码至少 8 位');
     process.exit(1);
 }
 const hash = await hashPassword(password);
-console.log('\n生成的哈希串（用于 admins.password_hash）：\n');
-console.log(hash);
-console.log('\n示例插入命令：');
-console.log(`npx wrangler d1 execute stardust-db --remote --command "INSERT INTO admins (username, password_hash) VALUES ('admin', '${hash}')"`);
+const username = (process.argv[2] || 'admin').trim();
+if (!username || process.argv.length > 3) {
+    console.error('用法：node tool/hash_admin_password.mjs [用户名]');
+    process.exit(1);
+}
+console.log(JSON.stringify({
+    nextId: 2,
+    groups: ADMIN_GROUP_PRESETS.map(({ id, name, permissions }) => ({ id, name, permissions: [...permissions] })),
+    accounts: [{
+        id: 1, username, password_hash: hash, groupIds: ['owners'],
+        created_at: new Date().toISOString(),
+    }],
+}));
