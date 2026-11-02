@@ -1,5 +1,6 @@
 import { env, createExecutionContext, waitOnExecutionContext, SELF } from 'cloudflare:test';
 import { describe, it, expect, beforeAll, vi, afterEach } from 'vitest';
+import { ADMIN_PERMISSION_KEYS } from '../src/shared/adminPermissions.js';
 import worker from '../worker.js';
 
 const encode = (value) => btoa(String.fromCharCode(...new TextEncoder().encode(value)))
@@ -19,7 +20,8 @@ beforeAll(async () => {
     await env.DB.prepare("INSERT OR IGNORE INTO users (id, username, email, password_hash) VALUES (9001, 'test-user', 'test-user@example.com', 'unused')").run();
     env.ADMIN_ACCOUNTS = JSON.stringify({
         nextId: 9003,
-        accounts: [{ id: 9002, username: 'test-admin', password_hash: 'unused', role: 'super', permissions: [], created_at: '2026-11-01T00:00:00.000Z' }],
+        groups: [{ id: 'owners', name: 'Owners', permissions: ADMIN_PERMISSION_KEYS }],
+        accounts: [{ id: 9002, username: 'test-admin', password_hash: 'unused', groupIds: ['owners'], created_at: '2026-11-01T00:00:00.000Z' }],
     });
 });
 
@@ -569,17 +571,22 @@ describe('Auth endpoint', () => {
     });
 });
 
-describe('Admin role permissions', () => {
+describe('Admin permission groups', () => {
     const scopedHeaders = async (sub) => ({
         Authorization: `Bearer ${await token({ sub, username: 'scoped-admin', role: 'admin' })}`,
     });
-    const scopedEnv = (permissions = ['review']) => ({
+    const scopedEnv = (groupIds = ['reviewers']) => ({
         ...env,
         ADMIN_ACCOUNTS: JSON.stringify({
             nextId: 9011,
+            groups: [
+                { id: 'owners', name: 'Owners', permissions: ADMIN_PERMISSION_KEYS },
+                { id: 'reviewers', name: 'Reviewers', permissions: ['review:read', 'review:write'] },
+                { id: 'tag-editors', name: 'Tag Editors', permissions: ['tags:write'] },
+            ],
             accounts: [
-                { id: 9002, username: 'test-admin', password_hash: 'unused', role: 'super', permissions: [], created_at: '2026-11-01T00:00:00.000Z' },
-                { id: 9010, username: 'reviewer', password_hash: 'unused', role: 'admin', permissions, created_at: '2026-11-01T00:00:00.000Z' },
+                { id: 9002, username: 'test-admin', password_hash: 'unused', groupIds: ['owners'], created_at: '2026-11-01T00:00:00.000Z' },
+                { id: 9010, username: 'reviewer', password_hash: 'unused', groupIds, created_at: '2026-11-01T00:00:00.000Z' },
             ],
         }),
     });
@@ -597,17 +604,18 @@ describe('Admin role permissions', () => {
         const headers = await scopedHeaders(9010);
         const profile = await (await req('/api/admin/me', { headers }, scopedEnv())).json();
         expect(profile).toMatchObject({
+            id: 9010,
             username: 'reviewer',
-            role: 'admin',
-            permissions: ['review'],
-            isSuper: false,
+            groupIds: ['reviewers'],
+            groups: [{ id: 'reviewers', name: 'Reviewers' }],
+            permissions: ['review:read', 'review:write'],
         });
     });
 
     it('applies permission changes without waiting for the token to expire', async () => {
         const headers = await scopedHeaders(9010);
-        expect((await req('/api/admin/tags', { headers }, scopedEnv(['tags']))).status).toBe(200);
-        expect((await req('/api/admin/pending', { headers }, scopedEnv(['tags']))).status).toBe(403);
+        expect((await req('/api/admin/tags', { headers }, scopedEnv(['tag-editors']))).status).toBe(200);
+        expect((await req('/api/admin/pending', { headers }, scopedEnv(['tag-editors']))).status).toBe(403);
     });
 
     it('rejects tokens of admin accounts that no longer exist', async () => {
@@ -629,41 +637,48 @@ describe('Admin account secret CRUD', () => {
             WORKER_NAME: 'test-worker',
         };
 
-        const demoteSuper = await req('/api/admin/admins/9002', {
-            method: 'PUT', headers, body: JSON.stringify({ role: 'admin', permissions: ['review'] }),
+        const removeManagerRights = await req('/api/admin/admins/9002', {
+            method: 'PUT', headers, body: JSON.stringify({ groupIds: ['reviewers'] }),
         }, cloudflareEnv);
-        expect(demoteSuper.status).toBe(400);
+        expect(removeManagerRights.status).toBe(400);
         const deleteSuper = await req('/api/admin/admins/9002', { method: 'DELETE', headers }, cloudflareEnv);
         expect(deleteSuper.status).toBe(400);
         expect(fetchMock).not.toHaveBeenCalled();
 
         const createdResponse = await req('/api/admin/admins', {
             method: 'POST', headers,
-            body: JSON.stringify({ username: 'created-reviewer', password: 'secure-password', role: 'admin', permissions: ['review'] }),
+            body: JSON.stringify({ username: 'created-reviewer', password: 'secure-password', groupIds: ['reviewers'] }),
         }, cloudflareEnv);
         expect(createdResponse.status).toBe(200);
         const created = await createdResponse.json();
-        expect(created).toMatchObject({ success: true, id: 9003, role: 'admin', permissions: ['review'] });
+        expect(created).toMatchObject({
+            success: true, id: 9003, username: 'created-reviewer', groupIds: ['reviewers'],
+            groups: [{ id: 'reviewers', name: 'Reviewers' }], permissions: ['review:read', 'review:write'],
+        });
         const postedStore = JSON.parse(JSON.parse(fetchMock.mock.calls.at(-1)[1].body).text);
         expect(postedStore.nextId).toBe(9004);
         expect(postedStore.accounts.find(account => account.id === created.id)).toMatchObject({
-            username: 'created-reviewer', role: 'admin', permissions: ['review'],
+            username: 'created-reviewer', groupIds: ['reviewers'],
         });
         expect(postedStore.accounts.find(account => account.id === created.id).password_hash).not.toBe('secure-password');
 
         const updatedEnv = { ...cloudflareEnv, ADMIN_ACCOUNTS: JSON.stringify(postedStore) };
         const updatedResponse = await req(`/api/admin/admins/${created.id}`, {
             method: 'PUT', headers,
-            body: JSON.stringify({ permissions: ['tags'] }),
+            body: JSON.stringify({ groupIds: ['tag-editors'] }),
         }, updatedEnv);
         expect(updatedResponse.status).toBe(200);
-        expect(await updatedResponse.json()).toMatchObject({ success: true, role: 'admin', permissions: ['tags'] });
+        expect(await updatedResponse.json()).toMatchObject({
+            success: true, groupIds: ['tag-editors'], groups: [{ id: 'tag-editors', name: 'Tag Editors' }],
+            permissions: ['tags:read', 'tags:write'],
+        });
         const updatedStore = JSON.parse(JSON.parse(fetchMock.mock.calls.at(-1)[1].body).text);
-        expect(updatedStore.accounts.find(account => account.id === created.id).permissions).toEqual(['tags']);
+        expect(updatedStore.accounts.find(account => account.id === created.id).groupIds).toEqual(['tag-editors']);
 
         const listedAccounts = await (await req('/api/admin/admins', { headers }, { ...cloudflareEnv, ADMIN_ACCOUNTS: JSON.stringify(updatedStore) })).json();
         expect(listedAccounts.find(account => account.id === created.id)).toMatchObject({
-            username: 'created-reviewer', role: 'admin', permissions: ['tags'], allAccess: false,
+            username: 'created-reviewer', groupIds: ['tag-editors'],
+            groups: [{ id: 'tag-editors', name: 'Tag Editors' }], permissions: ['tags:read', 'tags:write'], isSelf: false,
         });
         expect(listedAccounts.find(account => account.id === created.id)).not.toHaveProperty('password_hash');
 
@@ -674,7 +689,7 @@ describe('Admin account secret CRUD', () => {
         }, { ...cloudflareEnv, ADMIN_ACCOUNTS: JSON.stringify(updatedStore) });
         expect(loginResponse.status).toBe(200);
         const loggedIn = await loginResponse.json();
-        expect(loggedIn.admin).toMatchObject({ username: 'created-reviewer', permissions: ['tags'] });
+        expect(loggedIn.admin).toMatchObject({ username: 'created-reviewer', groupIds: ['tag-editors'], permissions: ['tags:read', 'tags:write'] });
 
         const deletedResponse = await req(`/api/admin/admins/${created.id}`, { method: 'DELETE', headers }, { ...cloudflareEnv, ADMIN_ACCOUNTS: JSON.stringify(updatedStore) });
         expect(deletedResponse.status).toBe(200);
@@ -701,7 +716,7 @@ describe('Admin account secret CRUD', () => {
 
         const response = await req('/api/admin/admins', {
             method: 'POST', headers,
-            body: JSON.stringify({ username: 'failed-reviewer', password: 'secure-password', role: 'admin', permissions: ['review'] }),
+            body: JSON.stringify({ username: 'failed-reviewer', password: 'secure-password', groupIds: ['reviewers'] }),
         }, requestEnv);
 
         expect(response.status).toBe(502);
