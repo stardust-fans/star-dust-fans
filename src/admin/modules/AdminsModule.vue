@@ -79,6 +79,20 @@
     <div v-if="canWrite && groupForm" class="form-panel">
       <h3>{{ groupId ? '编辑权限组' : '新增权限组' }}</h3>
       <div v-if="!groupId" class="form-row">
+        <label for="group-preset">从预设创建</label>
+        <select id="group-preset" :value="selectedPresetId" @change="selectPreset($event.target.value)">
+          <option value="">不使用预设</option>
+          <option v-for="preset in ADMIN_GROUP_PRESETS" :key="preset.id" :value="preset.id">
+            {{ preset.name }}{{ groups.some((group) => group.id === preset.id) ? '（标识已存在，需填写新标识）' : '' }}
+          </option>
+        </select>
+      </div>
+      <template v-if="!groupId && selectedPreset">
+        <p class="hint">{{ selectedPreset.description }}</p>
+        <p class="hint">预设权限：{{ presetSummary(selectedPreset) }}</p>
+        <p v-if="groups.some((group) => group.id === selectedPreset.id)" class="hint">该预设标识已存在，请填写新标识后保存为新权限组。</p>
+      </template>
+      <div v-if="!groupId" class="form-row">
         <label>标识</label><input v-model="groupForm.id" placeholder="权限组标识" />
       </div>
       <div class="form-row"><label>名称</label><input v-model="groupForm.name" /></div>
@@ -130,7 +144,8 @@ import { ref, computed, onMounted } from 'vue';
 import { useAdminApi } from '../composables/useAdminApi.js';
 import { useAdminAuth } from '../composables/useAdminAuth.js';
 import { useToast } from '../composables/useToast.js';
-import { ADMIN_PERMISSIONS } from '../../shared/adminPermissions.js';
+import { ADMIN_PERMISSIONS, adminHasPermission } from '../../shared/adminPermissions.js';
+import { ADMIN_GROUP_PRESETS } from '../../shared/adminGroupPresets.js';
 const { adminFetch } = useAdminApi();
 const { can, fetchMe } = useAdminAuth();
 const { showToast } = useToast();
@@ -144,7 +159,22 @@ const accountForm = ref(null),
   accountId = ref(null),
   groupForm = ref(null),
   groupId = ref(null);
+const selectedPresetId = ref('');
+const selectedPreset = computed(() => ADMIN_GROUP_PRESETS.find((preset) => preset.id === selectedPresetId.value));
 const permLabel = (key) => ADMIN_PERMISSIONS.find((p) => p.key === key)?.label || key;
+const presetSummary = (preset) => ADMIN_PERMISSIONS.filter((permission) =>
+  adminHasPermission({ permissions: preset.permissions }, permission.key)
+).map((permission) => permission.label).join('、') || '无后台权限';
+function selectPreset(id) {
+  selectedPresetId.value = id;
+  const preset = selectedPreset.value;
+  if (!preset) return;
+  groupForm.value = {
+    id: groups.value.some((group) => group.id === preset.id) ? '' : preset.id,
+    name: preset.name,
+    permissions: [...preset.permissions],
+  };
+}
 async function load() {
   loading.value = true;
   loadError.value = false;
@@ -165,11 +195,12 @@ function editAccount(row) {
   accountForm.value = {
     username: row?.username || '',
     password: '',
-    groupIds: [...(row?.groupIds || [])],
+    groupIds: [...(row?.groupIds || (groups.value.some((group) => group.id === 'ordinary') ? ['ordinary'] : []))],
   };
 }
 function editGroup(group) {
   groupId.value = group?.id || null;
+  selectedPresetId.value = '';
   groupForm.value = {
     id: group?.id || '',
     name: group?.name || '',
@@ -209,6 +240,10 @@ async function saveGroup() {
   const f = groupForm.value;
   if (!f.name.trim() || (!groupId.value && !f.id.trim())) {
     showToast('请输入权限组标识和名称', 'error');
+    return;
+  }
+  if (!groupId.value && groups.value.some((group) => group.id === f.id.trim())) {
+    showToast('权限组标识已存在，请填写新标识', 'error');
     return;
   }
   const payload = { name: f.name.trim(), permissions: f.permissions };
