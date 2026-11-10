@@ -153,6 +153,26 @@ a {
     letter-spacing: 0.16em;
     color: var(--ink-faint);
     text-transform: uppercase;
+    /* 站点切换入口：整块可点，避免被父级 RouterLink 抢走点击 */
+    cursor: pointer;
+    padding: 1px 5px;
+    margin-left: -5px;
+    border-radius: 4px;
+    transition: color 0.2s var(--ease), background 0.2s var(--ease);
+}
+
+.nav-brand .nav-brand-mark:hover,
+.nav-brand .nav-brand-mark:focus-visible {
+    color: var(--cobalt);
+    background: var(--cobalt-wash);
+    outline: none;
+}
+
+.nav-brand .nav-brand-mark::after {
+    content: '▾';
+    margin-left: 5px;
+    font-size: 0.62em;
+    opacity: 0.6;
 }
 
 .nav-brand:hover {
