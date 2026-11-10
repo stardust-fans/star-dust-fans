@@ -82,6 +82,13 @@ function pick(station) {
     showToast(`${station.name}站还在建设中，敬请期待`, 'info');
     return;
   }
+  // 站点在另一个子域名上就直接跳过去，同一域名只是关掉面板
+  const origin = station.origins?.[0];
+  const here = window.location.hostname;
+  if (origin && origin !== here) {
+    window.location.href = `https://${origin}${window.location.pathname}${window.location.search}`;
+    return;
+  }
   emit('select', station);
   close();
 }
