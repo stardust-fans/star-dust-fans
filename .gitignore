@@ -9,6 +9,7 @@ data/*.db
 *.sql
 !migrations/*.sql
 !tool/schema.sql
+!tool/content-schema.sql
 .cfld.json
 .DS_Store
 dist/
