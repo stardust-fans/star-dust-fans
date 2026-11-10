@@ -10,7 +10,15 @@
           height="26"
         />
         星尘
-        <span class="nav-brand-mark">吸尘器聚集地</span>
+        <span
+          class="nav-brand-mark"
+          role="button"
+          tabindex="0"
+          title="切换站点"
+          @click.prevent.stop="openStations"
+          @keydown.enter.prevent.stop="openStations"
+          @keydown.space.prevent.stop="openStations"
+        >吸尘器聚集地</span>
       </RouterLink>
       <ul class="nav-menu" :class="{ open: menuOpen }">
         <li><RouterLink to="/" @click="closeMenu">主页</RouterLink></li>
@@ -40,17 +48,25 @@
       </button>
     </div>
   </nav>
+
+  <StationSwitcher v-model:open="stationsOpen" />
 </template>
 
 <script setup>
 import { ref, watch, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useLogin } from "../composables/useLogin.js";
+import StationSwitcher from "./StationSwitcher.vue";
 
 const route = useRoute();
 const router = useRouter();
 const menuOpen = ref(false);
+const stationsOpen = ref(false);
 const { getUser, refreshUser } = useLogin();
+
+function openStations() {
+  stationsOpen.value = true;
+}
 
 const user = ref(getUser());
 
