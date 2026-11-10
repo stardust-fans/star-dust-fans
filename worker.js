@@ -187,12 +187,15 @@ async function handleRequest(request, env, ctx) {
     // 认不出域名（localhost / 预览域名 / 未知子域）时回落到默认站，行为与单站时期一致
     const currentSite = resolveSiteByHost(url.hostname);
 
-    // 内容库入口：各站的 songs / fanart / shop 等内容表从这里取。
-    // 现在所有站都还指向 env.DB（尘站库），切库时只改 sites.js 里的 contentDb。
-    // 身份表（users / admins / audit_logs / oidc_* …）不走这里，永远留在 IDENTITY_DB。
+    // 内容库入口：各站的 songs / fanart / shop / comments / forum 等内容表从这里取。
+    // 尘站现在仍然指向 env.DB（同一个库），子站会指向 sites.js 里各自的 contentDb。
+    // 身份表（users / admins / audit_logs / oidc_* …）不走这里，永远留在身份库 env.DB。
     function contentDb(site = currentSite) {
         return env[site?.contentDb] || env.DB;
     }
+
+    // 本次请求的内容库句柄（所有内容查询都用它，身份查询继续用 env.DB）
+    const siteDb = contentDb(currentSite);
 
     // ===== CORS 响应包装函数 =====
     function jsonResponse(data, status = 200) {
@@ -274,7 +277,7 @@ async function handleRequest(request, env, ctx) {
             const safeLimit = Number.isNaN(limit) ? 1000 : Math.min(Math.max(limit, 1), 1000);
             const safeOffset = Number.isNaN(offset) ? 0 : Math.max(offset, 0);
 
-            const stmt = env.DB.prepare(`
+            const stmt = siteDb.prepare(`
                 SELECT id, bvid, title, cover_url, description, duration, pubdate,
                        owner_name, owner_mid, owner_face,
                        stat_view, stat_danmaku, stat_reply, stat_favorite, stat_coin, stat_share, stat_like,
@@ -387,7 +390,7 @@ async function handleRequest(request, env, ctx) {
         }
         try {
             const { where, params } = songFilter(url.searchParams, adminList);
-            const stmt = env.DB.prepare(`SELECT COUNT(*) as total FROM songs WHERE ${where}`);
+            const stmt = siteDb.prepare(`SELECT COUNT(*) as total FROM songs WHERE ${where}`);
             const result = await stmt.bind(...params).first();
             return jsonResponse({ total: result?.total || 0 });
         } catch (error) {
@@ -399,7 +402,7 @@ async function handleRequest(request, env, ctx) {
     // ===== 1.5 GET /api/daily =====
     if (path === '/api/daily' && method === 'GET') {
         try {
-            const stmt = env.DB.prepare(`
+            const stmt = siteDb.prepare(`
                 SELECT id, title, content, source_url, cover_url, publish_date
                 FROM daily
                 WHERE status = 'published'
@@ -416,7 +419,7 @@ async function handleRequest(request, env, ctx) {
     // ===== 公开标签列表 =====
     if (path === '/api/tags' && method === 'GET') {
         try {
-            const result = await env.DB.prepare(
+            const result = await siteDb.prepare(
                 'SELECT id, name, sort_order FROM tags ORDER BY sort_order ASC, id ASC'
             ).all();
             return jsonResponse(result.results || []);
@@ -438,12 +441,12 @@ async function handleRequest(request, env, ctx) {
             }
             const trimmed = String(name).trim().slice(0, 32);
 
-            const existing = await env.DB.prepare('SELECT id FROM tags WHERE name = ?').bind(trimmed).first();
+            const existing = await siteDb.prepare('SELECT id FROM tags WHERE name = ?').bind(trimmed).first();
             if (existing) return jsonResponse({ error: '标签已存在' }, 409);
 
             // 申请表（可选，如果你想审核）
             // 这里直接创建，管理员可在后台看到并清理
-            const result = await env.DB.prepare(
+            const result = await siteDb.prepare(
                 'INSERT INTO tags (name, sort_order) VALUES (?, 999)'
             ).bind(trimmed).run();
 
@@ -456,7 +459,7 @@ async function handleRequest(request, env, ctx) {
     // ===== 1.6 GET /api/fanart =====
     if (path === '/api/fanart' && method === 'GET') {
         try {
-            const stmt = env.DB.prepare(`
+            const stmt = siteDb.prepare(`
                 SELECT id, title, author, description, image_url, bilibili_url, source_url, type, tags, attachments
                 FROM fanart
                 WHERE status = 'published'
@@ -473,7 +476,7 @@ async function handleRequest(request, env, ctx) {
     // ===== 1.7 GET /api/shop =====
     if (path === '/api/shop' && method === 'GET') {
         try {
-            const stmt = env.DB.prepare(`
+            const stmt = siteDb.prepare(`
                 SELECT id, title, description, price, image_url, bilibili_url, xianyu_url, other_url, status
                 FROM shop
                 WHERE status IN ('waiting', 'shipped')
@@ -545,7 +548,7 @@ async function handleRequest(request, env, ctx) {
         const denied = requirePermission(isAdmin, 'tags');
         if (denied) return denied;
         try {
-            const result = await env.DB.prepare(
+            const result = await siteDb.prepare(
                 'SELECT id, name, sort_order FROM tags ORDER BY sort_order ASC, id ASC'
             ).all();
             return jsonResponse(result.results || []);
@@ -563,10 +566,10 @@ async function handleRequest(request, env, ctx) {
                 return jsonResponse({ error: '标签名不能为空' }, 400);
             }
             const trimmed = String(name).trim().slice(0, 32);
-            const existing = await env.DB.prepare('SELECT id FROM tags WHERE name = ?').bind(trimmed).first();
+            const existing = await siteDb.prepare('SELECT id FROM tags WHERE name = ?').bind(trimmed).first();
             if (existing) return jsonResponse({ error: '标签已存在' }, 409);
 
-            const result = await env.DB.prepare(
+            const result = await siteDb.prepare(
                 'INSERT INTO tags (name, sort_order) VALUES (?, ?)'
             ).bind(trimmed, sort_order || 0).run();
 
@@ -582,7 +585,7 @@ async function handleRequest(request, env, ctx) {
         if (denied) return denied;
         try {
             const id = adminTagMatch[1];
-            await env.DB.prepare('DELETE FROM tags WHERE id = ?').bind(id).run();
+            await siteDb.prepare('DELETE FROM tags WHERE id = ?').bind(id).run();
             return jsonResponse({ success: true });
         } catch (error) {
             return jsonResponse({ error: error.message }, 500);
@@ -918,13 +921,13 @@ async function handleRequest(request, env, ctx) {
                 coverBase64 = normalized;
             }
 
-            const existStmt = env.DB.prepare('SELECT id FROM songs WHERE bvid = ?');
+            const existStmt = siteDb.prepare('SELECT id FROM songs WHERE bvid = ?');
             const existing = await existStmt.bind(bvid).first();
             if (existing) {
                 return jsonResponse({ error: '该歌曲已存在' }, 409);
             }
 
-            const stmt = env.DB.prepare(`
+            const stmt = siteDb.prepare(`
                 INSERT INTO songs (
                     bvid, title, cover_base64, cover_url, description, duration, pubdate,
                     owner_name, owner_mid, owner_face,
@@ -1001,7 +1004,7 @@ async function handleRequest(request, env, ctx) {
             }
             const isSnapshotRefresh = title !== undefined;
 
-            const stmt = env.DB.prepare(`
+            const stmt = siteDb.prepare(`
                 UPDATE songs SET
                     title = COALESCE(?, title),
                     cover_base64 = COALESCE(?, cover_base64),
@@ -1085,8 +1088,8 @@ async function handleRequest(request, env, ctx) {
         if (denied) return denied;
         try {
             const id = deleteMatch[1];
-            const target = await env.DB.prepare('SELECT title FROM songs WHERE id = ?').bind(id).first();
-            const stmt = env.DB.prepare(`
+            const target = await siteDb.prepare('SELECT title FROM songs WHERE id = ?').bind(id).first();
+            const stmt = siteDb.prepare(`
                 UPDATE songs SET status = 'deleted', updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
             `);
@@ -1469,7 +1472,7 @@ async function handleRequest(request, env, ctx) {
             return jsonResponse({ error: 'Invalid ID' }, 400);
         }
         try {
-            const stmt = env.DB.prepare('SELECT * FROM fanart WHERE id = ? AND status = "published"');
+            const stmt = siteDb.prepare('SELECT * FROM fanart WHERE id = ? AND status = "published"');
             const result = await stmt.bind(id).first();
             if (!result) {
                 return jsonResponse({ error: 'Not Found' }, 404);
@@ -1496,13 +1499,13 @@ async function handleRequest(request, env, ctx) {
             if (!user) return jsonResponse({ error: '用户不存在或已注销' }, 404);
 
             const [fanart, shop] = await Promise.all([
-                env.DB.prepare(`
+                siteDb.prepare(`
                     SELECT id, title, image_url, type, created_at
                     FROM fanart
                     WHERE user_id = ? AND status = 'published'
                     ORDER BY created_at DESC
                 `).bind(id).all(),
-                env.DB.prepare(`
+                siteDb.prepare(`
                     SELECT id, title, image_url, price, created_at
                     FROM shop
                     WHERE user_id = ? AND status IN ('waiting', 'shipped')
@@ -1759,7 +1762,7 @@ async function handleRequest(request, env, ctx) {
         }
 
         try {
-            const result = await env.DB.prepare(`
+            const result = await siteDb.prepare(`
                 SELECT id, title, author, description, image_url, bilibili_url, source_url, type, status, created_at ,  attachments
                 FROM fanart WHERE user_id = ? ORDER BY created_at DESC
             `).bind(userId).all();
@@ -1779,7 +1782,7 @@ async function handleRequest(request, env, ctx) {
         }
 
         try {
-            const result = await env.DB.prepare(`
+            const result = await siteDb.prepare(`
                 SELECT id, title, description, price, image_url, bilibili_url, xianyu_url, other_url, status, ship_time, created_at
                 FROM shop WHERE user_id = ? ORDER BY created_at DESC
             `).bind(userId).all();
@@ -1798,7 +1801,7 @@ async function handleRequest(request, env, ctx) {
             return jsonResponse({ error: 'Invalid ID' }, 400);
         }
         try {
-            const stmt = env.DB.prepare("SELECT * FROM shop WHERE id = ? AND status IN ('waiting', 'shipped')");
+            const stmt = siteDb.prepare("SELECT * FROM shop WHERE id = ? AND status IN ('waiting', 'shipped')");
             const result = await stmt.bind(id).first();
             if (!result) {
                 return jsonResponse({ error: 'Not Found' }, 404);
@@ -1863,7 +1866,7 @@ async function handleRequest(request, env, ctx) {
             const finalAuthor = (author || '').trim() || username || '匿名';
             const firstImage = images[0] || '';
             const imagesJson = JSON.stringify(images);
-            const stmt = env.DB.prepare(`
+            const stmt = siteDb.prepare(`
                  INSERT INTO fanart (title, author, description, image_url, bilibili_url, source_url, type, status, images, user_id, tags, attachments)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `);
@@ -1926,7 +1929,7 @@ async function handleRequest(request, env, ctx) {
             const firstImage = images[0] || '';
             const imagesJson = JSON.stringify(images);
 
-            const stmt = env.DB.prepare(`
+            const stmt = siteDb.prepare(`
                 INSERT INTO shop (title, description, price, image_url, xianyu_url, other_url, bilibili_url, status, ship_time, images, user_id)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `);
@@ -2044,11 +2047,11 @@ async function handleRequest(request, env, ctx) {
         const denied = requirePermission(isAdmin, 'review');
         if (denied) return denied;
         try {
-            const fanartStmt = env.DB.prepare(`
+            const fanartStmt = siteDb.prepare(`
                 SELECT id, 'fanart' as type, title, author, description, image_url, created_at
                 FROM fanart WHERE status = 'pending'
             `);
-            const shopStmt = env.DB.prepare(`
+            const shopStmt = siteDb.prepare(`
                 SELECT id, 'shop' as type, title, '' as author, description, image_url, created_at
                 FROM shop WHERE status = 'pending'
             `);
@@ -2074,7 +2077,7 @@ async function handleRequest(request, env, ctx) {
             const table = type === 'fanart' ? 'fanart' : 'shop';
             const approvedStatus = type === 'fanart' ? 'published' : 'waiting';
 
-            const item = await env.DB.prepare(`
+            const item = await siteDb.prepare(`
                 SELECT t.title, t.user_id, u.email
                 FROM ${table} t
                 JOIN users u ON t.user_id = u.id
@@ -2085,7 +2088,7 @@ async function handleRequest(request, env, ctx) {
                 return jsonResponse({ error: '记录不存在或已处理' }, 404);
             }
 
-            const stmt = env.DB.prepare(`UPDATE ${table} SET status = ? WHERE id = ? AND status = 'pending'`);
+            const stmt = siteDb.prepare(`UPDATE ${table} SET status = ? WHERE id = ? AND status = 'pending'`);
             const result = await stmt.bind(approvedStatus, id).run();
 
             if (result.meta?.changes === 0) {
@@ -2119,7 +2122,7 @@ async function handleRequest(request, env, ctx) {
             const id = rejectMatch[2];
             const table = type === 'fanart' ? 'fanart' : 'shop';
 
-            const item = await env.DB.prepare(`
+            const item = await siteDb.prepare(`
                 SELECT t.title, t.user_id, u.email
                 FROM ${table} t
                 JOIN users u ON t.user_id = u.id
@@ -2133,7 +2136,7 @@ async function handleRequest(request, env, ctx) {
             const body = await request.json().catch(() => ({}));
             const reason = body.reason || '未提供具体理由';
 
-            const stmt = env.DB.prepare(`DELETE FROM ${table} WHERE id = ? AND status = 'pending'`);
+            const stmt = siteDb.prepare(`DELETE FROM ${table} WHERE id = ? AND status = 'pending'`);
             const result = await stmt.bind(id).run();
 
             if (result.meta?.changes === 0) {
@@ -2162,7 +2165,7 @@ async function handleRequest(request, env, ctx) {
         const denied = requirePermission(isAdmin, 'daily');
         if (denied) return denied;
         try {
-            const stmt = env.DB.prepare('SELECT * FROM daily ORDER BY publish_date DESC, id DESC');
+            const stmt = siteDb.prepare('SELECT * FROM daily ORDER BY publish_date DESC, id DESC');
             const result = await stmt.all();
             return jsonResponse(result.results || []);
         } catch (error) {
@@ -2176,7 +2179,7 @@ async function handleRequest(request, env, ctx) {
         if (denied) return denied;
         try {
             const { title, content, source_url, cover_url, publish_date, status } = await request.json();
-            const stmt = env.DB.prepare(`
+            const stmt = siteDb.prepare(`
                 INSERT INTO daily (title, content, source_url, cover_url, publish_date, status)
                 VALUES (?, ?, ?, ?, ?, ?)
             `);
@@ -2201,7 +2204,7 @@ async function handleRequest(request, env, ctx) {
         try {
             const id = dailyPutMatch[1];
             const { title, content, source_url, cover_url, publish_date, status } = await request.json();
-            const stmt = env.DB.prepare(`
+            const stmt = siteDb.prepare(`
                 UPDATE daily SET title = ?, content = ?, source_url = ?, cover_url = ?, publish_date = ?, status = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
             `);
@@ -2225,8 +2228,8 @@ async function handleRequest(request, env, ctx) {
         if (denied) return denied;
         try {
             const id = dailyDeleteMatch[1];
-            const target = await env.DB.prepare('SELECT title FROM daily WHERE id = ?').bind(id).first();
-            const stmt = env.DB.prepare('DELETE FROM daily WHERE id = ?');
+            const target = await siteDb.prepare('SELECT title FROM daily WHERE id = ?').bind(id).first();
+            const stmt = siteDb.prepare('DELETE FROM daily WHERE id = ?');
             await stmt.bind(id).run();
             ctx.waitUntil(logAuditEvent(env, {
                 eventType: 'delete', actorAdminId: isAdmin.sub, actorUsername: isAdmin.username,
@@ -2245,7 +2248,7 @@ async function handleRequest(request, env, ctx) {
         const denied = requirePermission(isAdmin, 'fanart');
         if (denied) return denied;
         try {
-            const stmt = env.DB.prepare('SELECT * FROM fanart ORDER BY created_at DESC');
+            const stmt = siteDb.prepare('SELECT * FROM fanart ORDER BY created_at DESC');
             const result = await stmt.all();
             return jsonResponse(result.results || []);
         } catch (error) {
@@ -2263,7 +2266,7 @@ async function handleRequest(request, env, ctx) {
             const attachmentsJson = Array.isArray(attachments) && attachments.length > 0
                 ? JSON.stringify(attachments.slice(0, ATTACHMENT_MAX_COUNT))
                 : null;
-            const stmt = env.DB.prepare(`
+            const stmt = siteDb.prepare(`
                 INSERT INTO fanart (title, author, description, image_url, bilibili_url, source_url, type, status, tags, attachments)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `);
@@ -2292,7 +2295,7 @@ async function handleRequest(request, env, ctx) {
             const attachmentsJson = Array.isArray(attachments) && attachments.length > 0
                 ? JSON.stringify(attachments.slice(0, ATTACHMENT_MAX_COUNT))
                 : null;
-            const stmt = env.DB.prepare(`
+            const stmt = siteDb.prepare(`
                 UPDATE fanart SET title = ?, author = ?, description = ?, image_url = ?, bilibili_url = ?, source_url = ?, type = ?, status = ?, tags = ?, attachments = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
             `);
@@ -2316,8 +2319,8 @@ async function handleRequest(request, env, ctx) {
         if (denied) return denied;
         try {
             const id = fanartDeleteMatch[1];
-            const target = await env.DB.prepare('SELECT title FROM fanart WHERE id = ?').bind(id).first();
-            const stmt = env.DB.prepare('DELETE FROM fanart WHERE id = ?');
+            const target = await siteDb.prepare('SELECT title FROM fanart WHERE id = ?').bind(id).first();
+            const stmt = siteDb.prepare('DELETE FROM fanart WHERE id = ?');
             await stmt.bind(id).run();
             ctx.waitUntil(logAuditEvent(env, {
                 eventType: 'delete', actorAdminId: isAdmin.sub, actorUsername: isAdmin.username,
@@ -2336,7 +2339,7 @@ async function handleRequest(request, env, ctx) {
         const denied = requirePermission(isAdmin, 'shop');
         if (denied) return denied;
         try {
-            const stmt = env.DB.prepare('SELECT * FROM shop ORDER BY created_at DESC');
+            const stmt = siteDb.prepare('SELECT * FROM shop ORDER BY created_at DESC');
             const result = await stmt.all();
             return jsonResponse(result.results || []);
         } catch (error) {
@@ -2350,7 +2353,7 @@ async function handleRequest(request, env, ctx) {
         if (denied) return denied;
         try {
             const { title, description, price, image_url, bilibili_url, xianyu_url, other_url, status } = await request.json();
-            const stmt = env.DB.prepare(`
+            const stmt = siteDb.prepare(`
                 INSERT INTO shop (title, description, price, image_url, bilibili_url, xianyu_url, other_url, status)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             `);
@@ -2375,7 +2378,7 @@ async function handleRequest(request, env, ctx) {
         try {
             const id = shopPutMatch[1];
             const { title, description, price, image_url, bilibili_url, xianyu_url, other_url, status } = await request.json();
-            const stmt = env.DB.prepare(`
+            const stmt = siteDb.prepare(`
                 UPDATE shop SET title = ?, description = ?, price = ?, image_url = ?, bilibili_url = ?, xianyu_url = ?, other_url = ?, status = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
             `);
@@ -2405,7 +2408,7 @@ async function handleRequest(request, env, ctx) {
                 return jsonResponse({ error: '缺少 target_type 或 target_id' }, 400);
             }
 
-            const stmt = env.DB.prepare(`
+            const stmt = siteDb.prepare(`
                 SELECT c.id, c.user_id, c.parent_id, c.content, c.created_at,
                        COALESCE(u.display_name, u.username) AS username, u.avatar_url
                 FROM comments c
@@ -2434,7 +2437,7 @@ async function handleRequest(request, env, ctx) {
                 return jsonResponse({ error: '评论内容过长' }, 400);
             }
 
-            const stmt = env.DB.prepare(`
+            const stmt = siteDb.prepare(`
                 INSERT INTO comments (user_id, target_type, target_id, parent_id, content)
                 VALUES (?, ?, ?, ?, ?)
             `);
@@ -2457,7 +2460,7 @@ async function handleRequest(request, env, ctx) {
 
         try {
             const id = commentDeleteMatch[1];
-            const comment = await env.DB.prepare('SELECT user_id FROM comments WHERE id = ?').bind(id).first();
+            const comment = await siteDb.prepare('SELECT user_id FROM comments WHERE id = ?').bind(id).first();
             if (!comment) return jsonResponse({ error: '评论不存在' }, 404);
 
             const isAdminUser = await getAuthenticatedUser(request, env, 'admin');
@@ -2465,7 +2468,7 @@ async function handleRequest(request, env, ctx) {
                 return jsonResponse({ error: '无权删除' }, 403);
             }
 
-            await env.DB.prepare('UPDATE comments SET status = ? WHERE id = ?').bind('deleted', id).run();
+            await siteDb.prepare('UPDATE comments SET status = ? WHERE id = ?').bind('deleted', id).run();
             return jsonResponse({ success: true });
         } catch (error) {
             console.error('❌ DELETE /api/comments 错误:', error.message);
@@ -2485,14 +2488,14 @@ async function handleRequest(request, env, ctx) {
                 return jsonResponse({ error: '缺少参数' }, 400);
             }
 
-            const countRow = await env.DB.prepare(`
+            const countRow = await siteDb.prepare(`
                 SELECT COUNT(*) as total FROM likes WHERE target_type = ? AND target_id = ?
             `).bind(targetType, targetId).first();
 
             let userLiked = false;
             const userId = await getAuthenticatedUserId(request, env);
             if (userId) {
-                const likeRow = await env.DB.prepare(`
+                const likeRow = await siteDb.prepare(`
                     SELECT id FROM likes WHERE user_id = ? AND target_type = ? AND target_id = ?
                 `).bind(userId, targetType, targetId).first();
                 userLiked = !!likeRow;
@@ -2515,11 +2518,11 @@ async function handleRequest(request, env, ctx) {
                 return jsonResponse({ error: '参数不完整' }, 400);
             }
 
-            await env.DB.prepare(`
+            await siteDb.prepare(`
                 INSERT OR IGNORE INTO likes (user_id, target_type, target_id) VALUES (?, ?, ?)
             `).bind(userId, target_type, target_id).run();
 
-            const countRow = await env.DB.prepare(`
+            const countRow = await siteDb.prepare(`
                 SELECT COUNT(*) as total FROM likes WHERE target_type = ? AND target_id = ?
             `).bind(target_type, target_id).first();
 
@@ -2540,11 +2543,11 @@ async function handleRequest(request, env, ctx) {
                 return jsonResponse({ error: '参数不完整' }, 400);
             }
 
-            await env.DB.prepare(`
+            await siteDb.prepare(`
                 DELETE FROM likes WHERE user_id = ? AND target_type = ? AND target_id = ?
             `).bind(userId, target_type, target_id).run();
 
-            const countRow = await env.DB.prepare(`
+            const countRow = await siteDb.prepare(`
                 SELECT COUNT(*) as total FROM likes WHERE target_type = ? AND target_id = ?
             `).bind(target_type, target_id).first();
 
@@ -2561,7 +2564,7 @@ async function handleRequest(request, env, ctx) {
 
     if (path === '/api/forum/boards' && method === 'GET') {
         try {
-            const result = await env.DB.prepare(`
+            const result = await siteDb.prepare(`
                 SELECT b.id, b.name, b.slug, b.description, b.icon, b.sort_order,
                        (SELECT COUNT(*) FROM forum_threads t WHERE t.board_id = b.id AND t.status = 'published') as thread_count,
                        (SELECT COUNT(*) FROM forum_posts p JOIN forum_threads t2 ON p.thread_id = t2.id WHERE t2.board_id = b.id AND p.status = 'published') as post_count
@@ -2590,7 +2593,7 @@ async function handleRequest(request, env, ctx) {
                 params.push(boardId);
             }
 
-            const stmt = env.DB.prepare(`
+            const stmt = siteDb.prepare(`
                 SELECT t.id, t.board_id, t.title, t.is_pinned, t.is_locked,
                        t.view_count, t.reply_count, t.like_count,
                        t.created_at, t.last_reply_at,
@@ -2605,7 +2608,7 @@ async function handleRequest(request, env, ctx) {
             `);
             const result = await stmt.bind(...params, limit, offset).all();
 
-            const countStmt = env.DB.prepare(`
+            const countStmt = siteDb.prepare(`
                 SELECT COUNT(*) as total FROM forum_threads t ${whereClause}
             `);
             const countRow = await countStmt.bind(...params).first();
@@ -2626,7 +2629,7 @@ async function handleRequest(request, env, ctx) {
     if (threadDetailMatch && method === 'GET') {
         try {
             const id = threadDetailMatch[1];
-            const thread = await env.DB.prepare(`
+            const thread = await siteDb.prepare(`
                 SELECT t.*, COALESCE(u.display_name, u.username) AS username,
                        b.name as board_name, b.slug as board_slug
                 FROM forum_threads t
@@ -2637,9 +2640,9 @@ async function handleRequest(request, env, ctx) {
 
             if (!thread) return jsonResponse({ error: '主题不存在' }, 404);
 
-            await env.DB.prepare('UPDATE forum_threads SET view_count = view_count + 1 WHERE id = ?').bind(id).run();
+            await siteDb.prepare('UPDATE forum_threads SET view_count = view_count + 1 WHERE id = ?').bind(id).run();
 
-            const posts = await env.DB.prepare(`
+            const posts = await siteDb.prepare(`
                 SELECT p.id, p.user_id, p.parent_id, p.content, p.floor_number, p.like_count,
                        p.created_at, COALESCE(u.display_name, u.username) AS username
                 FROM forum_posts p
@@ -2671,10 +2674,10 @@ async function handleRequest(request, env, ctx) {
                 return jsonResponse({ error: '标题过长' }, 400);
             }
 
-            const board = await env.DB.prepare('SELECT id FROM forum_boards WHERE id = ? AND status = ?').bind(board_id, 'active').first();
+            const board = await siteDb.prepare('SELECT id FROM forum_boards WHERE id = ? AND status = ?').bind(board_id, 'active').first();
             if (!board) return jsonResponse({ error: '版块不存在' }, 404);
 
-            const stmt = env.DB.prepare(`
+            const stmt = siteDb.prepare(`
                 INSERT INTO forum_threads (board_id, user_id, title, content, last_reply_at, last_reply_user_id)
                 VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
             `);
@@ -2700,20 +2703,20 @@ async function handleRequest(request, env, ctx) {
                 return jsonResponse({ error: '参数不完整' }, 400);
             }
 
-            const thread = await env.DB.prepare('SELECT id, is_locked FROM forum_threads WHERE id = ? AND status = ?').bind(thread_id, 'published').first();
+            const thread = await siteDb.prepare('SELECT id, is_locked FROM forum_threads WHERE id = ? AND status = ?').bind(thread_id, 'published').first();
             if (!thread) return jsonResponse({ error: '主题不存在' }, 404);
             if (thread.is_locked) return jsonResponse({ error: '该主题已锁定' }, 403);
 
-            const floorRow = await env.DB.prepare('SELECT COUNT(*) as total FROM forum_posts WHERE thread_id = ?').bind(thread_id).first();
+            const floorRow = await siteDb.prepare('SELECT COUNT(*) as total FROM forum_posts WHERE thread_id = ?').bind(thread_id).first();
             const floorNumber = (floorRow?.total || 0) + 1;
 
-            const stmt = env.DB.prepare(`
+            const stmt = siteDb.prepare(`
                 INSERT INTO forum_posts (thread_id, user_id, parent_id, content, floor_number)
                 VALUES (?, ?, ?, ?, ?)
             `);
             const result = await stmt.bind(thread_id, userId, parent_id || null, content.trim(), floorNumber).run();
 
-            await env.DB.prepare(`
+            await siteDb.prepare(`
                 UPDATE forum_threads SET reply_count = reply_count + 1, last_reply_at = CURRENT_TIMESTAMP, last_reply_user_id = ? WHERE id = ?
             `).bind(userId, thread_id).run();
 
@@ -2760,8 +2763,8 @@ async function handleRequest(request, env, ctx) {
         if (denied) return denied;
         try {
             const id = shopDeleteMatch[1];
-            const target = await env.DB.prepare('SELECT title FROM shop WHERE id = ?').bind(id).first();
-            const stmt = env.DB.prepare('DELETE FROM shop WHERE id = ?');
+            const target = await siteDb.prepare('SELECT title FROM shop WHERE id = ?').bind(id).first();
+            const stmt = siteDb.prepare('DELETE FROM shop WHERE id = ?');
             await stmt.bind(id).run();
             ctx.waitUntil(logAuditEvent(env, {
                 eventType: 'delete', actorAdminId: isAdmin.sub, actorUsername: isAdmin.username,

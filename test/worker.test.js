@@ -1,6 +1,7 @@
 import { env, createExecutionContext, waitOnExecutionContext, SELF } from 'cloudflare:test';
 import { describe, it, expect, beforeAll } from 'vitest';
 import worker from '../worker.js';
+import contentSchema from '../tool/content-schema.sql?raw';
 
 const encode = (value) => btoa(String.fromCharCode(...new TextEncoder().encode(value)))
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -632,5 +633,56 @@ describe('Multi-site config', () => {
         expect(data.sites[1]).toMatchObject({ name: '诗岸', en: 'Shian', status: 'soon' });
         expect(data.sites[1].contentDb).toBeUndefined();
         expect(data.current.contentDb).toBeUndefined();
+    });
+});
+
+describe('Multi-site content databases', () => {
+    // 按域名发请求（默认的 req 固定走 localhost，只能命中默认站）
+    async function fetchHost(host, path, options = {}) {
+        const request = new Request(`http://${host}${path}`, options);
+        const ctx = createExecutionContext();
+        const response = await worker.fetch(request, env, ctx);
+        await waitOnExecutionContext(ctx);
+        return response;
+    }
+
+    beforeAll(async () => {
+        // 给诗岸的内容库灌一份内容表，用来确认内容查询真的落到这个库而不是尘站库
+        const statements = contentSchema
+            .split(';')
+            .map((sql) => sql.trim())
+            .filter((sql) => sql.length > 0);
+        for (const sql of statements) {
+            await env.DB_SHIAN.prepare(sql).run();
+        }
+        await env.DB_SHIAN.prepare(
+            "INSERT OR REPLACE INTO songs (id, bvid, title, status) VALUES (9701, 'BVSHIANONLY', '诗岸独有', 'published')"
+        ).run();
+    });
+
+    it('serves songs from the sub-site content database', async () => {
+        const res = await fetchHost('shian.stardustinfinity.top', '/api/songs');
+        expect(res.status).toBe(200);
+        const songs = await res.json();
+        expect(songs.map((song) => song.bvid)).toContain('BVSHIANONLY');
+    });
+
+    it('does not leak sub-site content into the default site', async () => {
+        const songs = await (await fetchHost('stardustinfinity.top', '/api/songs')).json();
+        expect(songs.map((song) => song.bvid)).not.toContain('BVSHIANONLY');
+    });
+
+    it('reports the sub-site as the current site', async () => {
+        const data = await (await fetchHost('shian.stardustinfinity.top', '/api/site')).json();
+        expect(data.current.key).toBe('shian');
+    });
+
+    it('shares admin identity across sub-sites', async () => {
+        const headers = {
+            Authorization: `Bearer ${await token({ sub: 9002, username: 'test-admin', role: 'admin' })}`,
+        };
+        const res = await fetchHost('shian.stardustinfinity.top', '/api/admin/me', { headers });
+        expect(res.status).toBe(200);
+        expect((await res.json()).username).toBe('test-admin');
     });
 });
