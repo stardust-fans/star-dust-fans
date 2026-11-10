@@ -11,6 +11,36 @@
       "database_name": "stardust-db",
       "database_id": "d44e7a61-0493-4b0e-be5f-08806e86ec9d",
       "migrations_dir": "migrations"
+    },
+    {
+      "binding": "DB_SHIAN",
+      "database_name": "shian-db",
+      "database_id": "441d661c-da55-440e-abc4-99c5c3a06a4a"
+    },
+    {
+      "binding": "DB_CHIYU",
+      "database_name": "chiyu-db",
+      "database_id": "32ce6d90-3183-4012-949b-c2dcad2e9d88"
+    },
+    {
+      "binding": "DB_HAIYI",
+      "database_name": "haiyi-db",
+      "database_id": "6099f1c9-4b76-4c33-a779-e74e99947e2e"
+    },
+    {
+      "binding": "DB_YONGYE",
+      "database_name": "yongye-db",
+      "database_id": "168af0c1-3813-45ee-bfaf-cec3b0f1138e"
+    },
+    {
+      "binding": "DB_CANGQIONG",
+      "database_name": "cangqiong-db",
+      "database_id": "d85fdba0-3d6a-498f-bfbd-aa7ce4d1508f"
+    },
+    {
+      "binding": "DB_MUXIN",
+      "database_name": "muxin-db",
+      "database_id": "376c67ad-b7be-4a2f-8156-07ff731957ac"
     }
   ],
   "r2_buckets": [

@@ -10,6 +10,11 @@ import {
     parseAdminPermissions,
     serializeAdminPermissions,
 } from "./src/shared/adminPermissions.js";
+import {
+    resolveSiteByHost,
+    publicSiteConfig,
+    publicSiteList,
+} from "./src/shared/sites.js";
 // ===== 附件白名单 =====
 const ATTACHMENT_ALLOWED_EXT = new Set([
   'zip', '7z', 'rar', 'tar', 'gz', 'bz2', 'xz', 'zst',
@@ -178,6 +183,17 @@ async function handleRequest(request, env, ctx) {
         });
     }
 
+    // ===== 多站点：按域名解析当前是哪个子站 =====
+    // 认不出域名（localhost / 预览域名 / 未知子域）时回落到默认站，行为与单站时期一致
+    const currentSite = resolveSiteByHost(url.hostname);
+
+    // 内容库入口：各站的 songs / fanart / shop 等内容表从这里取。
+    // 现在所有站都还指向 env.DB（尘站库），切库时只改 sites.js 里的 contentDb。
+    // 身份表（users / admins / audit_logs / oidc_* …）不走这里，永远留在 IDENTITY_DB。
+    function contentDb(site = currentSite) {
+        return env[site?.contentDb] || env.DB;
+    }
+
     // ===== CORS 响应包装函数 =====
     function jsonResponse(data, status = 200) {
         return Response.json(data, {
@@ -233,6 +249,14 @@ async function handleRequest(request, env, ctx) {
     if (scimResponse) return scimResponse;
 
     const isAdmin = await getAuthenticatedUser(request, env, 'admin');
+
+    // ===== 当前站点配置（前端用来上主题色 / 渲染站点选择面板）=====
+    if (path === '/api/site' && method === 'GET') {
+        return jsonResponse({
+            current: publicSiteConfig(currentSite),
+            sites: publicSiteList(),
+        });
+    }
 
     // ===== 1. GET /api/songs =====
     if ((path === '/api/songs' || path === '/api/admin/songs') && method === 'GET') {
