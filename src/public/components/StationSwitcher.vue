@@ -49,7 +49,7 @@
 
 <script setup>
 import { ref, watch, nextTick, onBeforeUnmount } from 'vue';
-import { STATIONS, stationColors } from '../../shared/stations.js';
+import { siteList, stationColors } from '../../shared/sites.js';
 import { useToast } from '../composables/useToast.js';
 
 const props = defineProps({
@@ -58,6 +58,7 @@ const props = defineProps({
 
 const emit = defineEmits(['update:open', 'select']);
 
+const STATIONS = siteList();
 const { showToast } = useToast();
 const panelRef = ref(null);
 const closeBtn = ref(null);

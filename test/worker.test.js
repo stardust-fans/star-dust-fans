@@ -614,3 +614,23 @@ describe('Admin role permissions', () => {
         expect((await req('/api/admin/pending', { headers })).status).toBe(401);
     });
 });
+
+describe('Multi-site config', () => {
+    it('falls back to the default site for an unknown host', async () => {
+        const res = await req('/api/site');
+        expect(res.status).toBe(200);
+        const data = await res.json();
+        expect(data.current.key).toBe('stardust');
+        expect(data.current.status).toBe('live');
+    });
+
+    it('exposes every station in display order without leaking DB bindings', async () => {
+        const data = await (await req('/api/site')).json();
+        expect(data.sites.map((site) => site.key)).toEqual([
+            'stardust', 'shian', 'chiyu', 'haiyi', 'yongye', 'cangqiong', 'muxin',
+        ]);
+        expect(data.sites[1]).toMatchObject({ name: '诗岸', en: 'Shian', status: 'soon' });
+        expect(data.sites[1].contentDb).toBeUndefined();
+        expect(data.current.contentDb).toBeUndefined();
+    });
+});
