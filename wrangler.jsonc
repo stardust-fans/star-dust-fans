@@ -59,6 +59,30 @@
     {
       "pattern": "stardustinfinity.top",
       "custom_domain": true
+    },
+    {
+      "pattern": "shian.stardustinfinity.top",
+      "custom_domain": true
+    },
+    {
+      "pattern": "chiyu.stardustinfinity.top",
+      "custom_domain": true
+    },
+    {
+      "pattern": "haiyi.stardustinfinity.top",
+      "custom_domain": true
+    },
+    {
+      "pattern": "yongye.stardustinfinity.top",
+      "custom_domain": true
+    },
+    {
+      "pattern": "cangqiong.stardustinfinity.top",
+      "custom_domain": true
+    },
+    {
+      "pattern": "muxin.stardustinfinity.top",
+      "custom_domain": true
     }
   ],
   "workers_dev": true,
