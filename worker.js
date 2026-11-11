@@ -221,6 +221,25 @@ async function handleRequest(request, env, ctx) {
         }
     }
 
+    // ===== 跨库取作者资料 =====
+    // 内容库只存 user_id，昵称/头像在身份库；分库后不能 JOIN，只能两步查再内存拼装
+    async function loadUserMap(userIds) {
+        const ids = [...new Set((userIds || []).filter((id) => Number.isInteger(id) && id > 0))];
+        if (ids.length === 0) return new Map();
+        const placeholders = ids.map(() => '?').join(', ');
+        const result = await env.DB.prepare(
+            `SELECT id, username, COALESCE(display_name, username) AS display_name, avatar_url
+             FROM users WHERE id IN (${placeholders})`
+        ).bind(...ids).all();
+        return new Map((result.results || []).map((row) => [row.id, row]));
+    }
+
+    async function loadUserEmail(userId) {
+        if (!userId) return null;
+        const row = await env.DB.prepare('SELECT email FROM users WHERE id = ?').bind(userId).first();
+        return row?.email || null;
+    }
+
     // ===== CORS 响应包装函数 =====
     function jsonResponse(data, status = 200) {
         return Response.json(data, {
@@ -2115,16 +2134,18 @@ async function handleRequest(request, env, ctx) {
             const table = type === 'fanart' ? 'fanart' : 'shop';
             const approvedStatus = type === 'fanart' ? 'published' : 'waiting';
 
+            // 分库后不能 JOIN users：内容库取投稿信息，身份库单独取邮箱
             const item = await siteDb.prepare(`
-                SELECT t.title, t.user_id, u.email
-                FROM ${table} t
-                JOIN users u ON t.user_id = u.id
-                WHERE t.id = ? AND t.status = 'pending'
+                SELECT title, user_id
+                FROM ${table}
+                WHERE id = ? AND status = 'pending'
             `).bind(id).first();
 
             if (!item) {
                 return jsonResponse({ error: '记录不存在或已处理' }, 404);
             }
+
+            const authorEmail = item.user_id ? await loadUserEmail(item.user_id) : null;
 
             const stmt = siteDb.prepare(`UPDATE ${table} SET status = ? WHERE id = ? AND status = 'pending'`);
             const result = await stmt.bind(approvedStatus, id).run();
@@ -2133,10 +2154,10 @@ async function handleRequest(request, env, ctx) {
                 return jsonResponse({ error: '记录不存在或已处理' }, 404);
             }
 
-            if (item.email) {
+            if (authorEmail) {
                 const title = item.title || '无题';
                 await sendEmail(
-                    item.email,
+                    authorEmail,
                     '✅ 投稿已通过审核',
                     `<p>您的投稿《${title}》已通过审核，现已发布到星尘粉丝站。</p>`,
                     env
@@ -2160,16 +2181,18 @@ async function handleRequest(request, env, ctx) {
             const id = rejectMatch[2];
             const table = type === 'fanart' ? 'fanart' : 'shop';
 
+            // 分库后不能 JOIN users：内容库取投稿信息，身份库单独取邮箱
             const item = await siteDb.prepare(`
-                SELECT t.title, t.user_id, u.email
-                FROM ${table} t
-                JOIN users u ON t.user_id = u.id
-                WHERE t.id = ? AND t.status = 'pending'
+                SELECT title, user_id
+                FROM ${table}
+                WHERE id = ? AND status = 'pending'
             `).bind(id).first();
 
             if (!item) {
                 return jsonResponse({ error: '记录不存在或已处理' }, 404);
             }
+
+            const authorEmail = item.user_id ? await loadUserEmail(item.user_id) : null;
 
             const body = await request.json().catch(() => ({}));
             const reason = body.reason || '未提供具体理由';
@@ -2181,10 +2204,10 @@ async function handleRequest(request, env, ctx) {
                 return jsonResponse({ error: '记录不存在或已处理' }, 404);
             }
 
-            if (item.email) {
+            if (authorEmail) {
                 const title = item.title || '不予通过';
                 await sendEmail(
-                    item.email,
+                    authorEmail,
                     '投稿被驳回',
                     `<p>您的投稿《${title}》未通过审核。<br/>理由：${reason}</p>`,
                     env
@@ -2446,16 +2469,23 @@ async function handleRequest(request, env, ctx) {
                 return jsonResponse({ error: '缺少 target_type 或 target_id' }, 400);
             }
 
-            const stmt = siteDb.prepare(`
-                SELECT c.id, c.user_id, c.parent_id, c.content, c.created_at,
-                       COALESCE(u.display_name, u.username) AS username, u.avatar_url
-                FROM comments c
-                JOIN users u ON c.user_id = u.id
-                WHERE c.target_type = ? AND c.target_id = ? AND c.status = 'published'
-                ORDER BY c.created_at ASC
-            `);
-            const result = await stmt.bind(targetType, targetId).all();
-            return jsonResponse(result.results || []);
+            const result = await siteDb.prepare(`
+                SELECT id, user_id, parent_id, content, created_at
+                FROM comments
+                WHERE target_type = ? AND target_id = ? AND status = 'published'
+                ORDER BY created_at ASC
+            `).bind(targetType, targetId).all();
+
+            const rows = result.results || [];
+            const authorMap = await loadUserMap(rows.map((row) => row.user_id));
+            return jsonResponse(rows.map((row) => {
+                const author = authorMap.get(row.user_id);
+                return {
+                    ...row,
+                    username: author ? author.display_name : '已注销用户',
+                    avatar_url: author?.avatar_url || null,
+                };
+            }));
         } catch (error) {
             console.error('❌ GET /api/comments 错误:', error.message);
             return jsonResponse({ error: error.message }, 500);
@@ -2632,19 +2662,23 @@ async function handleRequest(request, env, ctx) {
             }
 
             const stmt = siteDb.prepare(`
-                SELECT t.id, t.board_id, t.title, t.is_pinned, t.is_locked,
+                SELECT t.id, t.board_id, t.user_id, t.title, t.is_pinned, t.is_locked,
                        t.view_count, t.reply_count, t.like_count,
                        t.created_at, t.last_reply_at,
-                       COALESCE(u.display_name, u.username) AS username,
                        b.name as board_name, b.slug as board_slug
                 FROM forum_threads t
-                JOIN users u ON t.user_id = u.id
                 JOIN forum_boards b ON t.board_id = b.id
                 ${whereClause}
                 ORDER BY t.is_pinned DESC, t.last_reply_at DESC, t.created_at DESC
                 LIMIT ? OFFSET ?
             `);
             const result = await stmt.bind(...params, limit, offset).all();
+            const threadRows = result.results || [];
+            const threadAuthors = await loadUserMap(threadRows.map((row) => row.user_id));
+            const threads = threadRows.map((row) => ({
+                ...row,
+                username: threadAuthors.get(row.user_id)?.display_name || '已注销用户',
+            }));
 
             const countStmt = siteDb.prepare(`
                 SELECT COUNT(*) as total FROM forum_threads t ${whereClause}
@@ -2652,7 +2686,7 @@ async function handleRequest(request, env, ctx) {
             const countRow = await countStmt.bind(...params).first();
 
             return jsonResponse({
-                threads: result.results || [],
+                threads,
                 total: countRow?.total || 0,
                 page,
                 limit,
@@ -2667,32 +2701,39 @@ async function handleRequest(request, env, ctx) {
     if (threadDetailMatch && method === 'GET') {
         try {
             const id = threadDetailMatch[1];
-            const thread = await siteDb.prepare(`
-                SELECT t.*, COALESCE(u.display_name, u.username) AS username,
-                       b.name as board_name, b.slug as board_slug
+            const threadRow = await siteDb.prepare(`
+                SELECT t.*, b.name as board_name, b.slug as board_slug
                 FROM forum_threads t
-                JOIN users u ON t.user_id = u.id
                 JOIN forum_boards b ON t.board_id = b.id
                 WHERE t.id = ? AND t.status = 'published'
             `).bind(id).first();
 
-            if (!thread) return jsonResponse({ error: '主题不存在' }, 404);
+            if (!threadRow) return jsonResponse({ error: '主题不存在' }, 404);
+
+            const threadAuthor = (await loadUserMap([threadRow.user_id])).get(threadRow.user_id);
+            const thread = {
+                ...threadRow,
+                username: threadAuthor?.display_name || '已注销用户',
+            };
 
             await siteDb.prepare('UPDATE forum_threads SET view_count = view_count + 1 WHERE id = ?').bind(id).run();
 
-            const posts = await siteDb.prepare(`
+            const postsResult = await siteDb.prepare(`
                 SELECT p.id, p.user_id, p.parent_id, p.content, p.floor_number, p.like_count,
-                       p.created_at, COALESCE(u.display_name, u.username) AS username
+                       p.created_at
                 FROM forum_posts p
-                JOIN users u ON p.user_id = u.id
                 WHERE p.thread_id = ? AND p.status = 'published'
                 ORDER BY p.created_at ASC
             `).bind(id).all();
 
-            return jsonResponse({
-                thread,
-                posts: posts.results || [],
-            });
+            const postRows = postsResult.results || [];
+            const postAuthors = await loadUserMap(postRows.map((row) => row.user_id));
+            const posts = postRows.map((row) => ({
+                ...row,
+                username: postAuthors.get(row.user_id)?.display_name || '已注销用户',
+            }));
+
+            return jsonResponse({ thread, posts });
         } catch (error) {
             console.error('❌ GET /api/forum/threads/:id 错误:', error.message);
             return jsonResponse({ error: error.message }, 500);
