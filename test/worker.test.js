@@ -678,6 +678,14 @@ describe('Multi-site content databases', () => {
         expect(data.current.key).toBe('shian');
     });
 
+    it('treats <key>.localhost as that site for local preview', async () => {
+        const shian = await (await fetchHost('shian.localhost:5173', '/api/site')).json();
+        expect(shian.current.key).toBe('shian');
+        // 未知子域仍回落默认站
+        const unknown = await (await fetchHost('nope.localhost:5173', '/api/site')).json();
+        expect(unknown.current.key).toBe('stardust');
+    });
+
     it('shares admin identity across sub-sites', async () => {
         const headers = {
             Authorization: `Bearer ${await token({ sub: 9002, username: 'test-admin', role: 'admin' })}`,
