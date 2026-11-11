@@ -15,8 +15,15 @@ export const DEFAULT_SITE = 'stardust';
 export const IDENTITY_DB = 'DB';
 
 // colors：应援色。单色写 ['#RRGGBB']（渐变自动补 #FFFFFF），双色写 ['#A', '#B']
-// theme：站点主题色（覆盖 CSS 变量）。不写就用现在这套默认配色
-// contentDb：该站内容表所在的 D1 绑定；暂时都指向 DB（尘站的库），后续再切
+// theme：字体 / 文字色 / 底色 / 强调色，写哪个就覆盖哪个 CSS 变量：
+//        fontDisplay fontMono fontBody
+//        ink inkSoft inkMuted inkFaint
+//        paper paperRaised line lineStrong
+//        cobalt cobaltSoft cobaltWash gold goldSoft
+// background：星空与粒子层。crystal = { color, halo, opacity: [min,max], motion }
+//             particles = { colors: [...], density }
+//             不写就用 DEFAULT_BACKGROUND
+// contentDb：该站内容表所在的 D1 绑定
 // copy：站点文案。只写要覆盖的字段，其余自动回落默认站（stardust）的写法
 export const SITES = {
   stardust: {
@@ -97,6 +104,22 @@ export const SITES = {
     status: 'live',
     // 桌宠模型是豆丁星尘，诗岸站先不显示
     features: { live2d: false, forum: true, shop: true },
+    // TODO(主题)：想改诗岸的字体 / 配色 / 背景，取消注释后改值即可
+    // theme: {
+    //   cobalt: '#F6BE71',            // 强调色：按钮、链接、星空渐变
+    //   gold: '#FFE0A8',
+    //   paper: '#0a0906',             // 页面底色
+    //   paperRaised: '#14110b',       // 卡片底色
+    //   ink: '#f2e8d8',               // 正文
+    //   inkSoft: '#cdbfa8',
+    //   inkMuted: '#8f8471',
+    //   inkFaint: '#5a5346',
+    //   fontBody: "'Noto Serif SC', serif",
+    // },
+    // background: {
+    //   crystal: { color: '#F6BE71', halo: '#4a7ad6' },
+    //   particles: { colors: ['#F6BE71', '#ffffff', '#ffe6b8'], density: 60 },
+    // },
     // TODO(文案)：以下占位待填，没写的字段会用尘站的
     copy: {
       hero: {
@@ -254,4 +277,73 @@ export function siteCopy(keyOrSite) {
     hero: { ...(base.hero || {}), ...(own.hero || {}) },
     about: { ...(base.about || {}), ...(own.about || {}) },
   };
+}
+
+// ===== 站点主题（字体 / 文字色 / 底色 / 强调色）=====
+// site.theme 里写哪个键就覆盖哪个 CSS 变量，没写的一律沿用 style.css 的默认值。
+export const THEME_CSS_VARS = {
+  // 字体
+  fontDisplay: '--font-display',
+  fontMono: '--font-mono',
+  fontBody: '--font-body',
+  // 文字
+  ink: '--ink',
+  inkSoft: '--ink-soft',
+  inkMuted: '--ink-muted',
+  inkFaint: '--ink-faint',
+  // 底色
+  paper: '--paper',
+  paperRaised: '--paper-raised',
+  // 线条
+  line: '--line',
+  lineStrong: '--line-strong',
+  // 强调色（也决定星空渐变、按钮、链接）
+  cobalt: '--cobalt',
+  cobaltSoft: '--cobalt-soft',
+  cobaltWash: '--cobalt-wash',
+  gold: '--gold',
+  goldSoft: '--gold-soft',
+};
+
+export function themeVars(theme) {
+  const vars = {};
+  for (const [field, cssVar] of Object.entries(THEME_CSS_VARS)) {
+    if (theme && theme[field]) vars[cssVar] = theme[field];
+  }
+  return vars;
+}
+
+// ===== 站点背景（星空 WebGL + 粒子层）=====
+// color / halo 用 CSS 十六进制色，挂载时会转成 0~1 的 RGB。
+export const DEFAULT_BACKGROUND = {
+  crystal: {
+    color: '#ffd64a',
+    halo: '#1c7aff',
+    opacity: [1, 1],
+    motion: 'diagonal',
+  },
+  particles: {
+    colors: ['#ffe9a8', '#bcd0ff', '#ffffff', '#c7a2ff'],
+    density: 74,
+  },
+};
+
+export function siteBackground(keyOrSite) {
+  const key = typeof keyOrSite === 'string' ? keyOrSite : keyOrSite?.key;
+  const own = (SITES[key] || SITES[DEFAULT_SITE])?.background || {};
+  return {
+    crystal: { ...DEFAULT_BACKGROUND.crystal, ...(own.crystal || {}) },
+    particles: { ...DEFAULT_BACKGROUND.particles, ...(own.particles || {}) },
+  };
+}
+
+// '#rrggbb' → [r, g, b]（0~1），WebGL 用
+export function hexToRgb01(hex) {
+  const value = String(hex || '').replace('#', '').trim();
+  if (!/^[0-9a-f]{6}$/i.test(value)) return [1, 1, 1];
+  return [
+    parseInt(value.slice(0, 2), 16) / 255,
+    parseInt(value.slice(2, 4), 16) / 255,
+    parseInt(value.slice(4, 6), 16) / 255,
+  ];
 }
