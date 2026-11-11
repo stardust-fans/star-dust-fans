@@ -1,15 +1,20 @@
 <template>
   <footer class="footer">
     <div class="footer-container">
-      <p class="footer-egg" @click="handleEggClick">✦ 众星为你· 皆降为尘 ✦</p>
+      <p class="footer-egg" @click="handleEggClick">{{ copy.footer }}</p>
     </div>
   </footer>
 </template>
 
 <script setup>
+import { computed } from 'vue';
 import { useToast } from '../composables/useToast.js';
+import { useSite } from '../composables/useSite.js';
+import { siteCopy } from '../../shared/sites.js';
 
 const { showToast } = useToast();
+const { site } = useSite();
+const copy = computed(() => siteCopy(site.value?.key));
 
 const CLICKS_TO_ENTER = 5;
 const RESET_DELAY_MS = 1500;

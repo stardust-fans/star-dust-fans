@@ -21,15 +21,15 @@
         >吸尘器聚集地</span>
       </RouterLink>
       <ul class="nav-menu" :class="{ open: menuOpen }">
-        <li><RouterLink to="/" @click="closeMenu">主页</RouterLink></li>
-        <li><RouterLink to="/videos" @click="closeMenu">视频</RouterLink></li>
-        <li><RouterLink to="/lyrics" @click="closeMenu">歌词</RouterLink></li>
-        <li><RouterLink to="/fanart" @click="closeMenu">同人</RouterLink></li>
-        <li><RouterLink to="/shop" @click="closeMenu">量贩</RouterLink></li>
-        <li><RouterLink to="/daily" @click="closeMenu">日报</RouterLink></li>
-        <li><RouterLink to="/starmap" @click="closeMenu">星图</RouterLink></li>
-        <li><RouterLink to="/omew" @click="closeMenu">论坛</RouterLink></li>
-        <li><RouterLink to="/about" @click="closeMenu">关于</RouterLink></li>
+        <li><RouterLink to="/" @click="closeMenu">{{ copy.nav.home }}</RouterLink></li>
+        <li><RouterLink to="/videos" @click="closeMenu">{{ copy.nav.videos }}</RouterLink></li>
+        <li><RouterLink to="/lyrics" @click="closeMenu">{{ copy.nav.lyrics }}</RouterLink></li>
+        <li><RouterLink to="/fanart" @click="closeMenu">{{ copy.nav.fanart }}</RouterLink></li>
+        <li><RouterLink to="/shop" @click="closeMenu">{{ copy.nav.shop }}</RouterLink></li>
+        <li><RouterLink to="/daily" @click="closeMenu">{{ copy.nav.daily }}</RouterLink></li>
+        <li><RouterLink to="/starmap" @click="closeMenu">{{ copy.nav.starmap }}</RouterLink></li>
+        <li><RouterLink to="/omew" @click="closeMenu">{{ copy.nav.forum }}</RouterLink></li>
+        <li><RouterLink to="/about" @click="closeMenu">{{ copy.nav.about }}</RouterLink></li>
         <li v-if="!user">
           <RouterLink to="/login" @click="closeMenu">登录</RouterLink>
         </li>
@@ -53,16 +53,22 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted } from "vue";
+import { ref, computed, watch, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useLogin } from "../composables/useLogin.js";
+import { useSite } from "../composables/useSite.js";
 import StationSwitcher from "./StationSwitcher.vue";
+import { siteCopy } from "../../shared/sites.js";
 
 const route = useRoute();
 const router = useRouter();
 const menuOpen = ref(false);
 const stationsOpen = ref(false);
 const { getUser, refreshUser } = useLogin();
+const { site } = useSite();
+
+// 导航文案随站点走，没写 copy 的站回落尘站
+const copy = computed(() => siteCopy(site.value?.key));
 
 function openStations() {
   stationsOpen.value = true;

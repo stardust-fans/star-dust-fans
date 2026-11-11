@@ -15,7 +15,8 @@ describe("OMEW public page contract", () => {
     expect(routerSource).toContain('component: OmewView');
     expect(routerSource).toContain("meta: { fullBleed: true, requiresAuth: true }");
     expect(navSource).toContain('to="/omew"');
-    expect(navSource).toContain('>论坛</RouterLink>');
+    // 导航文案改成按站点取 copy.nav.forum（默认值仍是「论坛」）
+    expect(navSource).toContain('copy.nav.forum');
   });
 
   it("keeps the identity bridge on the site as standard OIDC instead of a child-window token exchange", () => {
