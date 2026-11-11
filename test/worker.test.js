@@ -685,4 +685,18 @@ describe('Multi-site content databases', () => {
         expect(res.status).toBe(200);
         expect((await res.json()).username).toBe('test-admin');
     });
+
+    it('resolves comment authors from the shared identity database', async () => {
+        await env.DB_SHIAN.prepare(
+            "INSERT INTO comments (user_id, target_type, target_id, content, status) VALUES (9001, 'fanart', 1, '诗岸的评论', 'published')"
+        ).run();
+
+        const res = await fetchHost('shian.stardustinfinity.top', '/api/comments?target_type=fanart&target_id=1');
+        expect(res.status).toBe(200);
+        const list = await res.json();
+        const comment = list.find((row) => row.content === '诗岸的评论');
+        expect(comment).toBeTruthy();
+        // 作者昵称来自身份库（9001 = test-user，没有 display_name）
+        expect(comment.username).toBe('test-user');
+    });
 });
