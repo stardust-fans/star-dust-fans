@@ -1,4 +1,5 @@
 import { ref } from 'vue';
+import { themeVars } from '../../shared/sites.js';
 
 // 站点配置（由 Worker 按域名解析后返回），模块级单例，全站只请求一次
 const site = ref(null);
@@ -6,12 +7,13 @@ const sites = ref([]);
 const loaded = ref(false);
 let pending = null;
 
+// 把站点 theme 里的字段写成 CSS 变量（字体 / 文字色 / 底色 / 强调色）
 function applyTheme(config) {
-  const theme = config?.theme;
-  if (!theme) return;
+  const vars = themeVars(config?.theme);
   const root = document.documentElement;
-  if (theme.cobalt) root.style.setProperty('--cobalt', theme.cobalt);
-  if (theme.gold) root.style.setProperty('--gold', theme.gold);
+  for (const [cssVar, value] of Object.entries(vars)) {
+    root.style.setProperty(cssVar, value);
+  }
 }
 
 async function load() {
