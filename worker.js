@@ -14,6 +14,7 @@ import {
     resolveSiteByHost,
     publicSiteConfig,
     publicSiteList,
+    SITE_HOSTS,
 } from "./src/shared/sites.js";
 // ===== 附件白名单 =====
 const ATTACHMENT_ALLOWED_EXT = new Set([
@@ -196,6 +197,29 @@ async function handleRequest(request, env, ctx) {
 
     // 本次请求的内容库句柄（所有内容查询都用它，身份查询继续用 env.DB）
     const siteDb = contentDb(currentSite);
+
+    // 当前请求的源：上传地址用它拼，子站不会拿到尘站域名
+    const requestOrigin = url.origin;
+
+    // R2 站点前缀：上传与附件都落在 sites/<key>/ 下，各站互不干扰
+    const siteKeyPrefix = `sites/${currentSite.key}/`;
+
+    // R2 key → 对外 URL（去掉站点前缀，路径仍是 /uploads/… 与 /attachments/…）
+    function publicObjectUrl(key) {
+        const rest = key.startsWith(siteKeyPrefix) ? key.slice(siteKeyPrefix.length) : key;
+        return `${requestOrigin}/${rest}`;
+    }
+
+    // 附件地址是否属于本站体系（本站域名或任一子站域名，且路径是 /attachments/）
+    function isSiteAttachmentUrl(value) {
+        try {
+            const parsed = new URL(String(value));
+            if (!parsed.pathname.startsWith('/attachments/')) return false;
+            return parsed.host === url.host || SITE_HOSTS.has(parsed.hostname);
+        } catch {
+            return false;
+        }
+    }
 
     // ===== CORS 响应包装函数 =====
     function jsonResponse(data, status = 200) {
@@ -1138,13 +1162,13 @@ async function handleRequest(request, env, ctx) {
             const ext = file.name.split('.').pop() || 'jpg';
             const timestamp = Date.now();
             const uniqueId = crypto.randomUUID();
-            const key = `uploads/${userId}/${timestamp}_${uniqueId}.${ext}`;
+            const key = `${siteKeyPrefix}uploads/${userId}/${timestamp}_${uniqueId}.${ext}`;
 
             await env.R2_BUCKET.put(key, file.stream(), {
                 httpMetadata: { contentType: file.type },
             });
 
-            const url = `https://stardustinfinity.top/${key}`;
+            const url = publicObjectUrl(key);
 
             return jsonResponse({ success: true, url, key });
 
@@ -1183,7 +1207,7 @@ async function handleRequest(request, env, ctx) {
             const hashArray = new Uint8Array(hashBuffer);
             const hashHex = Array.from(hashArray).map((b) => b.toString(16).padStart(2, '0')).join('');
 
-            const key = `attachments/${hashHex}.${ext}`;
+            const key = `${siteKeyPrefix}attachments/${hashHex}.${ext}`;
 
             const existing = await env.R2_BUCKET.head(key);
             if (!existing) {
@@ -1195,7 +1219,7 @@ async function handleRequest(request, env, ctx) {
                 });
             }
 
-            const url = `https://stardustinfinity.top/${key}`;
+            const url = publicObjectUrl(key);
 
             return jsonResponse({
                 success: true,
@@ -1236,7 +1260,7 @@ async function handleRequest(request, env, ctx) {
                 return jsonResponse({ error: `文件大小不能超过 ${ATTACHMENT_LIMIT_TEXT}` }, 400);
             }
 
-            const key = `attachments/${crypto.randomUUID()}.${ext}`;
+            const key = `${siteKeyPrefix}attachments/${crypto.randomUUID()}.${ext}`;
             const upload = await env.R2_BUCKET.createMultipartUpload(key, {
                 httpMetadata: {
                     contentType: String(body?.type || 'application/octet-stream').slice(0, 100),
@@ -1268,7 +1292,7 @@ async function handleRequest(request, env, ctx) {
             const uploadId = url.searchParams.get('uploadId') || '';
             const partNumber = Number(url.searchParams.get('partNumber'));
 
-            if (!key.startsWith('attachments/') || key.includes('..') || !uploadId) {
+            if (!key.includes('/attachments/') || key.includes('..') || !uploadId) {
                 return jsonResponse({ error: '分片参数不合法' }, 400);
             }
             if (!Number.isInteger(partNumber) || partNumber < 1 || partNumber > ATTACHMENT_MAX_PARTS) {
@@ -1305,7 +1329,7 @@ async function handleRequest(request, env, ctx) {
             const uploadId = String(body?.uploadId || '');
             const parts = Array.isArray(body?.parts) ? body.parts : [];
 
-            if (!key.startsWith('attachments/') || key.includes('..') || !uploadId) {
+            if (!key.includes('/attachments/') || key.includes('..') || !uploadId) {
                 return jsonResponse({ error: '参数不合法' }, 400);
             }
             if (parts.length === 0 || parts.length > ATTACHMENT_MAX_PARTS) {
@@ -1329,7 +1353,7 @@ async function handleRequest(request, env, ctx) {
 
             return jsonResponse({
                 success: true,
-                url: `https://stardustinfinity.top/${key}`,
+                url: publicObjectUrl(key),
                 key,
                 hash: null,
                 name: originalName,
@@ -1351,7 +1375,7 @@ async function handleRequest(request, env, ctx) {
             const body = await request.json();
             const key = String(body?.key || '');
             const uploadId = String(body?.uploadId || '');
-            if (!key.startsWith('attachments/') || !uploadId) {
+            if (!key.includes('/attachments/') || !uploadId) {
                 return jsonResponse({ error: '参数不合法' }, 400);
             }
             const upload = env.R2_BUCKET.resumeMultipartUpload(key, uploadId);
@@ -1400,7 +1424,7 @@ async function handleRequest(request, env, ctx) {
                 }, 501);
             }
 
-            const key = `attachments/${crypto.randomUUID()}.${ext}`;
+            const key = `${siteKeyPrefix}attachments/${crypto.randomUUID()}.${ext}`;
             const uploadUrl = await presignR2Put({
                 accountId, accessKeyId, secretAccessKey, bucket, key,
             });
@@ -1430,7 +1454,7 @@ async function handleRequest(request, env, ctx) {
         try {
             const body = await request.json();
             const key = String(body?.key || '');
-            if (!key.startsWith('attachments/') || key.includes('..')) {
+            if (!key.includes('/attachments/') || key.includes('..')) {
                 return jsonResponse({ error: '参数不合法' }, 400);
             }
 
@@ -1453,7 +1477,7 @@ async function handleRequest(request, env, ctx) {
             return jsonResponse({
                 success: true,
                 mode: 'direct',
-                url: `https://stardustinfinity.top/${key}`,
+                url: publicObjectUrl(key),
                 key,
                 hash: null,
                 name,
@@ -1839,7 +1863,7 @@ async function handleRequest(request, env, ctx) {
                 for (const a of attachments) {
                     if (!a || typeof a !== 'object') continue;
                     const { url, name, size } = a;
-                    if (typeof url !== 'string' || !url.startsWith('https://stardustinfinity.top/attachments/')) {
+                    if (typeof url !== 'string' || !isSiteAttachmentUrl(url)) {
                         return jsonResponse({ error: '附件地址不合法' }, 400);
                     }
                     const ext = String(name || '').split('.').pop()?.toLowerCase() || '';
@@ -1963,13 +1987,19 @@ async function handleRequest(request, env, ctx) {
     if ((path.startsWith('/uploads/') || path.startsWith('/attachments/')) && (method === 'GET' || method === 'HEAD')) {
         try {
             const key = path.slice(1);
+            // 新文件落在 sites/<站点>/ 下；老文件还在根目录，读取时两个都试
+            const candidateKeys = [`${siteKeyPrefix}${key}`, key];
             const isAttachment = path.startsWith('/attachments/');
             const defaultType = isAttachment ? 'application/octet-stream' : 'image/jpeg';
             const range = parseRangeHeader(request.headers.get('Range'));
 
             // 普通 GET（绝大多数图片请求）：一次 get 就够，保持原有开销
             if (!range && method === 'GET') {
-                const object = await env.R2_BUCKET.get(key);
+                let object = null;
+                for (const candidate of candidateKeys) {
+                    object = await env.R2_BUCKET.get(candidate);
+                    if (object) break;
+                }
                 if (!object || !object.body) {
                     return new Response('Not Found', { status: 404 });
                 }
@@ -1986,7 +2016,15 @@ async function handleRequest(request, env, ctx) {
                 return new Response(object.body, { status: 200, headers });
             }
 
-            const head = await env.R2_BUCKET.head(key);
+            let objectKey = null;
+            let head = null;
+            for (const candidate of candidateKeys) {
+                head = await env.R2_BUCKET.head(candidate);
+                if (head) {
+                    objectKey = candidate;
+                    break;
+                }
+            }
             if (!head) {
                 return new Response('Not Found', { status: 404 });
             }
@@ -2027,7 +2065,7 @@ async function handleRequest(request, env, ctx) {
                     return new Response(null, { status: 206, headers });
                 }
 
-                const object = await env.R2_BUCKET.get(key, { range: { offset: start, length } });
+                const object = await env.R2_BUCKET.get(objectKey, { range: { offset: start, length } });
                 if (!object || !object.body) {
                     return new Response('Not Found', { status: 404 });
                 }
