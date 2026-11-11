@@ -102,26 +102,28 @@ export const SITES = {
       hero: {
         badge: 'SHIAN · 中文虚拟歌姬',
         title: '诗岸',
-        subtitle: '待填',
-        desc: ['待填'],
+        subtitle: '落笔成诗，传于彼岸',
+        desc: ['从大地里传来的声音，是大地的孩子',
+              '她的歌声如诗如画，传递着无尽的情感与故事。',
+        ],
         info: [
-          { label: '生日', value: '待填' },
-          { label: '体型', value: '待填' },
+          { label: '生日', value: '01·19' },
+          { label: '体型', value: '140cm · 14岁' },
           { label: '代表色', value: '#F6BE71' },
         ],
         aboutTitle: '关于诗岸',
         aboutCards: [
-          { index: '01 · 声库', title: '声源与发行', lines: ['待填'] },
-          { index: '02 · 生日', title: '生日与星座', lines: ['待填'] },
-          { index: '03 · 色彩', title: '代表色', lines: ['#F6BE71', '「待填」'] },
-          { index: '04 · 设定', title: '世界观', lines: ['待填'] },
+          { index: '01 · 声库', title: '声源与发行', lines: ['Warma'] },
+          { index: '02 · 生日', title: '生日与星座', lines: ['1月19日 · 摩羯座'] },
+          { index: '03 · 色彩', title: '代表色', lines: ['#F6BE71', '「诗岸黄」'] },
+          { index: '04 · 设定', title: '世界观', lines: ['大地的孩子，代表物是正六边形，这是土在几何中最简单的代表。'] },
         ],
       },
       about: {
         title: '关于诗岸粉丝站',
         subtitle: '一个由诗岸爱好者维护的非官方站点',
       },
-      footer: '✦ 待填 ✦',
+      footer: '✦ 落笔成诗，传于彼岸 ✦',
     },
   },
   chiyu: {
@@ -196,6 +198,11 @@ export function resolveSiteByHost(host) {
     const site = SITES[key];
     if (site?.origins?.includes(name)) return site;
   }
+  // 本地预览子站：shian.localhost / chiyu.localhost → 对应站点
+  // （浏览器会把 *.localhost 解析到 127.0.0.1，不用改 hosts）
+  const localMatch = name.match(/^([a-z0-9-]+)\.localhost$/);
+  if (localMatch && SITES[localMatch[1]]) return SITES[localMatch[1]];
+
   return SITES[DEFAULT_SITE];
 }
 

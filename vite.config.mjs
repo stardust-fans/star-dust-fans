@@ -23,6 +23,9 @@ export default defineConfig({
         include: ['oh-my-live2d'],
     },
     server: {
+        // 本地预览子站：shian.localhost:5173 / chiyu.localhost:5173 …
+        // Vite 默认会拦非 localhost 的 Host，这里显式放行 *.localhost
+        allowedHosts: ['.localhost'],
         proxy: {
             '/api/ip': {
                 target: 'https://ip9.com.cn',
