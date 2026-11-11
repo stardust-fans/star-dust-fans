@@ -36,7 +36,9 @@ export const SITES = {
     colors: ['#F6BE71', '#FFFFFF'],
     origins: ['shian.stardustinfinity.top'],
     contentDb: 'DB_SHIAN',
-    status: 'soon',
+    status: 'live',
+    // 桌宠模型是豆丁星尘，诗岸站先不显示
+    features: { live2d: false, forum: true, shop: true },
   },
   chiyu: {
     key: 'chiyu',

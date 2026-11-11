@@ -9,7 +9,7 @@
     </div>
     <AppFooter v-if="!fullBleed" />
     <ToastContainer />
-    <Live2DCompanion v-if="route.name && !hideChrome && !route.meta.hideCompanion" :size="260" />
+    <Live2DCompanion v-if="showCompanion" :size="260" />
   </template>
 </template>
 
@@ -33,6 +33,15 @@ const hideChrome = computed(() => Boolean(route.meta.hideChrome));
 
 // 未开放的子站只显示「建设中」，不加载任何现有站点的内容
 const comingSoon = computed(() => Boolean(site.value) && site.value.status !== 'live');
+
+// 桌宠按站点开关（模型是豆丁星尘，其他站默认不显示）
+const showCompanion = computed(
+  () =>
+    Boolean(route.name) &&
+    !hideChrome.value &&
+    !route.meta.hideCompanion &&
+    site.value?.features?.live2d !== false
+);
 
 onMounted(load);
 </script>
