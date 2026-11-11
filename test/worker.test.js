@@ -630,7 +630,8 @@ describe('Multi-site config', () => {
         expect(data.sites.map((site) => site.key)).toEqual([
             'stardust', 'shian', 'chiyu', 'haiyi', 'yongye', 'cangqiong', 'muxin',
         ]);
-        expect(data.sites[1]).toMatchObject({ name: '诗岸', en: 'Shian', status: 'soon' });
+        expect(data.sites[1]).toMatchObject({ name: '诗岸', en: 'Shian', status: 'live' });
+        expect(data.sites[2]).toMatchObject({ name: '赤羽', status: 'soon' });
         expect(data.sites[1].contentDb).toBeUndefined();
         expect(data.current.contentDb).toBeUndefined();
     });
