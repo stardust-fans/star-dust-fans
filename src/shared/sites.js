@@ -17,6 +17,7 @@ export const IDENTITY_DB = 'DB';
 // colors：应援色。单色写 ['#RRGGBB']（渐变自动补 #FFFFFF），双色写 ['#A', '#B']
 // theme：站点主题色（覆盖 CSS 变量）。不写就用现在这套默认配色
 // contentDb：该站内容表所在的 D1 绑定；暂时都指向 DB（尘站的库），后续再切
+// copy：站点文案。只写要覆盖的字段，其余自动回落默认站（stardust）的写法
 export const SITES = {
   stardust: {
     key: 'stardust',
@@ -28,6 +29,63 @@ export const SITES = {
     contentDb: 'DB',
     status: 'live',
     features: { live2d: true, forum: true, shop: true },
+    // 默认站文案 = 全站兜底，改这里会同时影响所有没写自己 copy 的站
+    copy: {
+      nav: {
+        home: '主页',
+        videos: '视频',
+        lyrics: '歌词',
+        fanart: '同人',
+        shop: '量贩',
+        daily: '日报',
+        starmap: '星图',
+        forum: '论坛',
+        about: '关于',
+      },
+      hero: {
+        badge: 'STARDUST · 中文虚拟歌姬',
+        title: '星尘',
+        subtitle: '众星因你，皆降为尘',
+        desc: [
+          '诞生于宇宙高次位面「以太之海」，',
+          '发丝蓄满以太的蓝，每首歌里都带着点来处的遥远。',
+        ],
+        info: [
+          { label: '生日', value: '08.12 · 狮子座' },
+          { label: '体型', value: '160cm · 16岁' },
+          { label: '代表色', value: '钴蓝 / 金黄' },
+        ],
+        aboutTitle: '关于星尘',
+        aboutSubtitle: '设定档案 · 声库资讯',
+        aboutCards: [
+          {
+            index: '01 · 声库',
+            title: '声源与发行',
+            lines: ['北京福托科技 · 2016.02.20 发售', '声源：茶理理'],
+          },
+          {
+            index: '02 · 生日',
+            title: '生日与星座',
+            lines: ['8月12日 · 狮子座', '16岁 · 身高 160cm'],
+          },
+          {
+            index: '03 · 色彩',
+            title: '代表色',
+            lines: ['钴蓝 #9999FF · 黄 #FFFF00', '「众星因你，皆降为尘」'],
+          },
+          {
+            index: '04 · 设定',
+            title: '世界观',
+            lines: ['诞生于宇宙高次位面「以太之海」', '头发由以太构成，能发出钴蓝色光晕'],
+          },
+        ],
+      },
+      about: {
+        title: '关于星尘粉丝站',
+        subtitle: '一个由星尘爱好者维护的非官方站点',
+      },
+      footer: '✦ 众星为你· 皆降为尘 ✦',
+    },
   },
   shian: {
     key: 'shian',
@@ -39,6 +97,32 @@ export const SITES = {
     status: 'live',
     // 桌宠模型是豆丁星尘，诗岸站先不显示
     features: { live2d: false, forum: true, shop: true },
+    // TODO(文案)：以下占位待填，没写的字段会用尘站的
+    copy: {
+      hero: {
+        badge: 'SHIAN · 中文虚拟歌姬',
+        title: '诗岸',
+        subtitle: '待填',
+        desc: ['待填'],
+        info: [
+          { label: '生日', value: '待填' },
+          { label: '体型', value: '待填' },
+          { label: '代表色', value: '#F6BE71' },
+        ],
+        aboutTitle: '关于诗岸',
+        aboutCards: [
+          { index: '01 · 声库', title: '声源与发行', lines: ['待填'] },
+          { index: '02 · 生日', title: '生日与星座', lines: ['待填'] },
+          { index: '03 · 色彩', title: '代表色', lines: ['#F6BE71', '「待填」'] },
+          { index: '04 · 设定', title: '世界观', lines: ['待填'] },
+        ],
+      },
+      about: {
+        title: '关于诗岸粉丝站',
+        subtitle: '一个由诗岸爱好者维护的非官方站点',
+      },
+      footer: '✦ 待填 ✦',
+    },
   },
   chiyu: {
     key: 'chiyu',
@@ -147,4 +231,20 @@ export function publicSiteConfig(site) {
 
 export function publicSiteList() {
   return siteList().map(publicSiteConfig);
+}
+
+// ===== 站点文案 =====
+// 只覆盖写了的字段，其余回落默认站；nav / hero / about 三个嵌套对象单独合并，
+// 所以子站只写 hero.subtitle 也不会把 hero 的其它字段冲掉。
+export function siteCopy(keyOrSite) {
+  const key = typeof keyOrSite === 'string' ? keyOrSite : keyOrSite?.key;
+  const base = SITES[DEFAULT_SITE]?.copy || {};
+  const own = (SITES[key] || SITES[DEFAULT_SITE])?.copy || {};
+  return {
+    ...base,
+    ...own,
+    nav: { ...(base.nav || {}), ...(own.nav || {}) },
+    hero: { ...(base.hero || {}), ...(own.hero || {}) },
+    about: { ...(base.about || {}), ...(own.about || {}) },
+  };
 }

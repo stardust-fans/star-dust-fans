@@ -1,8 +1,8 @@
 <template>
   <div class="page-header">
     <span class="eyebrow page-eyebrow">✦ 关于</span>
-    <h1 class="page-title">关于星尘粉丝站</h1>
-    <p class="page-subtitle">一个由星尘爱好者维护的非官方站点</p>
+    <h1 class="page-title">{{ copy.about.title }}</h1>
+    <p class="page-subtitle">{{ copy.about.subtitle }}</p>
   </div>
 
   <div class="about-content">
@@ -87,9 +87,14 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import contributors from '../../shared/contributors.json';
 import { LRC_URL } from '../../shared/constants.js';
+import { siteCopy } from '../../shared/sites.js';
+import { useSite } from '../composables/useSite.js';
+
+const { site } = useSite();
+const copy = computed(() => siteCopy(site.value?.key));
 
 const imageUrl = '/images/bayuep-support.png';
 
