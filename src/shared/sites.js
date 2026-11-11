@@ -88,6 +88,17 @@ export const SITES = {
 // 展示顺序（选择面板 / 站点列表）
 export const SITE_ORDER = ['stardust', 'shian', 'chiyu', 'haiyi', 'yongye', 'cangqiong', 'muxin'];
 
+// 所有站点域名（校验"这个附件 URL 是否属于本站体系"时用）
+export const SITE_HOSTS = new Set(
+  Object.values(SITES).flatMap((site) => site.origins || [])
+);
+
+// 站点对外主域名（含协议）
+export function siteOrigin(site) {
+  const host = site?.origins?.[0];
+  return host ? `https://${host}` : '';
+}
+
 export function siteList() {
   return SITE_ORDER.map((key) => SITES[key]).filter(Boolean);
 }
