@@ -1,6 +1,6 @@
 <template>
   <section class="hero-section">
-    <div class="hero-content">
+    <div class="hero-content" :class="{ 'hero-content--text-only': !showHeroVisual }">
       <div class="hero-text">
         <div class="hero-badge">{{ copy.hero.badge }}</div>
         <h1 class="hero-title">{{ copy.hero.title }}</h1>
@@ -16,7 +16,7 @@
           </span>
         </div>
       </div>
-      <div class="hero-visual">
+      <div v-if="showHeroVisual" class="hero-visual">
         <svg class="constellation" viewBox="0 0 220 260" aria-hidden="true">
           <path class="link-line" d="M40 30 L90 70 L70 130 L120 150 L100 210 L160 230" />
           <path class="link-line" d="M90 70 L150 60" />
@@ -85,6 +85,9 @@ const { site } = useSite();
 
 // 站点文案（没写 copy 的站回落尘站）
 const copy = computed(() => siteCopy(site.value?.key));
+
+// hero 插画是星尘的星座图，其他站可关掉（features.heroVisual = false）
+const showHeroVisual = computed(() => site.value?.features?.heroVisual !== false);
 const error = ref('');
 const featuredSongs = computed(() => songs.value.slice(0, 6));
 async function loadFeatured() {
