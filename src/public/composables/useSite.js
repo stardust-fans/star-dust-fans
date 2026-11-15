@@ -20,7 +20,12 @@ async function load() {
   if (loaded.value) return site.value;
   if (pending) return pending;
 
-  pending = fetch('/api/site', { headers: { Accept: 'application/json' } })
+  // main.js 会 await 它再挂载，所以加超时，网络卡住时也要能渲染
+  const signal = typeof AbortSignal !== 'undefined' && AbortSignal.timeout
+    ? AbortSignal.timeout(3000)
+    : undefined;
+
+  pending = fetch('/api/site', { headers: { Accept: 'application/json' }, signal })
     .then((res) => (res.ok ? res.json() : null))
     .then((data) => {
       if (data?.current) {
