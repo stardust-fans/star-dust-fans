@@ -45,6 +45,10 @@ describe('Site config helpers', () => {
         expect(siteCopy('chiyu').hero.title).toBe(SITES[DEFAULT_SITE].copy.hero.title);
         expect(siteCopy('chiyu').nav.forum).toBe(SITES[DEFAULT_SITE].copy.nav.forum);
         expect(siteCopy('chiyu').mark).toBe(SITES[DEFAULT_SITE].copy.mark);
+        // 日报名 / 站点全称也按站覆盖
+        expect(siteCopy('shian').dailyTitle).toBe('山山日报');
+        expect(siteCopy('shian').siteTitle).toBe('诗岸粉丝站');
+        expect(siteCopy('chiyu').dailyTitle).toBe(SITES[DEFAULT_SITE].copy.dailyTitle);
     });
 
     it('resolves <key>.localhost for local preview', () => {

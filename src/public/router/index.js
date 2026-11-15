@@ -1,5 +1,7 @@
 import { createRouter, createWebHistory } from "vue-router";
 import { PAGE_TITLE_MAP } from "../../shared/constants.js";
+import { siteCopy } from "../../shared/sites.js";
+import { useSite } from "../composables/useSite.js";
 import HomeView from "../views/HomeView.vue";
 import VideosView from "../views/VideosView.vue";
 import LyricsView from "../views/LyricsView.vue";
@@ -117,7 +119,10 @@ router.beforeEach(async (to) => {
 });
 
 router.afterEach((to) => {
-  document.title = PAGE_TITLE_MAP[to.name] || "星尘粉丝站";
+  // 页面标题按站点替换：子站不能顶着「星尘粉丝站 / 吸尘器日报」
+  const copy = siteCopy(useSite().site.value?.key);
+  const title = PAGE_TITLE_MAP[to.name] || copy.siteTitle;
+  document.title = title.split("星尘粉丝站").join(copy.siteTitle).split("吸尘器日报").join(copy.dailyTitle);
 });
 
 export default router;

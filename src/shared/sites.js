@@ -40,6 +40,9 @@ export const SITES = {
     copy: {
       // 品牌名后面那行小字（同时也是站点切换入口）
       mark: '吸尘器聚集地',
+      // 浏览器标签标题 / 日报页标题
+      siteTitle: '星尘粉丝站',
+      dailyTitle: '吸尘器日报',
       nav: {
         home: '主页',
         videos: '视频',
@@ -129,6 +132,8 @@ export const SITES = {
     // TODO(文案)：以下占位待填，没写的字段会用尘站的
     copy: {
       mark: '山山聚集地',
+      siteTitle: '诗岸粉丝站',
+      dailyTitle: '山山日报',
       hero: {
         badge: 'SHIAN · 中文虚拟歌姬',
         title: '诗岸',
