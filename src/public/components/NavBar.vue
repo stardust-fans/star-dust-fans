@@ -18,7 +18,7 @@
           @click.prevent.stop="openStations"
           @keydown.enter.prevent.stop="openStations"
           @keydown.space.prevent.stop="openStations"
-        >吸尘器聚集地</span>
+        >{{ copy.mark }}</span>
         <span v-if="siteHint" class="nav-brand-site">{{ siteHint }}</span>
       </RouterLink>
       <ul class="nav-menu" :class="{ open: menuOpen }">

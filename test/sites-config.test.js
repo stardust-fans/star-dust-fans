@@ -38,9 +38,13 @@ describe('Site config helpers', () => {
 
     it('falls back to the default site copy when a site has none', () => {
         expect(siteCopy('shian').hero.title).toBe('诗岸');
+        // 品牌小字按站覆盖
+        expect(siteCopy('shian').mark).toBe('山山聚集地');
+        expect(siteCopy(DEFAULT_SITE).mark).toBe('吸尘器聚集地');
         // 赤羽还没写 copy，应完整回落尘站
         expect(siteCopy('chiyu').hero.title).toBe(SITES[DEFAULT_SITE].copy.hero.title);
         expect(siteCopy('chiyu').nav.forum).toBe(SITES[DEFAULT_SITE].copy.nav.forum);
+        expect(siteCopy('chiyu').mark).toBe(SITES[DEFAULT_SITE].copy.mark);
     });
 
     it('resolves <key>.localhost for local preview', () => {
