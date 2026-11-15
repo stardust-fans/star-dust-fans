@@ -678,6 +678,15 @@ describe('Multi-site content databases', () => {
         expect(data.current.key).toBe('shian');
     });
 
+    it('ships the sub-site theme to the client', async () => {
+        const data = await (await fetchHost('shian.stardustinfinity.top', '/api/site')).json();
+        expect(data.current.theme).toMatchObject({ cobalt: '#F6BE71', paper: '#0a0906' });
+
+        // 默认站没有 theme 覆盖，前端沿用 CSS 默认
+        const root = await (await fetchHost('stardustinfinity.top', '/api/site')).json();
+        expect(root.current.theme).toBeNull();
+    });
+
     it('treats <key>.localhost as that site for local preview', async () => {
         const shian = await (await fetchHost('shian.localhost:5173', '/api/site')).json();
         expect(shian.current.key).toBe('shian');

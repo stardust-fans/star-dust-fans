@@ -104,22 +104,22 @@ export const SITES = {
     status: 'live',
     // 桌宠模型是豆丁星尘，诗岸站先不显示
     features: { live2d: false, forum: true, shop: true },
-    // TODO(主题)：想改诗岸的字体 / 配色 / 背景，取消注释后改值即可
-    // theme: {
-    //   cobalt: '#F6BE71',            // 强调色：按钮、链接、星空渐变
-    //   gold: '#FFE0A8',
-    //   paper: '#0a0906',             // 页面底色
-    //   paperRaised: '#14110b',       // 卡片底色
-    //   ink: '#f2e8d8',               // 正文
-    //   inkSoft: '#cdbfa8',
-    //   inkMuted: '#8f8471',
-    //   inkFaint: '#5a5346',
-    //   fontBody: "'Noto Serif SC', serif",
-    // },
-    // background: {
-    //   crystal: { color: '#F6BE71', halo: '#4a7ad6' },
-    //   particles: { colors: ['#F6BE71', '#ffffff', '#ffe6b8'], density: 60 },
-    // },
+    // 诗岸主题：暖金 + 米白文字 + 近黑暖底
+    theme: {
+      cobalt: '#F6BE71',            // 强调色：按钮、链接、星空渐变
+      gold: '#FFE0A8',
+      paper: '#0a0906',             // 页面底色
+      paperRaised: '#14110b',       // 卡片底色
+      ink: '#f2e8d8',               // 正文
+      inkSoft: '#cdbfa8',
+      inkMuted: '#8f8471',
+      inkFaint: '#5a5346',
+      fontBody: "'Noto Serif SC', 'Noto Sans SC', 'PingFang SC', serif",
+    },
+    background: {
+      crystal: { color: '#F6BE71', halo: '#4a7ad6' },
+      particles: { colors: ['#F6BE71', '#ffffff', '#ffe6b8'], density: 60 },
+    },
     // TODO(文案)：以下占位待填，没写的字段会用尘站的
     copy: {
       hero: {
