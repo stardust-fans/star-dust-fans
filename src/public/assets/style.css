@@ -638,6 +638,12 @@ a {
     align-items: center;
 }
 
+/* 关掉 hero 插画的站点：文字单独占一列，别留半屏空白 */
+.hero-content--text-only {
+    grid-template-columns: minmax(0, 1fr);
+    max-width: 780px;
+}
+
 /* 文字区自带底板，保证不管画面哪一部分露在后面都能读清 */
 .hero-text {
     padding: 22px 26px;

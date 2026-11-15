@@ -102,8 +102,8 @@ export const SITES = {
     origins: ['shian.stardustinfinity.top'],
     contentDb: 'DB_SHIAN',
     status: 'live',
-    // 桌宠模型是豆丁星尘，诗岸站先不显示
-    features: { live2d: false, forum: true, shop: true },
+    // 桌宠模型是豆丁星尘，诗岸站先不显示；hero 插画也是星尘的星座图，一并关掉
+    features: { live2d: false, forum: true, shop: true, heroVisual: false },
     // 诗岸主题：暖金 + 米白文字 + 近黑暖底
     theme: {
       cobalt: '#F6BE71',            // 强调色：按钮、链接、星空渐变
