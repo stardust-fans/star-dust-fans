@@ -9,7 +9,7 @@
           width="26"
           height="26"
         />
-        星尘
+        {{ brandName }}
         <span
           class="nav-brand-mark"
           role="button"
@@ -19,6 +19,7 @@
           @keydown.enter.prevent.stop="openStations"
           @keydown.space.prevent.stop="openStations"
         >吸尘器聚集地</span>
+        <span v-if="siteHint" class="nav-brand-site">{{ siteHint }}</span>
       </RouterLink>
       <ul class="nav-menu" :class="{ open: menuOpen }">
         <li><RouterLink to="/" @click="closeMenu">{{ copy.nav.home }}</RouterLink></li>
@@ -58,7 +59,7 @@ import { useRoute, useRouter } from "vue-router";
 import { useLogin } from "../composables/useLogin.js";
 import { useSite } from "../composables/useSite.js";
 import StationSwitcher from "./StationSwitcher.vue";
-import { siteCopy } from "../../shared/sites.js";
+import { siteCopy, DEFAULT_SITE } from "../../shared/sites.js";
 
 const route = useRoute();
 const router = useRouter();
@@ -69,6 +70,16 @@ const { site } = useSite();
 
 // 导航文案随站点走，没写 copy 的站回落尘站
 const copy = computed(() => siteCopy(site.value?.key));
+
+// 品牌名也跟着站点走（默认站是「星尘」）
+const brandName = computed(() => site.value?.name || "星尘");
+
+// 子站才提示「您当前在 XX 站点」，默认站不显示
+const siteHint = computed(() => {
+  const current = site.value;
+  if (!current || current.key === DEFAULT_SITE) return "";
+  return `（您当前在${current.name}站点）`;
+});
 
 function openStations() {
   stationsOpen.value = true;
