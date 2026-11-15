@@ -177,6 +177,24 @@ a {
     opacity: 0.6;
 }
 
+/* 子站提示：您当前在 XX 站点 */
+.nav-brand .nav-brand-site {
+    font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 0.68rem;
+    letter-spacing: 0.04em;
+    color: var(--ink-faint);
+    white-space: nowrap;
+    /* 整块是父级 RouterLink，别让它自己也变成链接样式 */
+    pointer-events: none;
+}
+
+@media (max-width: 720px) {
+    /* 窄屏导航本来就挤，这条提示先藏起来 */
+    .nav-brand .nav-brand-site {
+        display: none;
+    }
+}
+
 .nav-brand:hover {
     color: var(--cobalt);
 }
