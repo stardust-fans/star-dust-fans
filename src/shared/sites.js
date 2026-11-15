@@ -38,6 +38,8 @@ export const SITES = {
     features: { live2d: true, forum: true, shop: true },
     // 默认站文案 = 全站兜底，改这里会同时影响所有没写自己 copy 的站
     copy: {
+      // 品牌名后面那行小字（同时也是站点切换入口）
+      mark: '吸尘器聚集地',
       nav: {
         home: '主页',
         videos: '视频',
@@ -98,6 +100,7 @@ export const SITES = {
     key: 'shian',
     name: '诗岸',
     en: 'Shian',
+    tagline: '山山聚集地',
     colors: ['#F6BE71', '#FFFFFF'],
     origins: ['shian.stardustinfinity.top'],
     contentDb: 'DB_SHIAN',
@@ -125,6 +128,7 @@ export const SITES = {
     },
     // TODO(文案)：以下占位待填，没写的字段会用尘站的
     copy: {
+      mark: '山山聚集地',
       hero: {
         badge: 'SHIAN · 中文虚拟歌姬',
         title: '诗岸',
