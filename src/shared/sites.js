@@ -115,6 +115,9 @@ export const SITES = {
       inkMuted: '#8f8471',
       inkFaint: '#5a5346',
       fontBody: "'Noto Serif SC', 'Noto Sans SC', 'PingFang SC', serif",
+      // hero 背景插画也是星尘的图，先不画；以后有诗岸的图改成
+      // heroBg: "url('/images/shian-hero.webp')"
+      heroBg: 'none',
     },
     background: {
       crystal: { color: '#F6BE71', halo: '#4a7ad6' },
@@ -297,12 +300,14 @@ export const THEME_CSS_VARS = {
   // 线条
   line: '--line',
   lineStrong: '--line-strong',
-  // 强调色（也决定星空渐变、按钮、链接）
+  // 强化色（也决定星空渐变、按钮、链接）
   cobalt: '--cobalt',
   cobaltSoft: '--cobalt-soft',
   cobaltWash: '--cobalt-wash',
   gold: '--gold',
   goldSoft: '--gold-soft',
+  // 首页 hero 插画（CSS <image>：url('...') 或 none）
+  heroBg: '--hero-bg-image',
 };
 
 export function themeVars(theme) {

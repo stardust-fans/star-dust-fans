@@ -21,6 +21,8 @@
     --font-display: 'Fraunces', 'Noto Serif SC', serif;
     --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Consolas, monospace;
     --font-body: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    /* 首页 hero 右侧插画（默认是星尘的图，子站可用 theme.heroBg 覆盖成自己的图或 none） */
+    --hero-bg-image: url('/images/hero-bg.webp');
     /* 移动端越界回弹露出的是 html 的背景，不是 body 的——不设的话在深色
        系统主题下会闪出黑边。overscroll-behavior-y 再把回弹本身压住。 */
     background: var(--paper);
@@ -621,9 +623,10 @@ a {
     margin: 8px 0 48px;
     border: 1px solid var(--line);
     border-radius: var(--radius);
+    /* 第二层是站点插画，可由主题覆盖（--hero-bg-image: none 表示不画） */
     background-image:
         radial-gradient(130% 110% at 28% 18%, transparent 38%, rgba(7, 7, 13, 0.6) 100%),
-        url('/images/hero-bg.webp');
+        var(--hero-bg-image);
     background-size: 100% 100%, cover;
     background-position: center, center 30%;
     background-repeat: no-repeat, no-repeat;

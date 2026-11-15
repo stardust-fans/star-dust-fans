@@ -17,6 +17,8 @@ describe('Site config helpers', () => {
         });
         expect(themeVars(null)).toEqual({});
         expect(themeVars(undefined)).toEqual({});
+        // hero 背景插画也能按站覆盖（none 表示不画）
+        expect(themeVars({ heroBg: 'none' })).toEqual({ '--hero-bg-image': 'none' });
     });
 
     it('merges background overrides with the defaults', () => {
