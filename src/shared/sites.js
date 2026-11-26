@@ -165,10 +165,76 @@ export const SITES = {
     key: 'chiyu',
     name: '赤羽',
     en: 'Chiyu',
+    tagline: '赤草鸡聚集地',
     colors: ['#FF4004'],
     origins: ['chiyu.stardustinfinity.top'],
     contentDb: 'DB_CHIYU',
-    status: 'soon',
+    status: 'live',
+    // 桌宠是豆丁星尘、hero 星座图也是星尘的，赤羽站都不用
+    features: { live2d: false, forum: true, shop: true, heroVisual: false },
+    // 赤羽红 #FF4004（官方代表色）为主调的暖红主题
+    theme: {
+      cobalt: '#FF4004',
+      gold: '#FFB27A',
+      paper: '#0d0705',
+      paperRaised: '#17100c',
+      ink: '#f7e9e2',
+      inkSoft: '#d8bfb4',
+      inkMuted: '#9a7f74',
+      inkFaint: '#63504a',
+      // 不套尘站的 hero-bg.webp，改用赤羽红的光晕
+      heroBg: 'none',
+      heroGlow: 'radial-gradient(120% 95% at 78% 12%, rgba(255, 64, 4, 0.26), transparent 62%), radial-gradient(90% 80% at 8% 92%, rgba(255, 178, 122, 0.12), transparent 58%)',
+    },
+    background: {
+      crystal: { color: '#FF4004', halo: '#ff8a3d' },
+      particles: { colors: ['#FF4004', '#ffd0b0', '#ffffff'], density: 62 },
+    },
+    copy: {
+      mark: '赤草鸡聚集地',
+      siteTitle: '赤羽粉丝站',
+      dailyTitle: '赤草鸡日报',
+      hero: {
+        badge: 'CHIYU · 中文虚拟歌姬',
+        title: '赤羽',
+        subtitle: '赤焰如火，羽翼飞扬',
+        desc: ['明亮而高亢的声线，', '还有勇敢而率真的性格。'],
+        info: [
+          { label: '生日', value: '11.26 · 射手座' },
+          { label: '体型', value: '158cm · 17 岁' },
+          { label: '代表色', value: '赤羽红 #FF4004' },
+        ],
+        aboutTitle: '关于赤羽',
+        aboutSubtitle: '设定档案 · 声库资讯',
+        aboutCards: [
+          {
+            index: '01 · 声库',
+            title: '声源与发行',
+            lines: ['平行四界 · SV 2019.04.19', 'SV R2 2020.06.27 · 声源：呦猫UNEKO'],
+          },
+          {
+            index: '02 · 生日',
+            title: '生日与星座',
+            lines: ['11月26日 · 射手座', '17 岁 · 身高 158cm'],
+          },
+          {
+            index: '03 · 色彩',
+            title: '代表色',
+            lines: ['赤羽红 #FF4004', '本体：菲尼克斯（不死鸟）'],
+          },
+          {
+            index: '04 · 设定',
+            title: '世界观',
+            lines: ['五维介质 · 代表「火」属性', '代表物：正四面体'],
+          },
+        ],
+      },
+      about: {
+        title: '关于赤羽粉丝站',
+        subtitle: '一个由赤羽爱好者维护的非官方站点',
+      },
+      footer: '✦ 赤焰如火，羽翼飞扬 ✦',
+    },
   },
   haiyi: {
     key: 'haiyi',
@@ -317,6 +383,8 @@ export const THEME_CSS_VARS = {
   goldSoft: '--gold-soft',
   // 首页 hero 插画（CSS <image>：url('...') 或 none）
   heroBg: '--hero-bg-image',
+  // 首页 hero 光晕层（CSS <bg-image>，不写就是不画）
+  heroGlow: '--hero-glow',
 };
 
 export function themeVars(theme) {

@@ -4,7 +4,7 @@
       <div class="hero-text">
         <div class="hero-badge">{{ copy.hero.badge }}</div>
         <h1 class="hero-title">{{ copy.hero.title }}</h1>
-        <p class="hero-subtitle">{{ copy.hero.subtitle }}</p>
+        <p v-if="copy.hero.subtitle" class="hero-subtitle">{{ copy.hero.subtitle }}</p>
         <p class="hero-desc">
           <template v-for="(line, i) in copy.hero.desc" :key="i">
             {{ line }}<br v-if="i < copy.hero.desc.length - 1" />

@@ -41,14 +41,16 @@ describe('Site config helpers', () => {
         // 品牌小字按站覆盖
         expect(siteCopy('shian').mark).toBe('山山聚集地');
         expect(siteCopy(DEFAULT_SITE).mark).toBe('吸尘器聚集地');
-        // 赤羽还没写 copy，应完整回落尘站
-        expect(siteCopy('chiyu').hero.title).toBe(SITES[DEFAULT_SITE].copy.hero.title);
-        expect(siteCopy('chiyu').nav.forum).toBe(SITES[DEFAULT_SITE].copy.nav.forum);
-        expect(siteCopy('chiyu').mark).toBe(SITES[DEFAULT_SITE].copy.mark);
+        expect(siteCopy('chiyu').mark).toBe('赤草鸡聚集地');
+        // 海伊还没写 copy，应完整回落尘站
+        expect(siteCopy('haiyi').hero.title).toBe(SITES[DEFAULT_SITE].copy.hero.title);
+        expect(siteCopy('haiyi').nav.forum).toBe(SITES[DEFAULT_SITE].copy.nav.forum);
+        expect(siteCopy('haiyi').mark).toBe(SITES[DEFAULT_SITE].copy.mark);
         // 日报名 / 站点全称也按站覆盖
         expect(siteCopy('shian').dailyTitle).toBe('山山日报');
         expect(siteCopy('shian').siteTitle).toBe('诗岸粉丝站');
-        expect(siteCopy('chiyu').dailyTitle).toBe(SITES[DEFAULT_SITE].copy.dailyTitle);
+        expect(siteCopy('chiyu').dailyTitle).toBe('赤草鸡日报');
+        expect(siteCopy('haiyi').dailyTitle).toBe(SITES[DEFAULT_SITE].copy.dailyTitle);
     });
 
     it('resolves <key>.localhost for local preview', () => {
