@@ -1,7 +1,7 @@
 <template>
   <footer class="footer">
     <div class="footer-container">
-      <p class="footer-egg" @click="handleEggClick">{{ copy.footer }}</p>
+      <p v-if="copy.footer" class="footer-egg" @click="handleEggClick">{{ copy.footer }}</p>
     </div>
   </footer>
 </template>
