@@ -1,13 +1,20 @@
 import { ref } from "vue";
 import { API_BASE, fetchAPI } from "../../shared/api.js";
+import { sessionCookieDomain } from "../../shared/sites.js";
 
 export function useLogin() {
   const isLoading = ref(false);
   const error = ref(null);
 
+  const EPOCH = "Thu, 01 Jan 1970 00:00:00 GMT";
+
   function setCookie(name, value, days = 7) {
     const expires = new Date(Date.now() + days * 864e5).toUTCString();
-    document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`;
+    const domain = sessionCookieDomain(window.location.hostname);
+    // 先清掉只属于当前主机的同名旧 cookie，避免它排在主域 cookie 前面
+    document.cookie = `${name}=; expires=${EPOCH}; path=/`;
+    const scope = domain ? `; domain=${domain}` : "";
+    document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/${scope}; SameSite=Lax`;
   }
 
   function getCookie(name) {
@@ -18,7 +25,9 @@ export function useLogin() {
   }
 
   function removeCookie(name) {
-    document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+    document.cookie = `${name}=; expires=${EPOCH}; path=/`;
+    const domain = sessionCookieDomain(window.location.hostname);
+    if (domain) document.cookie = `${name}=; expires=${EPOCH}; path=/; domain=${domain}`;
   }
 
   async function login(credentials) {
