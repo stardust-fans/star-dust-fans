@@ -307,6 +307,13 @@ export function resolveSiteByHost(host) {
   return SITES[DEFAULT_SITE];
 }
 
+// 登录 cookie 的共享域：主机在站点域名体系内时返回主域，否则返回空字符串
+export function sessionCookieDomain(hostname) {
+  const root = SITES[DEFAULT_SITE].origins[0];
+  const name = String(hostname || '').toLowerCase().split(':')[0];
+  return name === root || name.endsWith(`.${root}`) ? root : '';
+}
+
 const FALLBACK_FROM = '#9999FF';
 const FALLBACK_TO = '#FFFFFF';
 

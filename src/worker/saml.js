@@ -1,4 +1,5 @@
 import { importJWK } from "jose";
+import { sessionCookieDomain } from "../shared/sites.js";
 
 const encoder = new TextEncoder();
 const SAML_PROTOCOL = "urn:oasis:names:tc:SAML:2.0:protocol";
@@ -240,7 +241,8 @@ async function samlResponseToAcs(request, responseXml) {
 
 async function singleLogout(request, config) {
   const url = new URL(request.url);
-  const headers = new Headers({ "Cache-Control": "no-store", "Set-Cookie": clearAuthCookie(url) });
+  const headers = new Headers({ "Cache-Control": "no-store" });
+  for (const cookie of clearAuthCookies(url)) headers.append("Set-Cookie", cookie);
   if (!['GET', 'POST'].includes(request.method)) throw new SamlError("SAML logout requires GET or POST", 405);
   let rawRequest = "";
   let relayState = "";
@@ -417,8 +419,10 @@ function decodeQueryValue(value) {
   }
 }
 
-function clearAuthCookie(url) {
-  return `authToken=; Max-Age=0; Path=/; SameSite=Lax${url.protocol === "https:" ? "; Secure" : ""}`;
+function clearAuthCookies(url) {
+  const base = `authToken=; Max-Age=0; Path=/; SameSite=Lax${url.protocol === "https:" ? "; Secure" : ""}`;
+  const domain = sessionCookieDomain(url.hostname);
+  return domain ? [base, `${base}; Domain=${domain}`] : [base];
 }
 
 function samlError(error) {

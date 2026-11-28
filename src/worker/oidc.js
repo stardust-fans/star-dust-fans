@@ -7,6 +7,7 @@ import {
   importJWK,
   jwtVerify,
 } from "jose";
+import { sessionCookieDomain } from "../shared/sites.js";
 import { isValidUsername } from "../shared/username.js";
 
 const encoder = new TextEncoder();
@@ -598,7 +599,7 @@ async function logout(request, env, config) {
     env.DB.prepare("UPDATE oidc_refresh_tokens SET revoked_at = ? WHERE user_id = ? AND client_id = ? AND revoked_at IS NULL").bind(now(), subject, client.clientId),
   ]);
   const headers = noStoreHeaders();
-  headers.set("Set-Cookie", clearAuthCookie(url));
+  for (const cookie of clearAuthCookies(url)) headers.append("Set-Cookie", cookie);
   if (postLogoutRedirectUri) {
     const destination = new URL(postLogoutRedirectUri);
     const state = safeParameter(url.searchParams.get("state"), 512);
@@ -967,7 +968,11 @@ function oauthErrorResponse(error) {
 
 function now() { return Math.floor(Date.now() / 1000); }
 
-function clearAuthCookie(url) { return `authToken=; Max-Age=0; Path=/; SameSite=Lax${url.protocol === "https:" ? "; Secure" : ""}`; }
+function clearAuthCookies(url) {
+  const base = `authToken=; Max-Age=0; Path=/; SameSite=Lax${url.protocol === "https:" ? "; Secure" : ""}`;
+  const domain = sessionCookieDomain(url.hostname);
+  return domain ? [base, `${base}; Domain=${domain}`] : [base];
+}
 
 async function cleanupExpiredState(db, nowValue) {
   await db.batch([
